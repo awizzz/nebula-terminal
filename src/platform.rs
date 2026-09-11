@@ -291,11 +291,23 @@ mod windows {
         let cwd_text = cwd.display().to_string();
 
         let (program, parameters) = match backend.to_ascii_lowercase().as_str() {
+            "native" => {
+                let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+                let payload = command
+                    .as_bytes()
+                    .iter()
+                    .map(|byte| format!("{byte:02x}"))
+                    .collect::<String>();
+                (
+                    exe.to_string_lossy().into_owned(),
+                    format!("--elevated-run {payload}"),
+                )
+            }
             "powershell" => {
                 let path = cwd_text.replace('\'', "''");
                 let command = command.replace('"', "`\"");
                 (
-                    "powershell.exe",
+                    "powershell.exe".to_string(),
                     format!(
                         "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
                     ),
@@ -305,7 +317,7 @@ mod windows {
                 let path = cwd_text.replace('\'', "''");
                 let command = command.replace('"', "`\"");
                 (
-                    "pwsh.exe",
+                    "pwsh.exe".to_string(),
                     format!(
                         "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
                     ),
@@ -314,13 +326,13 @@ mod windows {
             _ => {
                 let path = cwd_text.replace('"', "\"\"");
                 (
-                    "cmd.exe",
+                    "cmd.exe".to_string(),
                     format!("/d /k \"cd /d \\\"{path}\\\" && {command}\""),
                 )
             }
         };
 
-        let file = wide_str(program);
+        let file = wide_str(&program);
         let parameters = wide_str(&parameters);
         let result = unsafe {
             ShellExecuteW(

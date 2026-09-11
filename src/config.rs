@@ -87,7 +87,7 @@ impl Default for GeneralConfig {
     fn default() -> Self {
         Self {
             language: "auto".into(),
-            backend: "cmd".into(),
+            backend: "native".into(),
             show_banner: true,
             history_enabled: true,
             history_ignore_leading_space: true,
@@ -181,7 +181,7 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(
             self.general.backend.to_ascii_lowercase().as_str(),
-            "cmd" | "powershell" | "pwsh"
+            "native" | "cmd" | "powershell" | "pwsh"
         ) {
             return Err(format!(
                 "unsupported command backend: {}",

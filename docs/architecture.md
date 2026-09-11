@@ -96,3 +96,12 @@ The project pins a Rust toolchain in `rust-toolchain.toml` and commits `Cargo.lo
 `.github/workflows/security.yml` runs a scheduled RustSec dependency audit.
 
 `.github/workflows/release.yml` is the only workflow intended to publish release assets. It runs the same validation, optionally signs the executable, verifies the signature, creates a SHA-256 checksum and publishes the GitHub Release.
+
+
+## Native execution engine
+
+Starting with 0.5.0, `native` is the default backend. Nebula parses command chains itself, launches ordinary executables directly with the Windows process model, and implements core pipelines, conditional execution and redirection without invoking CMD or PowerShell.
+
+CMD, Windows PowerShell and PowerShell 7 are compatibility layers, not runtime dependencies of the native engine. Users can call them explicitly (`cmd <command>`, `powershell <command>`, `pwsh <command>`) or select one as the session backend. Batch files remain a CMD format and therefore require CMD compatibility.
+
+Native pipelines currently buffer one stage before feeding the next. Streaming pipelines and richer job control remain future work.

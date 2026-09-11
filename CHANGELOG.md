@@ -2,6 +2,27 @@
 
 Notable user-facing changes are listed here.
 
+## 0.5.0 — 2026-09-11
+
+### Added
+
+- native command engine that launches executables without routing through CMD or PowerShell
+- native parsing for `&&`, `||`, `;`, pipelines and standard input/output/error redirection
+- native built-ins for `echo`, `dir`/`ls`, `type`/`cat`, `mkdir`, `touch`, `where`/`which`, `copy`/`cp` and `move`/`mv`
+- explicit `cmd <command>`, `powershell <command>` and `pwsh <command>` compatibility from native mode
+- native administrator elevation for `sudo` without using CMD as an intermediary
+
+### Changed
+
+- `native` is now the default command backend
+- CMD, Windows PowerShell and PowerShell 7 remain selectable compatibility backends
+- repository references now use `awizzz/nebula-shell`
+
+### Notes
+
+- `.bat` and `.cmd` scripts require CMD compatibility (`cmd script.cmd` or `backend cmd`)
+- native pipelines are currently buffered between stages rather than streamed concurrently
+
 ## 0.4.0 — 2026-09-11
 
 ### Added

@@ -42,7 +42,7 @@ fn short_help_flag_works() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help output should be UTF-8");
-    assert!(stdout.contains("Windows shell frontend"));
+    assert!(stdout.contains("native Windows shell"));
 }
 
 #[test]
