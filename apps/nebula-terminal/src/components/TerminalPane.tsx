@@ -35,7 +35,14 @@ export default function TerminalPane({
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const sessionRef = useRef<string | null>(null);
+  const focusedRef = useRef(focused);
+  const copyOnSelectRef = useRef(preferences.copyOnSelect);
+  const onFontSizeDeltaRef = useRef(onFontSizeDelta);
   const [connectionState, setConnectionState] = useState<"starting" | "ready" | "closed" | "preview">("starting");
+
+  focusedRef.current = focused;
+  copyOnSelectRef.current = preferences.copyOnSelect;
+  onFontSizeDeltaRef.current = onFontSizeDelta;
 
   const preset = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
   const theme = useMemo(() => ({
@@ -99,11 +106,7 @@ export default function TerminalPane({
       try {
         fit.fit();
         if (isTauri() && sessionRef.current) {
-          void invoke("resize_session", {
-            sessionId: sessionRef.current,
-            cols: terminal.cols,
-            rows: terminal.rows,
-          });
+          void invoke("resize_session", { sessionId: sessionRef.current, cols: terminal.cols, rows: terminal.rows });
         }
       } catch {
         // Ignore resize attempts while the pane is being unmounted.
@@ -156,20 +159,24 @@ export default function TerminalPane({
     });
 
     const selectionDisposable = terminal.onSelectionChange(() => {
-      if (!preferences.copyOnSelect || !terminal.hasSelection()) return;
-      void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
+      if (!copyOnSelectRef.current || !terminal.hasSelection()) return;
+      const clipboard = navigator.clipboard;
+      if (clipboard) void clipboard.writeText(terminal.getSelection()).catch(() => undefined);
     });
 
-    const keyDisposable = terminal.attachCustomKeyEventHandler((event) => {
+    terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
+      const clipboard = navigator.clipboard;
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c" && terminal.hasSelection()) {
-        void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
+        if (clipboard) void clipboard.writeText(terminal.getSelection()).catch(() => undefined);
         return false;
       }
       if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
-        void navigator.clipboard?.readText().then((text) => {
-          if (text && isTauri() && sessionRef.current) void invoke("write_session", { sessionId: sessionRef.current, data: text });
-        }).catch(() => undefined);
+        if (clipboard) {
+          void clipboard.readText().then((text) => {
+            if (text && isTauri() && sessionRef.current) void invoke("write_session", { sessionId: sessionRef.current, data: text });
+          }).catch(() => undefined);
+        }
         return false;
       }
       return true;
@@ -178,12 +185,12 @@ export default function TerminalPane({
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
-      onFontSizeDelta(event.deltaY < 0 ? 1 : -1);
+      onFontSizeDeltaRef.current(event.deltaY < 0 ? 1 : -1);
     };
     hostRef.current.addEventListener("wheel", handleWheel, { passive: false });
 
     const insertDropped = (event: Event) => {
-      if (!focused || !isTauri() || !sessionRef.current) return;
+      if (!focusedRef.current || !isTauri() || !sessionRef.current) return;
       const paths = (event as CustomEvent<string[]>).detail;
       const text = paths.map(quoteDroppedPath).join(" ");
       if (text) void invoke("write_session", { sessionId: sessionRef.current, data: text });
@@ -194,7 +201,6 @@ export default function TerminalPane({
       observer.disconnect();
       inputDisposable.dispose();
       selectionDisposable.dispose();
-      keyDisposable.dispose();
       hostRef.current?.removeEventListener("wheel", handleWheel);
       window.removeEventListener("nebula:insert-paths", insertDropped);
       if (isTauri() && sessionRef.current) void invoke("close_session", { sessionId: sessionRef.current });
