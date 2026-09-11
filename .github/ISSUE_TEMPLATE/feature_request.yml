@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an improvement to Nebula
+title: "[Feature] "
+labels: []
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What limitation or workflow should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected user-facing behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Optional alternatives or workarounds already tried.
