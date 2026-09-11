@@ -1,85 +1,30 @@
 # Nebula
 
-Nebula is a native, customizable shell frontend for Windows. It keeps normal Windows command compatibility while adding a modern prompt, history, completion, themes, localization, diagnostics and built-in UAC elevation.
+Nebula is a Windows shell frontend written in Rust. It adds a configurable prompt, history, completion, themes, localization and UAC helpers while keeping normal Windows command execution available through CMD, Windows PowerShell or PowerShell 7.
 
-## Highlights
+> Nebula is a shell frontend, not a terminal emulator. It runs inside Windows Terminal, ConHost or another compatible terminal.
 
-- Standalone `Nebula.exe` — Python is not required.
-- Normal commands are executed through `cmd.exe` by default, including pipes, redirects, `.bat` / `.cmd`, Git, Python, SSH, Winget and Windows utilities.
-- Optional `powershell` and `pwsh` backends.
-- Persistent shell state for `cd`, `pushd`, `popd`, `set` and drive switching (`D:`, `E:`, ...).
-- Persistent history with arrow-key navigation and history hints.
-- Tab completion for Nebula commands, aliases, executables in `PATH`, and files/folders in the current directory.
-- Native UAC elevation through `admin` and one-command elevation through `sudo <command>`.
-- Elevated sessions are clearly marked as `ADMIN` in the prompt and window title.
-- Windows display-language detection when `language = "auto"`.
-- Built-in French and English plus user-provided locale overrides.
-- Animated UI that can be disabled completely.
-- Multiple banner layouts, theme previews and an optional right-side clock.
-- Runtime diagnostics with `doctor`.
-- Fully editable prompt, RGB colors, aliases, environment variables and interface settings.
+## Install
 
-## Interface
+Download `Nebula.exe` from the latest GitHub Release and run it directly. No Python runtime is required.
 
-The default `aurora` banner is designed to look clean in Windows Terminal without requiring a Nerd Font. Other layouts are available:
+Unsigned releases may trigger a Windows SmartScreen warning. Release assets include `Nebula.exe.sha256` for integrity checks.
 
-```text
-ui banner aurora
-ui banner minimal
-ui banner compact
-ui banner off
-```
+## Features
 
-Animations are intentionally short and optional:
+- CMD compatibility for normal commands, pipes, redirects and `.bat` / `.cmd` files
+- optional Windows PowerShell and PowerShell 7 command backends
+- persistent working directory, drive switching and environment variables
+- persistent history, history hints and Tab completion
+- configurable prompt, colors, aliases and environment variables
+- built-in themes and interface presets
+- automatic Windows UI-language detection
+- built-in English and French localization
+- administrator relaunch and one-command UAC elevation
+- Git branch, exit status and command duration in the prompt
+- runtime diagnostics through `doctor`
 
-```text
-ui animations on
-ui animations off
-ui speed 28
-```
-
-Other UI controls:
-
-```text
-ui tips on
-ui separator on
-ui demo
-ui reset
-```
-
-Run `ui` to see the current interface settings.
-
-## Themes
-
-Run:
-
-```text
-theme
-```
-
-Nebula displays a color preview of every built-in theme.
-
-Available presets:
-
-```text
-hypr
-tokyo-night
-catppuccin
-nord
-dracula
-rose-pine
-gruvbox
-```
-
-Apply one live:
-
-```text
-theme tokyo-night
-```
-
-Every color can also be changed manually in `config.toml`.
-
-## Useful commands
+## Basic usage
 
 ```text
 help
@@ -87,62 +32,29 @@ about
 doctor
 config
 reload
-language
-backend
-ui
-theme
-alias
-history
+```
+
+Common settings can also be changed from the shell:
+
+```text
+theme tokyo-night
+language auto
+backend pwsh
+ui banner minimal
+ui animations off
+alias gs=git status
+```
+
+Administrator mode:
+
+```text
 admin
 sudo <command>
 ```
 
-Examples:
-
-```text
-backend pwsh
-language fr-FR
-alias gst=git status
-alias rm gst
-history clear
-doctor
-```
-
-## Downloads and releases
-
-Every successful Windows CI build produces a `Nebula-windows-x64` GitHub Actions artifact containing `Nebula.exe`.
-
-Version tags (`v*`) create a real GitHub Release containing:
-
-```text
-Nebula.exe
-Nebula.exe.sha256
-```
-
-Code signing is optional for now:
-
-- when SignPath is configured, the exact CI artifact is signed and its Authenticode signature is verified before release;
-- when SignPath is not configured, the release is still published and is clearly titled `(unsigned)`.
-
-This means development is not blocked by the signing provider. Signing can be enabled later without changing the release format.
-
-The signing setup is documented in `.github/workflows/RELEASE-SIGNING.md`.
-
-To build locally:
-
-```powershell
-cargo build --release
-```
-
-Output:
-
-```text
-target\release\nebula.exe
-```
-
 ## Configuration
 
-Nebula creates its configuration on first launch:
+Configuration is stored in:
 
 ```text
 %APPDATA%\Nebula\config.toml
@@ -154,42 +66,41 @@ Open it with:
 config
 ```
 
-Reload it without restarting:
+Reload changes without restarting:
 
 ```text
 reload
 ```
 
-A complete example is available in `config.example.toml`.
+See [`config.example.toml`](config.example.toml) for all current options.
+
+### Themes
+
+Built-in presets:
+
+```text
+hypr
+tokyo-night
+catppuccin
+nord
+dracula
+rose-pine
+gruvbox
+```
+
+Run `theme` for a preview.
 
 ### Language
 
-Default:
+`language = "auto"` follows the Windows user-interface language. English and French are built in.
 
-```toml
-[general]
-language = "auto"
-```
-
-`auto` follows the Windows user-interface language.
-
-You can override it live:
-
-```text
-language fr-FR
-language en-US
-language auto
-```
-
-Additional translations can be placed in:
+Custom locale files can be placed in:
 
 ```text
 %APPDATA%\Nebula\locales\<locale>.toml
 ```
 
-A custom locale inherits the built-in fallback and overrides only the keys it defines.
-
-### Backend
+### Backends
 
 ```text
 backend cmd
@@ -197,67 +108,39 @@ backend powershell
 backend pwsh
 ```
 
-Nebula checks that the requested backend exists before saving it.
+Nebula launches backend commands as child processes. Backend-specific session state such as PowerShell variables, functions and imported modules does not currently persist between commands.
 
-### Prompt
+## Build from source
 
-The default prompt is template-based:
+Requirements:
 
-```toml
-[prompt]
-template = "╭─ {status} {identity}{cwd}{git}{duration}{exit}"
-indicator_line = "╰─{indicator} "
-indicator = "❯"
-multiline_indicator = "· "
-show_git = true
-show_duration = true
-show_exit_code = true
-show_user = false
-show_hostname = false
-show_time = false
+- Windows
+- Rust stable with Cargo
+
+```powershell
+git clone https://github.com/awizzz/custom-shell.git
+cd custom-shell
+cargo build --release
 ```
 
-`show_time = true` enables a right-side clock using the native Windows local time.
-
-### Aliases
-
-Aliases can be edited in TOML or from Nebula itself:
+The executable is written to:
 
 ```text
-alias ll=dir
-alias gs=git status
-alias rm gs
+target\release\nebula.exe
 ```
 
-### Environment variables
+## Current limitations
 
-```toml
-[env]
-EDITOR = "code"
-```
+- Windows only
+- no native terminal-emulator window, tabs, panes or GPU rendering
+- PowerShell backend state is not persistent between commands
+- completion is currently generic rather than command-aware
+- releases are not Authenticode-signed unless a signing provider is configured
 
-Configured variables are applied whenever Nebula starts or reloads its configuration.
+## Project docs
 
-## Administrator mode
-
-Start a new elevated Nebula session:
-
-```text
-admin
-```
-
-Or launch the executable elevated:
-
-```text
-Nebula.exe --admin
-```
-
-Run a single command elevated:
-
-```text
-sudo sfc /scannow
-```
-
-## Development
-
-Nebula is written in Rust. `reedline` provides interactive line editing, history and completion. Windows locale, local time and UAC integration use native Win32 APIs. The presentation layer is kept in `src/ui.rs` so visual changes do not need to be mixed into command execution logic.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development and pull requests
+- [`SECURITY.md`](SECURITY.md) — reporting security issues
+- [`docs/architecture.md`](docs/architecture.md) — code layout and runtime model
+- [`docs/releasing.md`](docs/releasing.md) — maintainer release process
+- [`CHANGELOG.md`](CHANGELOG.md) — release history
