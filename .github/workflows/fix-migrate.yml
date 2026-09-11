@@ -1,0 +1,36 @@
+name: Repair native migration
+
+on:
+  push:
+    branches: [feat/native-engine]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/native-engine
+          fetch-depth: 0
+      - name: Repair and push
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/native-migrate.yml')
+          text = p.read_text(encoding='utf-8')
+          old = '        shell: python\n'
+          if old not in text:
+              raise SystemExit('native migration shell line not found')
+          p.write_text(text.replace(old, '        shell: python {0}\n', 1), encoding='utf-8', newline='\n')
+          Path('.github/workflows/fix-migrate.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: repair native migration workflow"
+          git push origin HEAD:feat/native-engine
