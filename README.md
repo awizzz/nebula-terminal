@@ -1,7 +1,7 @@
 # Nebula
 
-[![CI](https://github.com/awizzz/custom-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/awizzz/custom-shell/actions/workflows/ci.yml)
-[![Security audit](https://github.com/awizzz/custom-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/custom-shell/actions/workflows/security.yml)
+[![CI](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml)
+[![Security audit](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Nebula is a native Windows shell frontend written in Rust. It keeps normal Windows command execution available while adding a modern prompt, persistent shell state, history controls, completion, themes, localization and UAC helpers.
@@ -15,7 +15,7 @@ Nebula is a **shell frontend**, not a terminal emulator. It runs inside Windows 
 Download the installer, inspect it if desired, then run it:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/awizzz/custom-shell/main/scripts/install.ps1 -OutFile .\install-nebula.ps1
+Invoke-WebRequest https://raw.githubusercontent.com/awizzz/nebula-shell/main/scripts/install.ps1 -OutFile .\install-nebula.ps1
 Get-Content .\install-nebula.ps1
 Unblock-File .\install-nebula.ps1
 .\install-nebula.ps1
@@ -204,8 +204,8 @@ The diagnostic checks the data directory, configuration, selected backend, Git a
 The repository pins the Rust toolchain and dependency graph for reproducible application builds.
 
 ```powershell
-git clone https://github.com/awizzz/custom-shell.git
-cd custom-shell
+git clone https://github.com/awizzz/nebula-shell.git
+cd nebula-shell
 cargo build --locked --release
 ```
 

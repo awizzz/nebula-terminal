@@ -8,7 +8,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$Repository = "awizzz/custom-shell"
+$Repository = "awizzz/nebula-shell"
 $Headers = @{ "User-Agent" = "Nebula-Installer" }
 
 function Get-NormalizedPath {
