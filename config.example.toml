@@ -1,13 +1,12 @@
 [general]
-# "auto" follows the Windows display language. You can also use "fr-FR", "en-US", etc.
+# auto follows the Windows UI language.
 language = "auto"
-# Supported backends: cmd, powershell, pwsh
+# cmd, powershell, pwsh
 backend = "cmd"
 show_banner = true
 history_limit = 10000
 
 [ui]
-# ANSI animations are intentionally short and can be disabled completely.
 animations = true
 animation_speed_ms = 28
 # aurora, minimal, compact, off
@@ -25,11 +24,10 @@ show_duration = true
 show_exit_code = true
 show_user = false
 show_hostname = false
-# Shows the local Windows time on the right side of the prompt.
 show_time = false
 
 [theme]
-# Built-in presets: hypr, tokyo-night, catppuccin, nord, dracula, rose-pine, gruvbox
+# hypr, tokyo-night, catppuccin, nord, dracula, rose-pine, gruvbox
 preset = "hypr"
 foreground = "#CDD6F4"
 muted = "#7F849C"
