@@ -23,9 +23,12 @@ The desktop line is versioned separately from Nebula Shell. `0.1.x` is a preview
 
 Requirements: Node.js 24, Rust 1.98.1, the Windows MSVC build tools and WebView2.
 
+The npm and Cargo dependency graphs are committed. Use the locked install/build path used by CI:
+
 ```powershell
 cd apps/nebula-terminal
-npm install
+npm ci
+cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
 npm run tauri dev
 ```
 
@@ -39,7 +42,7 @@ The browser preview uses simulated terminal output. Native profiles only run in 
 
 ## Release builds
 
-The `Terminal Release` GitHub Actions workflow produces a Windows prerelease with:
+The `Terminal Release` GitHub Actions workflow validates the committed lockfiles and produces a Windows prerelease with:
 
 - NSIS installer
 - MSI installer
