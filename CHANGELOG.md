@@ -2,6 +2,43 @@
 
 Notable user-facing changes are listed here.
 
+## 0.4.0 — 2026-09-11
+
+### Added
+
+- `cd -` to return to the previous working directory
+- remembered working directory for each Windows drive
+- `history on`, `history off` and `history status`
+- optional exclusion of commands beginning with a space from persistent history
+- `config check` for configuration validation
+- backend-aware `sudo` for CMD, Windows PowerShell and PowerShell 7
+- nested alias expansion with cycle protection
+- automated tests for configuration, locale parity, aliases, parsing and prompt duration formatting
+- scheduled RustSec dependency audit
+- MIT license
+
+### Changed
+
+- split the monolithic runtime into dedicated shell and editor modules
+- validate configuration before loading or saving it
+- save configuration through atomic file replacement
+- use the Windows environment-string API for `%VARIABLE%` expansion
+- honor the `EDITOR` environment variable before falling back to Notepad
+- moved remaining built-in UI/help strings into the locale files
+- pin the Rust toolchain and commit `Cargo.lock`
+- build, lint and test with Cargo `--locked` mode
+- separate normal CI from release publishing
+- publish releases only from an explicit version tag or manual release workflow
+- pin GitHub Actions to immutable commit SHAs
+- use changelog sections as GitHub Release notes
+
+### Security
+
+- normal CI now runs with read-only repository permissions
+- persistent command history can be disabled
+- sensitive one-off commands can be excluded from persistent history with a leading space
+- release signing remains optional, but signed artifacts are verified before publication
+
 ## 0.3.0 — 2026-09-11
 
 ### Added
