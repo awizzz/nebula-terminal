@@ -44,6 +44,9 @@ struct StageResult {
     stdout: Vec<u8>,
 }
 
+type BuiltinOutput = (i32, Vec<u8>, Vec<u8>);
+type BuiltinResult = Result<BuiltinOutput, String>;
+
 pub fn execute(line: &str, cwd: &Path) -> Result<i32, String> {
     let chain = parse_line(line)?;
     let mut last_code = 0;
@@ -351,11 +354,7 @@ fn join_command(args: &[String]) -> String {
         .join(" ")
 }
 
-fn run_builtin(
-    spec: &CommandSpec,
-    cwd: &Path,
-    input: Option<&[u8]>,
-) -> Option<Result<(i32, Vec<u8>, Vec<u8>), String>> {
+fn run_builtin(spec: &CommandSpec, cwd: &Path, input: Option<&[u8]>) -> Option<BuiltinResult> {
     let command = spec.argv.first()?.to_ascii_lowercase();
     let args = &spec.argv[1..];
 
@@ -378,7 +377,7 @@ fn finish_builtin(
     spec: &CommandSpec,
     cwd: &Path,
     capture_stdout: bool,
-    (code, stdout, stderr): (i32, Vec<u8>, Vec<u8>),
+    (code, stdout, stderr): BuiltinOutput,
 ) -> Result<StageResult, String> {
     if !stderr.is_empty() {
         if let Some((path, append)) = &spec.stderr {

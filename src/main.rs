@@ -14,7 +14,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 fn print_cli_help() {
     println!(
         "{APP_NAME} {VERSION}\n\
-A fast, customizable Windows shell frontend.\n\n\
+A fast, customizable native Windows shell.\n\n\
 Usage:\n  nebula [OPTION]\n\n\
 Options:\n  -h, --help       Show this help and exit\n  -V, --version    Show the version and exit\n      --admin      Relaunch Nebula with administrator privileges\n\n\
 Run Nebula without arguments to start the interactive shell."
@@ -28,7 +28,7 @@ enum CliAction {
 }
 
 fn decode_hex(value: &str) -> Result<String, String> {
-    if value.len() % 2 != 0 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+    if !value.len().is_multiple_of(2) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("invalid internal command payload".into());
     }
     let bytes = (0..value.len())
