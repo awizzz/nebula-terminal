@@ -10,6 +10,7 @@ Nebula is still pre-1.0. The priorities below describe direction rather than fix
 - expand automated tests around native parsing, Windows path handling, aliases and configuration migration
 - improve executable metadata and Windows packaging
 - publish package-manager manifests after the release format is stable
+- begin the Nebula Terminal design/host phase defined in [`terminal-ui.md`](terminal-ui.md)
 
 ## Shell runtime
 
@@ -48,15 +49,24 @@ Once the release pipeline and command surface are stable:
 - Windows executable icon and version resources
 - signed releases when a trusted code-signing setup is available
 
-## Terminal UI
+## Nebula Terminal
 
-Nebula Shell deliberately remains separate from terminal-emulator concerns such as tabs, panes, blur and GPU rendering.
+Nebula Shell remains usable independently in any compatible terminal emulator. Nebula Terminal is a separate graphical desktop application that will make Nebula the default experience while still hosting CMD, Windows PowerShell, PowerShell 7, WSL, SSH and custom executable profiles.
 
-A future Nebula Terminal could host Nebula and other shells through ConPTY while providing those graphical features. That would be a separate component rather than a dependency of the shell.
+The current architecture direction is documented in [`terminal-ui.md`](terminal-ui.md). The initial implementation track is:
+
+1. create and approve the complete desktop visual concept and design system
+2. scaffold a Tauri 2 + React/TypeScript host with custom application chrome
+3. integrate xterm.js with a Rust PTY/ConPTY session service
+4. add tabs, split panes, profiles, command palette, clickable settings, theme import/export and keybinding editing
+5. expose structured Nebula Shell metadata to the graphical host without scraping terminal output
+6. harden packaging, updates, accessibility and performance before a stable desktop release
+
+The terminal must not become a dependency of `nebula.exe`, and the graphical host must not move normal Nebula command execution back through CMD or PowerShell.
 
 ## 1.0 criteria
 
-A 1.0 release should mean:
+A 1.0 shell release should mean:
 
 - stable configuration format with documented migration behavior
 - reliable update/release process
@@ -65,3 +75,5 @@ A 1.0 release should mean:
 - streaming pipelines and predictable interruption behavior
 - no known high-severity dependency advisories
 - predictable behavior on supported Windows versions
+
+Nebula Terminal can follow its own versioning maturity until its PTY behavior, settings format and desktop update path are similarly stable.
