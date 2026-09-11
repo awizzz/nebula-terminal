@@ -98,7 +98,13 @@ fn find_nebula() -> Option<PathBuf> {
     find_executable("nebula")
 }
 
-fn profile(id: &str, name: &str, kind: &str, executable: Option<PathBuf>, accent: &str) -> TerminalProfile {
+fn profile(
+    id: &str,
+    name: &str,
+    kind: &str,
+    executable: Option<PathBuf>,
+    accent: &str,
+) -> TerminalProfile {
     TerminalProfile {
         id: id.into(),
         name: name.into(),
@@ -113,9 +119,27 @@ fn profile(id: &str, name: &str, kind: &str, executable: Option<PathBuf>, accent
 pub fn detect_profiles() -> Vec<TerminalProfile> {
     vec![
         profile("nebula", "Nebula", "nebula", find_nebula(), "#8b7cf6"),
-        profile("cmd", "Command Prompt", "cmd", find_executable("cmd.exe"), "#78dba9"),
-        profile("powershell", "Windows PowerShell", "powershell", find_executable("powershell.exe"), "#72a9f7"),
-        profile("pwsh", "PowerShell 7", "pwsh", find_executable("pwsh.exe"), "#a98df4"),
+        profile(
+            "cmd",
+            "Command Prompt",
+            "cmd",
+            find_executable("cmd.exe"),
+            "#78dba9",
+        ),
+        profile(
+            "powershell",
+            "Windows PowerShell",
+            "powershell",
+            find_executable("powershell.exe"),
+            "#72a9f7",
+        ),
+        profile(
+            "pwsh",
+            "PowerShell 7",
+            "pwsh",
+            find_executable("pwsh.exe"),
+            "#a98df4",
+        ),
         profile("wsl", "WSL", "wsl", find_executable("wsl.exe"), "#f2c877"),
     ]
 }
