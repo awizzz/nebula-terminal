@@ -1,5 +1,7 @@
 use std::{
     env,
+    fs::{self, File},
+    io::Write,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -67,6 +69,41 @@ pub fn command_exists(command: &str) -> bool {
     }
 }
 
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("invalid destination path: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+
+    let file_name = path
+        .file_name()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| "nebula".into());
+    let temporary = parent.join(format!(".{file_name}.{}.tmp", std::process::id()));
+
+    let result = (|| {
+        let mut file = File::create(&temporary).map_err(|e| e.to_string())?;
+        file.write_all(bytes).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+
+        #[cfg(windows)]
+        {
+            windows::replace_file(&temporary, path)
+        }
+
+        #[cfg(not(windows))]
+        {
+            fs::rename(&temporary, path).map_err(|e| e.to_string())
+        }
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+
+    result
+}
+
 #[cfg(windows)]
 mod windows {
     use std::{
@@ -78,6 +115,8 @@ mod windows {
 
     const LOCALE_NAME_MAX_LENGTH: usize = 85;
     const SW_SHOWNORMAL: i32 = 1;
+    const MOVEFILE_REPLACE_EXISTING: u32 = 0x00000001;
+    const MOVEFILE_WRITE_THROUGH: u32 = 0x00000008;
 
     #[repr(C)]
     struct SystemTime {
@@ -102,6 +141,8 @@ mod windows {
         ) -> i32;
         fn GetUserDefaultLocaleName(locale_name: *mut u16, locale_name_count: i32) -> i32;
         fn GetLocalTime(system_time: *mut SystemTime);
+        fn ExpandEnvironmentStringsW(src: *const u16, dst: *mut u16, size: u32) -> u32;
+        fn MoveFileExW(existing: *const u16, new_name: *const u16, flags: u32) -> i32;
     }
 
     #[link(name = "Shell32")]
@@ -176,6 +217,44 @@ mod windows {
         format!("{:02}:{:02}", value.hour, value.minute)
     }
 
+    pub fn expand_environment(input: &str) -> String {
+        let source = wide_str(input);
+        let required = unsafe { ExpandEnvironmentStringsW(source.as_ptr(), ptr::null_mut(), 0) };
+        if required == 0 {
+            return input.to_string();
+        }
+
+        let mut buffer = vec![0u16; required as usize];
+        let written = unsafe {
+            ExpandEnvironmentStringsW(source.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32)
+        };
+        if written == 0 || written as usize > buffer.len() {
+            return input.to_string();
+        }
+
+        OsString::from_wide(&buffer[..written.saturating_sub(1) as usize])
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+        let source = wide(source.as_os_str());
+        let destination = wide(destination.as_os_str());
+        let result = unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+
+        if result != 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error().to_string())
+        }
+    }
+
     pub fn is_admin() -> bool {
         unsafe { IsUserAnAdmin() != 0 }
     }
@@ -206,15 +285,43 @@ mod windows {
         }
     }
 
-    pub fn run_command_elevated(command: &str, cwd: &Path) -> Result<(), String> {
+    pub fn run_command_elevated(command: &str, cwd: &Path, backend: &str) -> Result<(), String> {
         let operation = wide_str("runas");
-        let file = wide_str("cmd.exe");
-        let escaped_cwd = cwd.display().to_string().replace('"', "\"\"");
-        let parameters = wide_str(&format!(
-            "/d /k \"cd /d \\\"{escaped_cwd}\\\" && {command}\""
-        ));
         let directory = wide(cwd.as_os_str());
+        let cwd_text = cwd.display().to_string();
 
+        let (program, parameters) = match backend.to_ascii_lowercase().as_str() {
+            "powershell" => {
+                let path = cwd_text.replace('\'', "''");
+                let command = command.replace('"', "`\"");
+                (
+                    "powershell.exe",
+                    format!(
+                        "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
+                    ),
+                )
+            }
+            "pwsh" => {
+                let path = cwd_text.replace('\'', "''");
+                let command = command.replace('"', "`\"");
+                (
+                    "pwsh.exe",
+                    format!(
+                        "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
+                    ),
+                )
+            }
+            _ => {
+                let path = cwd_text.replace('"', "\"\"");
+                (
+                    "cmd.exe",
+                    format!("/d /k \"cd /d \\\"{path}\\\" && {command}\""),
+                )
+            }
+        };
+
+        let file = wide_str(program);
+        let parameters = wide_str(&parameters);
         let result = unsafe {
             ShellExecuteW(
                 ptr::null_mut(),
@@ -258,6 +365,18 @@ pub fn local_time() -> String {
     }
 }
 
+pub fn expand_environment(input: &str) -> String {
+    #[cfg(windows)]
+    {
+        windows::expand_environment(input)
+    }
+
+    #[cfg(not(windows))]
+    {
+        input.to_string()
+    }
+}
+
 pub fn is_admin() -> bool {
     #[cfg(windows)]
     {
@@ -282,20 +401,30 @@ pub fn relaunch_elevated() -> Result<(), String> {
     }
 }
 
-pub fn run_command_elevated(command: &str, cwd: &Path) -> Result<(), String> {
+pub fn run_command_elevated(command: &str, cwd: &Path, backend: &str) -> Result<(), String> {
     #[cfg(windows)]
     {
-        windows::run_command_elevated(command, cwd)
+        windows::run_command_elevated(command, cwd, backend)
     }
 
     #[cfg(not(windows))]
     {
-        let _ = (command, cwd);
+        let _ = (command, cwd, backend);
         Err("administrator elevation is only available on Windows".into())
     }
 }
 
 pub fn open_in_editor(path: &Path) -> Result<(), String> {
+    if let Ok(editor) = env::var("EDITOR") {
+        if !editor.trim().is_empty() {
+            return Command::new(editor)
+                .arg(path)
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| e.to_string());
+        }
+    }
+
     #[cfg(windows)]
     {
         Command::new("notepad.exe")
