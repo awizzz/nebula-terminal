@@ -66,10 +66,7 @@ mod tests {
 
     #[test]
     fn admin_modes_are_forwarded_to_the_shell() {
-        assert!(matches!(
-            validate_cli_args(&["--admin".into()]),
-            Ok(false)
-        ));
+        assert!(matches!(validate_cli_args(&["--admin".into()]), Ok(false)));
         assert!(matches!(
             validate_cli_args(&["--elevated-child".into()]),
             Ok(false)
