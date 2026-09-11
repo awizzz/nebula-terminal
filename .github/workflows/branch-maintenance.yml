@@ -1,0 +1,37 @@
+name: Normalize professional branch
+
+on:
+  push:
+    branches: ["feat/professional-v0.4"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: feat/professional-v0.4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+      - name: Format and lock
+        shell: pwsh
+        run: |
+          cargo fmt
+          cargo generate-lockfile
+      - name: Commit normalized sources
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src Cargo.lock
+          if (git diff --cached --quiet) {
+            Write-Host "No normalization changes to commit."
+            exit 0
+          }
+          git commit -m "chore: format sources and lock dependencies"
+          git push origin HEAD:feat/professional-v0.4
