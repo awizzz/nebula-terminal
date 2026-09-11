@@ -1,6 +1,11 @@
 name: Security audit
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
