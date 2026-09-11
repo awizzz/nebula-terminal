@@ -11,7 +11,6 @@ use std::{
 enum Connector {
     And,
     Or,
-    Sequence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

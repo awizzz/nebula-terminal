@@ -307,7 +307,7 @@ mod windows {
                 let path = cwd_text.replace('\'', "''");
                 let command = command.replace('"', "`\"");
                 (
-                    "powershell.exe",
+                    "powershell.exe".to_string(),
                     format!(
                         "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
                     ),
@@ -317,7 +317,7 @@ mod windows {
                 let path = cwd_text.replace('\'', "''");
                 let command = command.replace('"', "`\"");
                 (
-                    "pwsh.exe",
+                    "pwsh.exe".to_string(),
                     format!(
                         "-NoLogo -NoProfile -NoExit -Command \"Set-Location -LiteralPath '{path}'; {command}\""
                     ),
@@ -326,7 +326,7 @@ mod windows {
             _ => {
                 let path = cwd_text.replace('"', "\"\"");
                 (
-                    "cmd.exe",
+                    "cmd.exe".to_string(),
                     format!("/d /k \"cd /d \\\"{path}\\\" && {command}\""),
                 )
             }
