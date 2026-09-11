@@ -144,7 +144,10 @@ pub fn start_session(
     let wait_session_id = session_id.clone();
     thread::spawn(move || {
         let result = child.wait();
-        let code = result.as_ref().map(|status| status.exit_code()).unwrap_or(1);
+        let code = result
+            .as_ref()
+            .map(|status| status.exit_code())
+            .unwrap_or(1);
         if let Err(error) = result {
             let _ = wait_channel.send(PtyEvent::Error {
                 session_id: wait_session_id.clone(),
