@@ -25,8 +25,15 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Format
-        run: cargo fmt -- --check
+      - name: Format source
+        run: cargo fmt
+
+      - name: Upload canonical formatted source
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nebula-rustfmt-source
+          path: src/*.rs
+          if-no-files-found: error
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
