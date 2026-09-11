@@ -918,12 +918,10 @@ fn handle_alias(
     }
 
     if let Some(name) = rest.strip_prefix("rm ").map(str::trim) {
-        if config.aliases.remove(name).is_some() {
-            if config.save().is_ok() {
-                ui::pulse(config, &translator.value("msg.alias_removed", name));
-                state.last_code = 0;
-                return LoopAction::RebuildEditor;
-            }
+        if config.aliases.remove(name).is_some() && config.save().is_ok() {
+            ui::pulse(config, &translator.value("msg.alias_removed", name));
+            state.last_code = 0;
+            return LoopAction::RebuildEditor;
         }
         println!("{}", translator.value("msg.alias_missing", name));
         state.last_code = 1;
