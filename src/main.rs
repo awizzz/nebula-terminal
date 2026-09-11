@@ -1,10 +1,11 @@
 mod config;
 mod i18n;
 mod platform;
+mod ui;
 
 use config::{Config, ThemeConfig};
 use i18n::Translator;
-use nu_ansi_term::{Color, Style};
+use nu_ansi_term::Style;
 use reedline::{
     default_emacs_keybindings, ColumnarMenu, DefaultCompleter, DefaultHinter, Emacs,
     FileBackedHistory, KeyCode, KeyModifiers, MenuBuilder, Prompt, PromptEditMode,
@@ -19,6 +20,7 @@ use std::{
     process::Command,
     time::{Duration, Instant},
 };
+use ui::paint;
 
 const APP_NAME: &str = "Nebula";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -104,11 +106,12 @@ fn run() -> Result<(), String> {
         last_duration: Duration::ZERO,
     };
 
-    let mut editor = build_editor(&config);
+    let mut editor = build_editor(&config, &state.cwd);
     set_terminal_title(&state.cwd);
 
-    if config.general.show_banner {
-        print_banner(&config, &translator);
+    if config.general.show_banner && !config.ui.banner_style.eq_ignore_ascii_case("off") {
+        ui::startup(&config);
+        ui::banner(&config, &translator, VERSION);
     }
 
     loop {
@@ -139,8 +142,13 @@ fn run() -> Result<(), String> {
         set_terminal_title(&state.cwd);
 
         match action {
-            LoopAction::Continue => {}
-            LoopAction::RebuildEditor => editor = build_editor(&config),
+            LoopAction::Continue => {
+                ui::separator(&config);
+            }
+            LoopAction::RebuildEditor => {
+                ui::separator(&config);
+                editor = build_editor(&config, &state.cwd);
+            }
             LoopAction::Exit => break,
         }
     }
@@ -149,19 +157,26 @@ fn run() -> Result<(), String> {
     Ok(())
 }
 
-fn build_editor(config: &Config) -> Reedline {
-    let mut editor = Reedline::create();
-    let history_path = platform::data_dir().join("history.txt");
+fn history_path() -> PathBuf {
+    platform::data_dir().join("history.txt")
+}
 
-    if let Some(parent) = history_path.parent() {
+fn build_editor(config: &Config, cwd: &Path) -> Reedline {
+    let mut editor = Reedline::create();
+    let path = history_path();
+
+    if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
     }
 
-    if let Ok(history) = FileBackedHistory::with_file(config.general.history_limit, history_path) {
+    if let Ok(history) = FileBackedHistory::with_file(config.general.history_limit, path) {
         editor = editor.with_history(Box::new(history));
     }
 
-    let completer = Box::new(DefaultCompleter::new_with_wordlen(completion_commands(), 1));
+    let completer = Box::new(DefaultCompleter::new_with_wordlen(
+        completion_values(config, cwd),
+        1,
+    ));
     let completion_menu = Box::new(ColumnarMenu::default().with_name("completion_menu"));
     let mut keybindings = default_emacs_keybindings();
     keybindings.add_binding(
@@ -176,7 +191,7 @@ fn build_editor(config: &Config) -> Reedline {
     let edit_mode = Box::new(Emacs::new(keybindings));
     let hinter = Box::new(
         DefaultHinter::default()
-            .with_style(Style::new().italic().fg(Color::Rgb(127, 132, 156))),
+            .with_style(Style::new().italic().fg(ui::parse_color(&config.theme.muted))),
     );
 
     editor
@@ -186,15 +201,20 @@ fn build_editor(config: &Config) -> Reedline {
         .with_edit_mode(edit_mode)
 }
 
-fn completion_commands() -> Vec<String> {
+fn completion_values(config: &Config, cwd: &Path) -> Vec<String> {
     let mut values = BTreeSet::new();
     for command in [
-        "admin", "cd", "chdir", "clear", "cls", "config", "dir", "echo", "exit",
-        "git", "help", "ipconfig", "lang", "language", "netsh", "ping", "popd", "powershell",
-        "pushd", "pwd", "python", "reload", "set", "ssh", "sudo", "systeminfo", "theme",
-        "version", "where", "winget",
+        "about", "admin", "alias", "backend", "cd", "chdir", "clear", "cls", "config",
+        "dir", "doctor", "echo", "exit", "git", "help", "history", "ipconfig", "lang",
+        "language", "netsh", "ping", "popd", "powershell", "pushd", "pwd", "python",
+        "reload", "set", "ssh", "sudo", "systeminfo", "theme", "ui", "version", "where",
+        "winget",
     ] {
         values.insert(command.to_string());
+    }
+
+    for alias in config.aliases.keys() {
+        values.insert(alias.clone());
     }
 
     if let Some(path) = env::var_os("PATH") {
@@ -208,18 +228,33 @@ fn completion_commands() -> Vec<String> {
                 let Some(extension) = path.extension().and_then(|ext| ext.to_str()) else {
                     continue;
                 };
-
                 if !matches!(
                     extension.to_ascii_lowercase().as_str(),
                     "exe" | "cmd" | "bat" | "com"
                 ) {
                     continue;
                 }
-
                 if let Some(stem) = path.file_stem().and_then(|name| name.to_str()) {
                     values.insert(stem.to_string());
                 }
             }
+        }
+    }
+
+    if let Ok(entries) = fs::read_dir(cwd) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let mut value = name.to_string();
+            if path.is_dir() {
+                value.push('\\');
+            }
+            if value.contains(' ') {
+                value = format!("\"{value}\"");
+            }
+            values.insert(value);
         }
     }
 
@@ -229,11 +264,7 @@ fn completion_commands() -> Vec<String> {
 fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) -> NebulaPrompt {
     let admin = platform::is_admin();
     let status = if admin {
-        paint(
-            &config.theme.admin,
-            &translator.text("status.admin"),
-            true,
-        )
+        paint(&config.theme.admin, &translator.text("status.admin"), true)
     } else {
         paint(
             &config.theme.success,
@@ -325,10 +356,15 @@ fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) ->
         "{first_line}\n{}",
         paint(&config.theme.muted, prefix, false)
     );
+    let right = if config.prompt.show_time {
+        paint(&config.theme.muted, &platform::local_time(), false)
+    } else {
+        String::new()
+    };
 
     NebulaPrompt {
         left,
-        right: String::new(),
+        right,
         indicator: format!("{indicator}{suffix}"),
         multiline: paint(
             &config.theme.muted,
@@ -350,8 +386,12 @@ fn dispatch(
     let lower = command.to_ascii_lowercase();
 
     if rest.is_empty() && is_drive_selector(command) {
-        switch_drive(command, state, translator, &config.theme);
-        return LoopAction::Continue;
+        let changed = switch_drive(command, state, translator, &config.theme);
+        return if changed {
+            LoopAction::RebuildEditor
+        } else {
+            LoopAction::Continue
+        };
     }
 
     match lower.as_str() {
@@ -366,6 +406,15 @@ fn dispatch(
             state.last_code = 0;
             LoopAction::Continue
         }
+        "about" if rest.is_empty() => {
+            ui::about(config, translator, VERSION);
+            state.last_code = 0;
+            LoopAction::Continue
+        }
+        "doctor" if rest.is_empty() => {
+            run_doctor(state, config, translator);
+            LoopAction::Continue
+        }
         "clear" | "cls" if rest.is_empty() => {
             print!("\x1b[2J\x1b[H");
             let _ = io::stdout().flush();
@@ -378,130 +427,129 @@ fn dispatch(
             LoopAction::Continue
         }
         "cd" | "chdir" => {
-            change_directory(rest, state, translator, &config.theme);
-            LoopAction::Continue
+            let changed = change_directory(rest, state, translator, &config.theme);
+            if changed {
+                LoopAction::RebuildEditor
+            } else {
+                LoopAction::Continue
+            }
         }
         "pushd" => {
             let previous = state.cwd.clone();
             if change_directory(rest, state, translator, &config.theme) {
                 state.directory_stack.push(previous);
+                LoopAction::RebuildEditor
+            } else {
+                LoopAction::Continue
             }
-            LoopAction::Continue
         }
         "popd" if rest.is_empty() => {
             if let Some(path) = state.directory_stack.pop() {
                 state.cwd = path;
                 let _ = env::set_current_dir(&state.cwd);
                 state.last_code = 0;
+                LoopAction::RebuildEditor
             } else {
                 state.last_code = 1;
+                LoopAction::Continue
             }
-            LoopAction::Continue
         }
         "set" => {
             handle_set(rest, state, translator, &config.theme);
             LoopAction::Continue
         }
-        "admin" if rest.is_empty() => {
-            if platform::is_admin() {
-                println!(
-                    "{}",
-                    paint(
-                        &config.theme.warning,
-                        &translator.text("msg.already_admin"),
-                        false,
-                    )
-                );
-                state.last_code = 0;
-                LoopAction::Continue
-            } else {
-                match platform::relaunch_elevated() {
-                    Ok(()) => {
-                        println!(
-                            "{}",
-                            paint(
-                                &config.theme.success,
-                                &translator.text("msg.elevated_started"),
-                                false,
-                            )
-                        );
-                        state.last_code = 0;
-                        LoopAction::Exit
-                    }
-                    Err(error) => {
-                        eprintln!(
-                            "{}",
-                            paint(
-                                &config.theme.error,
-                                &translator.value("msg.elevation_failed", error),
-                                false,
-                            )
-                        );
-                        state.last_code = 1;
-                        LoopAction::Continue
-                    }
-                }
-            }
-        }
+        "admin" if rest.is_empty() => handle_admin(state, config, translator),
         "sudo" => {
-            if rest.is_empty() {
-                println!("{}", translator.text("msg.sudo_usage"));
-                state.last_code = 1;
-            } else {
-                state.last_code = match platform::run_command_elevated(rest, &state.cwd) {
-                    Ok(()) => 0,
-                    Err(error) => {
-                        eprintln!(
-                            "{}",
-                            paint(
-                                &config.theme.error,
-                                &translator.value("msg.elevation_failed", error),
-                                false,
-                            )
-                        );
-                        1
-                    }
-                };
-            }
+            handle_sudo(rest, state, config, translator);
             LoopAction::Continue
         }
         "config" => handle_config(rest, state, translator, &config.theme),
-        "reload" if rest.is_empty() => match Config::load() {
-            Ok(new_config) => {
-                *config = new_config;
-                config.apply_environment();
-                *translator = Translator::from_config(config);
-                println!(
-                    "{}",
-                    paint(
-                        &config.theme.success,
-                        &translator.text("msg.config_reloaded"),
-                        false,
-                    )
-                );
-                state.last_code = 0;
-                LoopAction::RebuildEditor
-            }
-            Err(error) => {
-                eprintln!(
-                    "{}",
-                    paint(
-                        &config.theme.error,
-                        &translator.value("msg.config_error", error),
-                        false,
-                    )
-                );
-                state.last_code = 1;
-                LoopAction::Continue
-            }
-        },
+        "reload" if rest.is_empty() => handle_reload(state, config, translator),
         "language" | "lang" => handle_language(rest, state, config, translator),
+        "backend" => handle_backend(rest, state, config, translator),
         "theme" => handle_theme(rest, state, config, translator),
+        "ui" => handle_ui(rest, state, config, translator),
+        "alias" => handle_alias(rest, state, config, translator),
+        "history" => handle_history(rest, state, config, translator),
         _ => {
             state.last_code = execute_external(&line, &state.cwd, config, translator);
             LoopAction::Continue
         }
     }
+}
+
+fn handle_admin(
+    state: &mut ShellState,
+    config: &Config,
+    translator: &Translator,
+) -> LoopAction {
+    if platform::is_admin() {
+        println!(
+            "{}",
+            paint(
+                &config.theme.warning,
+                &translator.text("msg.already_admin"),
+                false,
+            )
+        );
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    match platform::relaunch_elevated() {
+        Ok(()) => {
+            println!(
+                "{}",
+                paint(
+                    &config.theme.success,
+                    &translator.text("msg.elevated_started"),
+                    false,
+                )
+            );
+            state.last_code = 0;
+            LoopAction::Exit
+        }
+        Err(error) => {
+            eprintln!(
+                "{}",
+                paint(
+                    &config.theme.error,
+                    &translator.value("msg.elevation_failed", error),
+                    false,
+                )
+            );
+            state.last_code = 1;
+            LoopAction::Continue
+        }
+    }
+}
+
+fn handle_sudo(
+    rest: &str,
+    state: &mut ShellState,
+    config: &Config,
+    translator: &Translator,
+) {
+    if rest.is_empty() {
+        println!("{}", translator.text("msg.sudo_usage"));
+        state.last_code = 1;
+        return;
+    }
+
+    state.last_code = match platform::run_command_elevated(rest, &state.cwd) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!(
+                "{}",
+                paint(
+                    &config.theme.error,
+                    &translator.value("msg.elevation_failed", error),
+                    false,
+                )
+            );
+            1
+        }
+    };
 }
 
 fn handle_config(
@@ -533,6 +581,35 @@ fn handle_config(
         }
     }
     LoopAction::Continue
+}
+
+fn handle_reload(
+    state: &mut ShellState,
+    config: &mut Config,
+    translator: &mut Translator,
+) -> LoopAction {
+    match Config::load() {
+        Ok(new_config) => {
+            *config = new_config;
+            config.apply_environment();
+            *translator = Translator::from_config(config);
+            ui::pulse(config, &translator.text("msg.config_reloaded"));
+            state.last_code = 0;
+            LoopAction::RebuildEditor
+        }
+        Err(error) => {
+            eprintln!(
+                "{}",
+                paint(
+                    &config.theme.error,
+                    &translator.value("msg.config_error", error),
+                    false,
+                )
+            );
+            state.last_code = 1;
+            LoopAction::Continue
+        }
+    }
 }
 
 fn handle_language(
@@ -568,16 +645,73 @@ fn handle_language(
     }
 
     *translator = Translator::from_config(config);
-    println!(
-        "{}",
-        paint(
-            &config.theme.success,
-            &translator.value("msg.language_set", translator.language()),
-            false,
-        )
+    ui::pulse(
+        config,
+        &translator.value("msg.language_set", translator.language()),
     );
     state.last_code = 0;
     LoopAction::RebuildEditor
+}
+
+fn handle_backend(
+    rest: &str,
+    state: &mut ShellState,
+    config: &mut Config,
+    translator: &Translator,
+) -> LoopAction {
+    let requested = rest.trim().to_ascii_lowercase();
+    if requested.is_empty() {
+        println!(
+            "{}",
+            translator.value("msg.backend_current", &config.general.backend)
+        );
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    let executable = match requested.as_str() {
+        "cmd" => "cmd.exe",
+        "powershell" => "powershell.exe",
+        "pwsh" => "pwsh.exe",
+        _ => {
+            println!(
+                "{}",
+                paint(
+                    &config.theme.error,
+                    &translator.value("msg.backend_unknown", requested),
+                    false,
+                )
+            );
+            state.last_code = 1;
+            return LoopAction::Continue;
+        }
+    };
+
+    if !platform::command_exists(executable) {
+        println!(
+            "{}",
+            paint(
+                &config.theme.error,
+                &translator.value("msg.backend_unavailable", requested),
+                false,
+            )
+        );
+        state.last_code = 1;
+        return LoopAction::Continue;
+    }
+
+    config.general.backend = requested.clone();
+    match config.save() {
+        Ok(()) => {
+            ui::pulse(config, &translator.value("msg.backend_set", requested));
+            state.last_code = 0;
+        }
+        Err(error) => {
+            eprintln!("{}", paint(&config.theme.error, &error, false));
+            state.last_code = 1;
+        }
+    }
+    LoopAction::Continue
 }
 
 fn handle_theme(
@@ -588,8 +722,7 @@ fn handle_theme(
 ) -> LoopAction {
     let requested = rest.trim();
     if requested.is_empty() {
-        println!("{}", translator.text("msg.themes"));
-        println!("current: {}", config.theme.preset);
+        ui::theme_preview(&config.theme, &config.theme.preset, translator);
         state.last_code = 0;
         return LoopAction::Continue;
     }
@@ -610,14 +743,8 @@ fn handle_theme(
 
     match config.save() {
         Ok(()) => {
-            println!(
-                "{}",
-                paint(
-                    &config.theme.success,
-                    &translator.value("msg.theme_set", requested),
-                    false,
-                )
-            );
+            ui::pulse(config, &translator.value("msg.theme_set", requested));
+            ui::theme_preview(&config.theme, &config.theme.preset, translator);
             state.last_code = 0;
         }
         Err(error) => {
@@ -632,7 +759,306 @@ fn handle_theme(
             state.last_code = 1;
         }
     }
-    LoopAction::Continue
+    LoopAction::RebuildEditor
+}
+
+fn handle_ui(
+    rest: &str,
+    state: &mut ShellState,
+    config: &mut Config,
+    translator: &Translator,
+) -> LoopAction {
+    let parts: Vec<_> = rest.split_whitespace().collect();
+    if parts.is_empty() || parts[0].eq_ignore_ascii_case("status") {
+        ui::ui_status(config, translator);
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    if parts[0].eq_ignore_ascii_case("demo") {
+        ui::startup(config);
+        ui::banner(config, translator, VERSION);
+        ui::theme_preview(&config.theme, &config.theme.preset, translator);
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    if parts[0].eq_ignore_ascii_case("help") {
+        println!("ui animations <on|off>");
+        println!("ui speed <8-250>");
+        println!("ui banner <aurora|minimal|compact|off>");
+        println!("ui tips <on|off>");
+        println!("ui separator <on|off>");
+        println!("ui demo");
+        println!("ui reset");
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    let mut changed = false;
+    match parts.as_slice() {
+        ["animations", value] => {
+            if let Some(value) = parse_on_off(value) {
+                config.ui.animations = value;
+                changed = true;
+            }
+        }
+        ["speed", value] => {
+            if let Ok(value) = value.parse::<u64>() {
+                config.ui.animation_speed_ms = value.clamp(8, 250);
+                changed = true;
+            }
+        }
+        ["banner", value]
+            if matches!(
+                value.to_ascii_lowercase().as_str(),
+                "aurora" | "minimal" | "compact" | "off"
+            ) =>
+        {
+            config.ui.banner_style = value.to_ascii_lowercase();
+            changed = true;
+        }
+        ["tips", value] => {
+            if let Some(value) = parse_on_off(value) {
+                config.ui.show_tips = value;
+                changed = true;
+            }
+        }
+        ["separator", value] => {
+            if let Some(value) = parse_on_off(value) {
+                config.ui.command_separator = value;
+                changed = true;
+            }
+        }
+        ["reset"] => {
+            ui::reset_ui(&mut config.ui);
+            changed = true;
+        }
+        _ => {}
+    }
+
+    if !changed {
+        println!(
+            "{}",
+            paint(
+                &config.theme.error,
+                &translator.text("msg.ui_invalid"),
+                false,
+            )
+        );
+        state.last_code = 1;
+        return LoopAction::Continue;
+    }
+
+    match config.save() {
+        Ok(()) => {
+            let message = if parts.first().is_some_and(|value| *value == "reset") {
+                translator.text("msg.ui_reset")
+            } else {
+                translator.text("msg.ui_saved")
+            };
+            ui::pulse(config, &message);
+            state.last_code = 0;
+            LoopAction::RebuildEditor
+        }
+        Err(error) => {
+            eprintln!("{}", paint(&config.theme.error, &error, false));
+            state.last_code = 1;
+            LoopAction::Continue
+        }
+    }
+}
+
+fn parse_on_off(value: &str) -> Option<bool> {
+    match value.to_ascii_lowercase().as_str() {
+        "on" | "true" | "1" | "yes" | "oui" => Some(true),
+        "off" | "false" | "0" | "no" | "non" => Some(false),
+        _ => None,
+    }
+}
+
+fn handle_alias(
+    rest: &str,
+    state: &mut ShellState,
+    config: &mut Config,
+    translator: &Translator,
+) -> LoopAction {
+    let rest = rest.trim();
+    if rest.is_empty() {
+        if config.aliases.is_empty() {
+            println!("(none)");
+        } else {
+            for (name, command) in &config.aliases {
+                println!("{name} = {command}");
+            }
+        }
+        state.last_code = 0;
+        return LoopAction::Continue;
+    }
+
+    if let Some(name) = rest.strip_prefix("rm ").map(str::trim) {
+        if config.aliases.remove(name).is_some() {
+            if config.save().is_ok() {
+                ui::pulse(config, &translator.value("msg.alias_removed", name));
+                state.last_code = 0;
+                return LoopAction::RebuildEditor;
+            }
+        }
+        println!(
+            "{}",
+            translator.value("msg.alias_missing", name)
+        );
+        state.last_code = 1;
+        return LoopAction::Continue;
+    }
+
+    if let Some((name, value)) = rest.split_once('=') {
+        let name = name.trim().to_ascii_lowercase();
+        let value = value.trim();
+        if name.is_empty() || value.is_empty() {
+            state.last_code = 1;
+            return LoopAction::Continue;
+        }
+        config.aliases.insert(name.clone(), value.to_string());
+        match config.save() {
+            Ok(()) => {
+                ui::pulse(config, &translator.value("msg.alias_set", &name));
+                state.last_code = 0;
+                LoopAction::RebuildEditor
+            }
+            Err(error) => {
+                eprintln!("{}", paint(&config.theme.error, &error, false));
+                state.last_code = 1;
+                LoopAction::Continue
+            }
+        }
+    } else {
+        let key = rest.to_ascii_lowercase();
+        if let Some(value) = config.aliases.get(&key) {
+            println!("{key} = {value}");
+            state.last_code = 0;
+        } else {
+            println!("{}", translator.value("msg.alias_missing", rest));
+            state.last_code = 1;
+        }
+        LoopAction::Continue
+    }
+}
+
+fn handle_history(
+    rest: &str,
+    state: &mut ShellState,
+    _config: &Config,
+    translator: &Translator,
+) -> LoopAction {
+    let path = history_path();
+    match rest.trim().to_ascii_lowercase().as_str() {
+        "" | "path" => {
+            println!(
+                "{}",
+                translator.value("msg.history_path", path.display().to_string())
+            );
+            state.last_code = 0;
+            LoopAction::Continue
+        }
+        "clear" => {
+            let _ = fs::remove_file(&path);
+            println!("{}", translator.text("msg.history_cleared"));
+            state.last_code = 0;
+            LoopAction::RebuildEditor
+        }
+        _ => {
+            println!("history [clear|path]");
+            state.last_code = 1;
+            LoopAction::Continue
+        }
+    }
+}
+
+fn run_doctor(state: &mut ShellState, config: &Config, translator: &Translator) {
+    println!();
+    println!(
+        "  {}",
+        paint(&config.theme.accent, &translator.text("doctor.title"), true)
+    );
+    println!();
+
+    let data_dir = platform::data_dir();
+    let config_ok = fs::create_dir_all(&data_dir).is_ok();
+    print_check(
+        config_ok,
+        &translator.text("doctor.config"),
+        &data_dir.display().to_string(),
+        config,
+        translator,
+    );
+
+    let backend_exe = match config.general.backend.as_str() {
+        "powershell" => "powershell.exe",
+        "pwsh" => "pwsh.exe",
+        _ => "cmd.exe",
+    };
+    let backend_ok = platform::command_exists(backend_exe);
+    print_check(
+        backend_ok,
+        &translator.text("doctor.backend"),
+        backend_exe,
+        config,
+        translator,
+    );
+
+    print_check(
+        platform::command_exists("git.exe"),
+        &translator.text("doctor.git"),
+        "git.exe",
+        config,
+        translator,
+    );
+    print_check(
+        true,
+        &translator.text("doctor.terminal"),
+        &platform::terminal_name(),
+        config,
+        translator,
+    );
+    print_check(
+        ui::animations_available(),
+        &translator.text("doctor.animations"),
+        if ui::animations_available() { "TTY" } else { "non-TTY" },
+        config,
+        translator,
+    );
+    print_check(
+        true,
+        &translator.text("doctor.admin"),
+        if platform::is_admin() { "ADMIN" } else { "USER" },
+        config,
+        translator,
+    );
+    println!();
+
+    state.last_code = if config_ok && backend_ok { 0 } else { 1 };
+}
+
+fn print_check(
+    ok: bool,
+    label: &str,
+    detail: &str,
+    config: &Config,
+    translator: &Translator,
+) {
+    let (color, mark, status_key) = if ok {
+        (&config.theme.success, "●", "doctor.ok")
+    } else {
+        (&config.theme.warning, "○", "doctor.warn")
+    };
+    println!(
+        "  {} {:<24} {}  {}",
+        paint(color, mark, true),
+        label,
+        paint(color, &translator.text(status_key), true),
+        paint(&config.theme.muted, detail, false)
+    );
 }
 
 fn change_directory(
@@ -641,8 +1067,7 @@ fn change_directory(
     translator: &Translator,
     theme: &ThemeConfig,
 ) -> bool {
-    let target = resolve_directory(rest, &state.cwd);
-    let Some(target) = target else {
+    let Some(target) = resolve_directory(rest, &state.cwd) else {
         println!(
             "{}",
             paint(
@@ -705,7 +1130,7 @@ fn switch_drive(
     state: &mut ShellState,
     translator: &Translator,
     theme: &ThemeConfig,
-) {
+) -> bool {
     let root = format!("{}\\", drive.to_ascii_uppercase());
     if !Path::new(&root).exists() {
         println!(
@@ -717,7 +1142,7 @@ fn switch_drive(
             )
         );
         state.last_code = 1;
-        return;
+        return false;
     }
 
     let target = PathBuf::from(root);
@@ -725,10 +1150,12 @@ fn switch_drive(
         Ok(()) => {
             state.cwd = target;
             state.last_code = 0;
+            true
         }
         Err(error) => {
             eprintln!("{}", paint(&theme.error, &error.to_string(), false));
             state.last_code = 1;
+            false
         }
     }
 }
@@ -746,8 +1173,7 @@ fn resolve_directory(raw: &str, cwd: &Path) -> Option<PathBuf> {
     let raw = raw.trim_matches('"');
     let expanded = expand_environment(raw);
     let path = PathBuf::from(expanded);
-    let path = if path.is_absolute() { path } else { cwd.join(path) };
-    Some(path)
+    Some(if path.is_absolute() { path } else { cwd.join(path) })
 }
 
 fn handle_set(
@@ -845,7 +1271,8 @@ fn expand_alias(
     aliases: &std::collections::BTreeMap<String, String>,
 ) -> String {
     let (command, rest) = split_command(line);
-    if let Some(replacement) = aliases.get(command) {
+    let key = command.to_ascii_lowercase();
+    if let Some(replacement) = aliases.get(&key) {
         if rest.is_empty() {
             replacement.clone()
         } else {
@@ -921,52 +1348,6 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-fn print_banner(config: &Config, translator: &Translator) {
-    let mode = if platform::is_admin() {
-        paint(
-            &config.theme.admin,
-            &translator.text("status.admin"),
-            true,
-        )
-    } else {
-        paint(
-            &config.theme.success,
-            &translator.text("status.user"),
-            true,
-        )
-    };
-
-    println!();
-    println!(
-        "  {}  {}",
-        paint(&config.theme.accent, APP_NAME, true),
-        paint(&config.theme.muted, &format!("v{VERSION}"), false)
-    );
-    println!(
-        "  {}",
-        paint(
-            &config.theme.foreground,
-            &translator.text("app.tagline"),
-            false,
-        )
-    );
-    println!(
-        "  {} · {} · {}",
-        mode,
-        paint(&config.theme.muted, &config.general.backend, false),
-        paint(&config.theme.muted, translator.language(), false)
-    );
-    println!(
-        "  {}",
-        paint(
-            &config.theme.muted,
-            &translator.text("banner.hint"),
-            false,
-        )
-    );
-    println!();
-}
-
 fn print_help(translator: &Translator, theme: &ThemeConfig) {
     println!(
         "{}",
@@ -981,7 +1362,13 @@ fn print_help(translator: &Translator, theme: &ThemeConfig) {
         "help.config",
         "help.reload",
         "help.language",
+        "help.backend",
         "help.theme",
+        "help.ui",
+        "help.alias",
+        "help.history",
+        "help.about",
+        "help.doctor",
         "help.clear",
         "help.version",
         "help.exit",
@@ -993,28 +1380,6 @@ fn print_help(translator: &Translator, theme: &ThemeConfig) {
         "{}",
         paint(&theme.muted, &translator.text("help.external"), false)
     );
-}
-
-fn parse_color(value: &str) -> Color {
-    let value = value.trim().trim_start_matches('#');
-    if value.len() == 6 {
-        if let Ok(rgb) = u32::from_str_radix(value, 16) {
-            return Color::Rgb(
-                ((rgb >> 16) & 0xff) as u8,
-                ((rgb >> 8) & 0xff) as u8,
-                (rgb & 0xff) as u8,
-            );
-        }
-    }
-    Color::White
-}
-
-fn paint(color: &str, text: &str, bold: bool) -> String {
-    let mut style = Style::new().fg(parse_color(color));
-    if bold {
-        style = style.bold();
-    }
-    style.paint(text).to_string()
 }
 
 fn set_terminal_title(cwd: &Path) {
