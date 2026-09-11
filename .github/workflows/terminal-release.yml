@@ -34,6 +34,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/nebula-terminal/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -83,15 +85,15 @@ jobs:
 
       - name: Install Terminal dependencies
         working-directory: apps/nebula-terminal
-        run: npm install
+        run: npm ci
 
       - name: Validate Terminal
         working-directory: apps/nebula-terminal
         run: |
           npm run build
           cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-          cargo check --manifest-path src-tauri/Cargo.toml --all-targets
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
 
       - name: Build Windows bundles
         working-directory: apps/nebula-terminal
