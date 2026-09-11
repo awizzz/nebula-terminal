@@ -47,6 +47,18 @@ Nebula.exe.sha256
 
 Release notes are taken from the matching version section in `CHANGELOG.md`.
 
+## Build provenance
+
+The final `Nebula.exe` is submitted to GitHub Artifact Attestations before publication. The attestation records SLSA build provenance and is signed through GitHub's Sigstore-backed attestation service.
+
+Users can verify provenance with a recent GitHub CLI:
+
+```powershell
+gh attestation verify .\Nebula.exe --repo awizzz/custom-shell
+```
+
+This provenance is separate from Authenticode. It proves which GitHub repository and workflow produced the artifact; Authenticode provides Windows publisher trust when a signing provider is configured.
+
 ## Code signing
 
 Signing is optional. When the required SignPath settings are configured, the exact CI artifact is submitted for signing and the returned Authenticode signature is verified before publication.
@@ -81,6 +93,7 @@ Before publishing, the workflow:
 6. optionally signs the exact uploaded build artifact
 7. verifies Authenticode when signing is enabled
 8. generates `Nebula.exe.sha256`
-9. publishes release notes from `CHANGELOG.md`
+9. creates a GitHub/Sigstore build-provenance attestation for the final executable
+10. publishes release notes from `CHANGELOG.md`
 
 The workflow is defined in `.github/workflows/release.yml`.
