@@ -28,12 +28,17 @@ jobs:
       - name: Format source
         run: cargo fmt
 
-      - name: Upload canonical formatted source
-        uses: actions/upload-artifact@v4
-        with:
-          name: Nebula-rustfmt-source
-          path: src/*.rs
-          if-no-files-found: error
+      - name: Commit canonical formatting
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ui-polish'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/*.rs
+          if ! git diff --cached --quiet; then
+            git commit -m "Apply canonical rustfmt"
+            git push
+          fi
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
