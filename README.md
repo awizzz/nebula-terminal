@@ -16,11 +16,22 @@ Nebula is a native, customizable shell frontend for Windows. It keeps compatibil
 - Built-in English and French, with external locale overrides for additional languages.
 - Fully editable colors, prompt templates, symbols, aliases and environment variables.
 
-## Download / build
+## Downloads and signed releases
 
-Every successful GitHub Actions build produces a `Nebula-windows-x64` artifact containing `Nebula.exe`.
+Normal CI builds produce an unsigned `Nebula-windows-x64-unsigned` GitHub Actions artifact for development and testing.
 
-Tagged builds such as `v0.2.0` also create a GitHub Release automatically.
+Production releases are different: pushing a version tag such as `v0.2.0` starts the signed release pipeline. The workflow builds `Nebula.exe`, submits the exact GitHub Actions artifact to SignPath, downloads the signed executable, verifies its Authenticode signature, generates a SHA-256 checksum, and only then publishes the GitHub Release.
+
+A production release contains:
+
+```text
+Nebula.exe
+Nebula.exe.sha256
+```
+
+If signing is unavailable or signature verification fails, the workflow stops and no unsigned GitHub Release is published.
+
+The full signing setup is documented in `.github/workflows/RELEASE-SIGNING.md`.
 
 To build locally:
 
@@ -63,7 +74,7 @@ The default is:
 language = "auto"
 ```
 
-`auto` uses the Windows user locale. You can override it from the shell:
+`auto` uses the Windows user interface language. You can override it from the shell:
 
 ```text
 language fr-FR
