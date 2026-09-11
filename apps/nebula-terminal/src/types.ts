@@ -1,4 +1,4 @@
-export type ProfileKind = "nebula" | "cmd" | "powershell" | "pwsh" | "wsl";
+export type ProfileKind = "nebula" | "cmd" | "powershell" | "pwsh" | "wsl" | "ssh" | "custom";
 
 export interface TerminalProfile {
   id: string;
@@ -9,13 +9,15 @@ export interface TerminalProfile {
   accent: string;
 }
 
-export type BackgroundMode = "mica" | "solid";
+export type BackgroundMode = "mica" | "solid" | "image";
 export type AnimationLevel = "full" | "reduced" | "off";
 export type CursorStyle = "block" | "bar" | "underline";
 export type TabDensity = "comfortable" | "compact";
+export type SplitDirection = "horizontal" | "vertical";
 
 export interface AppearancePreferences {
   accent: string;
+  themeId: string;
   fontFamily: string;
   fontSize: number;
   lineHeight: number;
@@ -24,14 +26,44 @@ export interface AppearancePreferences {
   terminalPadding: number;
   terminalOpacity: number;
   backgroundMode: BackgroundMode;
+  backgroundImage?: string;
+  backgroundImageOpacity: number;
   animationLevel: AnimationLevel;
   tabDensity: TabDensity;
+  defaultProfileId: string;
+  restoreSession: boolean;
+  copyOnSelect: boolean;
+  confirmCloseMultipleTabs: boolean;
+}
+
+export interface TerminalPaneModel {
+  id: string;
+  profile: TerminalProfile;
 }
 
 export interface TerminalTab {
   id: string;
   title: string;
-  profile: TerminalProfile;
+  panes: TerminalPaneModel[];
+  activePaneId: string;
+  splitDirection: SplitDirection;
+}
+
+export interface PersistedPane {
+  profileId: string;
+}
+
+export interface PersistedTab {
+  title: string;
+  panes: PersistedPane[];
+  activePaneIndex: number;
+  splitDirection: SplitDirection;
+}
+
+export interface SessionSnapshot {
+  version: 1;
+  tabs: PersistedTab[];
+  activeTabIndex: number;
 }
 
 export interface PtyEvent {
