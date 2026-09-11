@@ -126,6 +126,7 @@ fn run() -> Result<(), String> {
                 continue;
             }
             Signal::CtrlD => break,
+            _ => continue,
         };
 
         if line.is_empty() {
@@ -208,7 +209,10 @@ fn completion_commands() -> Vec<String> {
                     continue;
                 };
 
-                if !matches!(extension.to_ascii_lowercase().as_str(), "exe" | "cmd" | "bat" | "com") {
+                if !matches!(
+                    extension.to_ascii_lowercase().as_str(),
+                    "exe" | "cmd" | "bat" | "com"
+                ) {
                     continue;
                 }
 
@@ -225,9 +229,17 @@ fn completion_commands() -> Vec<String> {
 fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) -> NebulaPrompt {
     let admin = platform::is_admin();
     let status = if admin {
-        paint(&config.theme.admin, &translator.text("status.admin"), true)
+        paint(
+            &config.theme.admin,
+            &translator.text("status.admin"),
+            true,
+        )
     } else {
-        paint(&config.theme.success, &translator.text("status.user"), true)
+        paint(
+            &config.theme.success,
+            &translator.text("status.user"),
+            true,
+        )
     };
 
     let identity = match (config.prompt.show_user, config.prompt.show_hostname) {
@@ -253,13 +265,19 @@ fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) ->
     let cwd = paint(&config.theme.path, &compact_path(&state.cwd), true);
     let git = if config.prompt.show_git {
         git_branch(&state.cwd)
-            .map(|branch| format!("  {}", paint(&config.theme.git, &format!("git:{branch}"), false)))
+            .map(|branch| {
+                format!(
+                    "  {}",
+                    paint(&config.theme.git, &format!("git:{branch}"), false)
+                )
+            })
             .unwrap_or_default()
     } else {
         String::new()
     };
 
-    let duration = if config.prompt.show_duration && state.last_duration > Duration::from_millis(10) {
+    let duration = if config.prompt.show_duration && state.last_duration > Duration::from_millis(10)
+    {
         format!(
             "  {}",
             paint(
@@ -286,7 +304,7 @@ fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) ->
     };
 
     let indicator = paint(&config.theme.accent, &config.prompt.indicator, true);
-    let mut left = config.prompt.template.clone();
+    let mut first_line = config.prompt.template.clone();
     for (token, value) in [
         ("{status}", status.as_str()),
         ("{identity}", identity.as_str()),
@@ -295,33 +313,17 @@ fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) ->
         ("{duration}", duration.as_str()),
         ("{exit}", exit.as_str()),
     ] {
-        left = left.replace(token, value);
+        first_line = first_line.replace(token, value);
     }
 
-    let indicator_line = config
-        .prompt
-        .indicator_line
-        .replace("{indicator}", &indicator);
-    left.push('\n');
-    left.push_str(&paint(&config.theme.muted, &indicator_line.replace(&indicator, ""), false));
-
-    // The indicator is rendered separately so Reedline knows where editable input begins.
-    let visible_prefix = config
-        .prompt
-        .indicator_line
-        .split("{indicator}")
-        .next()
-        .unwrap_or("");
-    let suffix = config
+    let (prefix, suffix) = config
         .prompt
         .indicator_line
         .split_once("{indicator}")
-        .map(|(_, suffix)| suffix)
-        .unwrap_or(" ");
+        .unwrap_or((&config.prompt.indicator_line, ""));
     let left = format!(
-        "{}\n{}",
-        left.lines().next().unwrap_or(""),
-        paint(&config.theme.muted, visible_prefix, false)
+        "{first_line}\n{}",
+        paint(&config.theme.muted, prefix, false)
     );
 
     NebulaPrompt {
@@ -346,6 +348,11 @@ fn dispatch(
     let line = expand_alias(original, &config.aliases);
     let (command, rest) = split_command(&line);
     let lower = command.to_ascii_lowercase();
+
+    if rest.is_empty() && is_drive_selector(command) {
+        switch_drive(command, state, translator, &config.theme);
+        return LoopAction::Continue;
+    }
 
     match lower.as_str() {
         "exit" | "quit" if rest.is_empty() => LoopAction::Exit,
@@ -397,18 +404,39 @@ fn dispatch(
         }
         "admin" if rest.is_empty() => {
             if platform::is_admin() {
-                println!("{}", paint(&config.theme.warning, &translator.text("msg.already_admin"), false));
+                println!(
+                    "{}",
+                    paint(
+                        &config.theme.warning,
+                        &translator.text("msg.already_admin"),
+                        false,
+                    )
+                );
                 state.last_code = 0;
                 LoopAction::Continue
             } else {
                 match platform::relaunch_elevated() {
                     Ok(()) => {
-                        println!("{}", paint(&config.theme.success, &translator.text("msg.elevated_started"), false));
+                        println!(
+                            "{}",
+                            paint(
+                                &config.theme.success,
+                                &translator.text("msg.elevated_started"),
+                                false,
+                            )
+                        );
                         state.last_code = 0;
                         LoopAction::Exit
                     }
                     Err(error) => {
-                        eprintln!("{}", paint(&config.theme.error, &translator.value("msg.elevation_failed", error), false));
+                        eprintln!(
+                            "{}",
+                            paint(
+                                &config.theme.error,
+                                &translator.value("msg.elevation_failed", error),
+                                false,
+                            )
+                        );
                         state.last_code = 1;
                         LoopAction::Continue
                     }
@@ -423,37 +451,52 @@ fn dispatch(
                 state.last_code = match platform::run_command_elevated(rest, &state.cwd) {
                     Ok(()) => 0,
                     Err(error) => {
-                        eprintln!("{}", paint(&config.theme.error, &translator.value("msg.elevation_failed", error), false));
+                        eprintln!(
+                            "{}",
+                            paint(
+                                &config.theme.error,
+                                &translator.value("msg.elevation_failed", error),
+                                false,
+                            )
+                        );
                         1
                     }
                 };
             }
             LoopAction::Continue
         }
-        "config" => {
-            handle_config(rest, state, translator, &config.theme)
-        }
+        "config" => handle_config(rest, state, translator, &config.theme),
         "reload" if rest.is_empty() => match Config::load() {
             Ok(new_config) => {
                 *config = new_config;
                 config.apply_environment();
                 *translator = Translator::from_config(config);
-                println!("{}", paint(&config.theme.success, &translator.text("msg.config_reloaded"), false));
+                println!(
+                    "{}",
+                    paint(
+                        &config.theme.success,
+                        &translator.text("msg.config_reloaded"),
+                        false,
+                    )
+                );
                 state.last_code = 0;
                 LoopAction::RebuildEditor
             }
             Err(error) => {
-                eprintln!("{}", paint(&config.theme.error, &translator.value("msg.config_error", error), false));
+                eprintln!(
+                    "{}",
+                    paint(
+                        &config.theme.error,
+                        &translator.value("msg.config_error", error),
+                        false,
+                    )
+                );
                 state.last_code = 1;
                 LoopAction::Continue
             }
         },
-        "language" | "lang" => {
-            handle_language(rest, state, config, translator)
-        }
-        "theme" => {
-            handle_theme(rest, state, config, translator)
-        }
+        "language" | "lang" => handle_language(rest, state, config, translator),
+        "theme" => handle_theme(rest, state, config, translator),
         _ => {
             state.last_code = execute_external(&line, &state.cwd, config, translator);
             LoopAction::Continue
@@ -478,7 +521,10 @@ fn handle_config(
             }
         }
         "path" => {
-            println!("{}", translator.value("msg.config_path", path.display().to_string()));
+            println!(
+                "{}",
+                translator.value("msg.config_path", path.display().to_string())
+            );
             state.last_code = 0;
         }
         _ => {
@@ -509,13 +555,27 @@ fn handle_language(
 
     config.general.language = requested.to_string();
     if let Err(error) = config.save() {
-        eprintln!("{}", paint(&config.theme.error, &translator.value("msg.config_error", error), false));
+        eprintln!(
+            "{}",
+            paint(
+                &config.theme.error,
+                &translator.value("msg.config_error", error),
+                false,
+            )
+        );
         state.last_code = 1;
         return LoopAction::Continue;
     }
 
     *translator = Translator::from_config(config);
-    println!("{}", paint(&config.theme.success, &translator.value("msg.language_set", translator.language()), false));
+    println!(
+        "{}",
+        paint(
+            &config.theme.success,
+            &translator.value("msg.language_set", translator.language()),
+            false,
+        )
+    );
     state.last_code = 0;
     LoopAction::RebuildEditor
 }
@@ -535,7 +595,14 @@ fn handle_theme(
     }
 
     if !config.apply_theme_preset(requested) {
-        println!("{}", paint(&config.theme.error, &translator.value("msg.theme_unknown", requested), false));
+        println!(
+            "{}",
+            paint(
+                &config.theme.error,
+                &translator.value("msg.theme_unknown", requested),
+                false,
+            )
+        );
         println!("{}", translator.text("msg.themes"));
         state.last_code = 1;
         return LoopAction::Continue;
@@ -543,11 +610,25 @@ fn handle_theme(
 
     match config.save() {
         Ok(()) => {
-            println!("{}", paint(&config.theme.success, &translator.value("msg.theme_set", requested), false));
+            println!(
+                "{}",
+                paint(
+                    &config.theme.success,
+                    &translator.value("msg.theme_set", requested),
+                    false,
+                )
+            );
             state.last_code = 0;
         }
         Err(error) => {
-            eprintln!("{}", paint(&config.theme.error, &translator.value("msg.config_error", error), false));
+            eprintln!(
+                "{}",
+                paint(
+                    &config.theme.error,
+                    &translator.value("msg.config_error", error),
+                    false,
+                )
+            );
             state.last_code = 1;
         }
     }
@@ -562,19 +643,40 @@ fn change_directory(
 ) -> bool {
     let target = resolve_directory(rest, &state.cwd);
     let Some(target) = target else {
-        println!("{}", paint(&theme.error, &translator.text("msg.path_not_found"), false));
+        println!(
+            "{}",
+            paint(
+                &theme.error,
+                &translator.text("msg.path_not_found"),
+                false,
+            )
+        );
         state.last_code = 1;
         return false;
     };
 
     if !target.exists() {
-        println!("{}", paint(&theme.error, &translator.text("msg.path_not_found"), false));
+        println!(
+            "{}",
+            paint(
+                &theme.error,
+                &translator.text("msg.path_not_found"),
+                false,
+            )
+        );
         state.last_code = 1;
         return false;
     }
 
     if !target.is_dir() {
-        println!("{}", paint(&theme.error, &translator.value("msg.not_directory", target.display().to_string()), false));
+        println!(
+            "{}",
+            paint(
+                &theme.error,
+                &translator.value("msg.not_directory", target.display().to_string()),
+                false,
+            )
+        );
         state.last_code = 1;
         return false;
     }
@@ -589,6 +691,44 @@ fn change_directory(
             eprintln!("{}", paint(&theme.error, &error.to_string(), false));
             state.last_code = 1;
             false
+        }
+    }
+}
+
+fn is_drive_selector(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
+}
+
+fn switch_drive(
+    drive: &str,
+    state: &mut ShellState,
+    translator: &Translator,
+    theme: &ThemeConfig,
+) {
+    let root = format!("{}\\", drive.to_ascii_uppercase());
+    if !Path::new(&root).exists() {
+        println!(
+            "{}",
+            paint(
+                &theme.error,
+                &translator.text("msg.path_not_found"),
+                false,
+            )
+        );
+        state.last_code = 1;
+        return;
+    }
+
+    let target = PathBuf::from(root);
+    match env::set_current_dir(&target) {
+        Ok(()) => {
+            state.cwd = target;
+            state.last_code = 0;
+        }
+        Err(error) => {
+            eprintln!("{}", paint(&theme.error, &error.to_string(), false));
+            state.last_code = 1;
         }
     }
 }
@@ -630,7 +770,14 @@ fn handle_set(
     if let Some((name, value)) = rest.split_once('=') {
         let name = name.trim();
         if name.is_empty() {
-            println!("{}", paint(&theme.error, &translator.text("msg.invalid_variable"), false));
+            println!(
+                "{}",
+                paint(
+                    &theme.error,
+                    &translator.text("msg.invalid_variable"),
+                    false,
+                )
+            );
             state.last_code = 1;
         } else if value.is_empty() {
             env::remove_var(name);
@@ -673,7 +820,10 @@ fn execute_external(line: &str, cwd: &Path, config: &Config, translator: &Transl
             .current_dir(cwd)
             .status(),
         _ => {
-            eprintln!("{}", translator.value("msg.backend_unknown", &config.general.backend));
+            eprintln!(
+                "{}",
+                translator.value("msg.backend_unknown", &config.general.backend)
+            );
             Command::new("cmd.exe")
                 .args(["/d", "/s", "/c", line])
                 .current_dir(cwd)
@@ -690,7 +840,10 @@ fn execute_external(line: &str, cwd: &Path, config: &Config, translator: &Transl
     }
 }
 
-fn expand_alias(line: &str, aliases: &std::collections::BTreeMap<String, String>) -> String {
+fn expand_alias(
+    line: &str,
+    aliases: &std::collections::BTreeMap<String, String>,
+) -> String {
     let (command, rest) = split_command(line);
     if let Some(replacement) = aliases.get(command) {
         if rest.is_empty() {
@@ -770,9 +923,17 @@ fn format_duration(duration: Duration) -> String {
 
 fn print_banner(config: &Config, translator: &Translator) {
     let mode = if platform::is_admin() {
-        paint(&config.theme.admin, &translator.text("status.admin"), true)
+        paint(
+            &config.theme.admin,
+            &translator.text("status.admin"),
+            true,
+        )
     } else {
-        paint(&config.theme.success, &translator.text("status.user"), true)
+        paint(
+            &config.theme.success,
+            &translator.text("status.user"),
+            true,
+        )
     };
 
     println!();
@@ -781,19 +942,36 @@ fn print_banner(config: &Config, translator: &Translator) {
         paint(&config.theme.accent, APP_NAME, true),
         paint(&config.theme.muted, &format!("v{VERSION}"), false)
     );
-    println!("  {}", paint(&config.theme.foreground, &translator.text("app.tagline"), false));
+    println!(
+        "  {}",
+        paint(
+            &config.theme.foreground,
+            &translator.text("app.tagline"),
+            false,
+        )
+    );
     println!(
         "  {} · {} · {}",
         mode,
         paint(&config.theme.muted, &config.general.backend, false),
         paint(&config.theme.muted, translator.language(), false)
     );
-    println!("  {}", paint(&config.theme.muted, &translator.text("banner.hint"), false));
+    println!(
+        "  {}",
+        paint(
+            &config.theme.muted,
+            &translator.text("banner.hint"),
+            false,
+        )
+    );
     println!();
 }
 
 fn print_help(translator: &Translator, theme: &ThemeConfig) {
-    println!("{}", paint(&theme.accent, &translator.text("help.title"), true));
+    println!(
+        "{}",
+        paint(&theme.accent, &translator.text("help.title"), true)
+    );
     println!();
     for key in [
         "help.admin",
@@ -811,7 +989,10 @@ fn print_help(translator: &Translator, theme: &ThemeConfig) {
         println!("  {}", translator.text(key));
     }
     println!();
-    println!("{}", paint(&theme.muted, &translator.text("help.external"), false));
+    println!(
+        "{}",
+        paint(&theme.muted, &translator.text("help.external"), false)
+    );
 }
 
 fn parse_color(value: &str) -> Color {
@@ -838,6 +1019,9 @@ fn paint(color: &str, text: &str, bold: bool) -> String {
 
 fn set_terminal_title(cwd: &Path) {
     let admin = if platform::is_admin() { " [ADMIN]" } else { "" };
-    print!("\x1b]0;{APP_NAME}{admin} — {}\x07", compact_path(cwd));
+    print!(
+        "\x1b]0;{APP_NAME}{admin} — {}\x07",
+        compact_path(cwd)
+    );
     let _ = io::stdout().flush();
 }
