@@ -1,9 +1,13 @@
 [package]
 name = "nebula-shell"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
+rust-version = "1.98"
 description = "A fast, customizable Windows shell frontend"
 repository = "https://github.com/awizzz/custom-shell"
+license = "MIT"
+keywords = ["windows", "shell", "terminal", "cli", "command-line"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "nebula"
