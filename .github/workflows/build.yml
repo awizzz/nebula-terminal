@@ -25,20 +25,41 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Format source
-        run: cargo fmt
+      - name: Apply Clippy cleanup
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ui-polish'
+        shell: pwsh
+        run: |
+          $path = 'src/main.rs'
+          $content = Get-Content $path -Raw
+          $pattern = 'if config\.aliases\.remove\(name\)\.is_some\(\) \{\s*if config\.save\(\)\.is_ok\(\) \{\s*ui::pulse\(config, &translator\.value\("msg\.alias_removed", name\)\);\s*state\.last_code = 0;\s*return LoopAction::RebuildEditor;\s*\}\s*\}'
+          $replacement = @'
+          if config.aliases.remove(name).is_some() && config.save().is_ok() {
+              ui::pulse(config, &translator.value("msg.alias_removed", name));
+              state.last_code = 0;
+              return LoopAction::RebuildEditor;
+          }
+          '@
+          $updated = [regex]::Replace($content, $pattern, $replacement, 1)
+          if ($updated -eq $content) {
+            throw 'Expected Clippy cleanup pattern was not found.'
+          }
+          [IO.File]::WriteAllText((Resolve-Path $path), $updated)
+          cargo fmt
 
-      - name: Commit canonical formatting
+      - name: Commit cleanup
         if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ui-polish'
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/*.rs
+          git add src/main.rs
           if ! git diff --cached --quiet; then
-            git commit -m "Apply canonical rustfmt"
+            git commit -m "Fix Clippy alias cleanup"
             git push
           fi
+
+      - name: Format
+        run: cargo fmt -- --check
 
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
@@ -75,7 +96,6 @@ jobs:
           if (-not $package) {
             throw 'Could not find the nebula-shell package in Cargo metadata.'
           }
-
           $expectedTag = "v$($package.version)"
           $actualTag = '${{ github.ref_name }}'
           if ($actualTag -ne $expectedTag) {
@@ -92,15 +112,9 @@ jobs:
           SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
         run: |
-          $values = @(
-            $env:SIGNPATH_API_TOKEN,
-            $env:SIGNPATH_ORGANIZATION_ID,
-            $env:SIGNPATH_PROJECT_SLUG,
-            $env:SIGNPATH_SIGNING_POLICY_SLUG
-          )
+          $values = @($env:SIGNPATH_API_TOKEN, $env:SIGNPATH_ORGANIZATION_ID, $env:SIGNPATH_PROJECT_SLUG, $env:SIGNPATH_SIGNING_POLICY_SLUG)
           $enabled = -not ($values | Where-Object { [string]::IsNullOrWhiteSpace($_) })
           "enabled=$($enabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-
           if ($enabled) {
             Write-Host 'SignPath configuration detected. This release will be signed.'
           } else {
@@ -126,14 +140,10 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $signed = '${{ steps.signing.outputs.enabled }}' -eq 'true'
-
           if ($signed) {
             $exe = Get-ChildItem -Path signed -Recurse -File -Filter Nebula.exe | Select-Object -First 1
-            if (-not $exe) {
-              throw 'SignPath did not return Nebula.exe.'
-            }
+            if (-not $exe) { throw 'SignPath did not return Nebula.exe.' }
             Copy-Item $exe.FullName release/Nebula.exe
-
             $signature = Get-AuthenticodeSignature release/Nebula.exe
             if ($signature.Status -ne 'Valid') {
               throw "Authenticode verification failed: $($signature.Status) - $($signature.StatusMessage)"
@@ -144,7 +154,6 @@ jobs:
             Copy-Item dist/Nebula.exe release/Nebula.exe
             'signed=false' >> $env:GITHUB_OUTPUT
           }
-
           $hash = (Get-FileHash release/Nebula.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Nebula.exe" | Set-Content release/Nebula.exe.sha256 -Encoding ascii
 
@@ -166,10 +175,4 @@ jobs:
         run: |
           $signed = '${{ steps.release_assets.outputs.signed }}' -eq 'true'
           $title = if ($signed) { "Nebula ${{ github.ref_name }}" } else { "Nebula ${{ github.ref_name }} (unsigned)" }
-
-          gh release create "${{ github.ref_name }}" `
-            release/Nebula.exe `
-            release/Nebula.exe.sha256 `
-            --verify-tag `
-            --generate-notes `
-            --title $title
+          gh release create "${{ github.ref_name }}" release/Nebula.exe release/Nebula.exe.sha256 --verify-tag --generate-notes --title $title
