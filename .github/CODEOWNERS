@@ -1,0 +1,6 @@
+* @awizzz
+
+/.github/workflows/ @awizzz
+/Cargo.toml @awizzz
+/Cargo.lock @awizzz
+/src/platform.rs @awizzz
