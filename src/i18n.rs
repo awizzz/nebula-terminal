@@ -80,3 +80,30 @@ fn builtin_locale(requested: &str) -> (&'static str, &'static str) {
 fn parse_locale(raw: &str) -> Result<BTreeMap<String, String>, toml::de::Error> {
     toml::from_str(raw)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn locale_normalization_accepts_common_windows_forms() {
+        assert_eq!(normalize_locale("fr_FR.UTF-8"), "fr-FR");
+        assert_eq!(normalize_locale("en-US"), "en-US");
+        assert_eq!(normalize_locale(""), "en-US");
+    }
+
+    #[test]
+    fn french_locale_is_selected_for_french_variants() {
+        assert_eq!(builtin_locale("fr-CA").0, "fr-FR");
+        assert_eq!(builtin_locale("de-DE").0, "en-US");
+    }
+
+    #[test]
+    fn built_in_locales_have_identical_keys() {
+        let en = parse_locale(EN_US).expect("English locale must parse");
+        let fr = parse_locale(FR_FR).expect("French locale must parse");
+        let en_keys: Vec<_> = en.keys().collect();
+        let fr_keys: Vec<_> = fr.keys().collect();
+        assert_eq!(en_keys, fr_keys);
+    }
+}
