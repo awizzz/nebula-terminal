@@ -71,13 +71,19 @@ jobs:
           "version=$($package.version)" >> $env:GITHUB_OUTPUT
 
           gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $LASTEXITCODE -eq 0
+
+          if ($releaseExists) {
             Write-Host "Release $tag already exists. Skipping publication."
             "publish=false" >> $env:GITHUB_OUTPUT
           } else {
             Write-Host "Release $tag does not exist yet. It will be published from this main build."
             "publish=true" >> $env:GITHUB_OUTPUT
           }
+
+          # `gh release view` legitimately returns 1 when the release is absent.
+          # Explicitly finish successfully so that expected state does not fail the job.
+          exit 0
 
       - name: Detect signing configuration
         if: steps.release.outputs.publish == 'true'
