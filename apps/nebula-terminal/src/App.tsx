@@ -199,20 +199,29 @@ export default function App() {
     }));
   }, [activePane?.profile.id, activeTab, resolveProfile]);
 
-  const closeActivePane = useCallback(() => {
-    if (!activeTab) return;
-    if (activeTab.panes.length <= 1) {
-      closeTab(activeTab.id);
+  const closePane = useCallback((tabId: string, paneId: string) => {
+    const targetTab = tabsRef.current.find((tab) => tab.id === tabId);
+    if (!targetTab) return;
+    if (targetTab.panes.length <= 1) {
+      closeTab(tabId);
       return;
     }
     setTabs((current) => current.map((tab) => {
-      if (tab.id !== activeTab.id) return tab;
-      const index = tab.panes.findIndex((pane) => pane.id === tab.activePaneId);
-      const panes = tab.panes.filter((pane) => pane.id !== tab.activePaneId);
-      const replacement = panes[Math.min(Math.max(index, 0), panes.length - 1)] ?? panes[0]!;
-      return { ...tab, panes, activePaneId: replacement.id };
+      if (tab.id !== tabId) return tab;
+      const index = tab.panes.findIndex((pane) => pane.id === paneId);
+      const panes = tab.panes.filter((pane) => pane.id !== paneId);
+      if (index < 0 || panes.length === tab.panes.length) return tab;
+      const activePaneId = tab.activePaneId === paneId
+        ? (panes[Math.min(index, panes.length - 1)] ?? panes[0]!).id
+        : tab.activePaneId;
+      return { ...tab, panes, activePaneId };
     }));
-  }, [activeTab, closeTab]);
+  }, [closeTab]);
+
+  const closeActivePane = useCallback(() => {
+    if (!activeTab) return;
+    closePane(activeTab.id, activeTab.activePaneId);
+  }, [activeTab, closePane]);
 
   const adjustFontSize = useCallback((delta: number) => {
     setPreferences((current) => ({ ...current, fontSize: Math.min(32, Math.max(8, current.fontSize + delta)) }));
@@ -282,7 +291,7 @@ export default function App() {
                   const focused = tab.id === activeTabId && pane.id === tab.activePaneId && !settingsOpen && !paletteOpen && !searchOpen;
                   return (
                     <div key={pane.id} className={`pane-frame ${pane.id === tab.activePaneId ? "pane-frame--active" : ""}`}>
-                      {tab.panes.length > 1 && <div className="pane-chip"><span style={{ background: pane.profile.accent }} />{pane.profile.name}<button type="button" onClick={() => { setActivePane(tab.id, pane.id); if (pane.id === tab.activePaneId) closeActivePane(); }}>×</button></div>}
+                      {tab.panes.length > 1 && <div className="pane-chip"><span style={{ background: pane.profile.accent }} />{pane.profile.name}<button type="button" onClick={() => closePane(tab.id, pane.id)}>×</button></div>}
                       <TerminalPane
                         paneId={pane.id}
                         profile={pane.profile}
