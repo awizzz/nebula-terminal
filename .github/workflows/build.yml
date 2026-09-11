@@ -25,39 +25,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Apply Clippy cleanup
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ui-polish'
-        shell: pwsh
-        run: |
-          $path = 'src/main.rs'
-          $content = Get-Content $path -Raw
-          $pattern = 'if config\.aliases\.remove\(name\)\.is_some\(\) \{\s*if config\.save\(\)\.is_ok\(\) \{\s*ui::pulse\(config, &translator\.value\("msg\.alias_removed", name\)\);\s*state\.last_code = 0;\s*return LoopAction::RebuildEditor;\s*\}\s*\}'
-          $replacement = @'
-          if config.aliases.remove(name).is_some() && config.save().is_ok() {
-              ui::pulse(config, &translator.value("msg.alias_removed", name));
-              state.last_code = 0;
-              return LoopAction::RebuildEditor;
-          }
-          '@
-          $updated = [regex]::Replace($content, $pattern, $replacement, 1)
-          if ($updated -eq $content) {
-            throw 'Expected Clippy cleanup pattern was not found.'
-          }
-          [IO.File]::WriteAllText((Resolve-Path $path), $updated)
-          cargo fmt
-
-      - name: Commit cleanup
-        if: github.event_name == 'push' && github.ref == 'refs/heads/feat/ui-polish'
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/main.rs
-          if ! git diff --cached --quiet; then
-            git commit -m "Fix Clippy alias cleanup"
-            git push
-          fi
-
       - name: Format
         run: cargo fmt -- --check
 
