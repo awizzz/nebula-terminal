@@ -8,8 +8,12 @@ on:
         required: true
         type: string
   push:
+    branches: ["main"]
     tags:
       - "terminal-v*"
+    paths:
+      - "apps/nebula-terminal/**"
+      - ".github/workflows/terminal-release.yml"
 
 permissions:
   contents: write
@@ -43,9 +47,11 @@ jobs:
           toolchain: 1.98.1
           components: rustfmt, clippy
 
-      - name: Validate Terminal version
+      - name: Determine Terminal version release
         id: version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $package = Get-Content apps/nebula-terminal/package.json | ConvertFrom-Json
           $config = Get-Content apps/nebula-terminal/src-tauri/tauri.conf.json | ConvertFrom-Json
@@ -56,38 +62,54 @@ jobs:
             $requested = '${{ inputs.version }}'.TrimStart('v')
             if ($requested -ne $version) { throw "Requested version '$requested' does not match Terminal version '$version'." }
             $tag = "terminal-v$requested"
-          } else {
+          } elseif ('${{ github.ref_type }}' -eq 'tag') {
             $tag = '${{ github.ref_name }}'
             if ($tag -ne "terminal-v$version") { throw "Tag '$tag' does not match Terminal version 'terminal-v$version'." }
+          } else {
+            $tag = "terminal-v$version"
           }
 
-          $env:GH_TOKEN = '${{ github.token }}'
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
+
+          gh release view $tag *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          if ($releaseExists) {
+            Write-Host "Release $tag already exists. Skipping publication."
+            "publish=false" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Release $tag does not exist yet. It will be published from this build."
+            "publish=true" >> $env:GITHUB_OUTPUT
+          }
+
+          # `gh release view` legitimately returns 1 when the release is absent.
           exit 0
 
       - name: Validate Shell
+        if: steps.version.outputs.publish == 'true'
         run: |
           cargo fmt -- --check
           cargo clippy --locked --all-targets -- -D warnings
           cargo test --locked --all-targets
 
       - name: Build bundled Nebula Shell
+        if: steps.version.outputs.publish == 'true'
         run: cargo build --locked --release
 
       - name: Stage Shell resource
+        if: steps.version.outputs.publish == 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force apps/nebula-terminal/src-tauri/resources | Out-Null
           Copy-Item target/release/nebula.exe apps/nebula-terminal/src-tauri/resources/Nebula.exe -Force
 
       - name: Install Terminal dependencies
+        if: steps.version.outputs.publish == 'true'
         working-directory: apps/nebula-terminal
         run: npm ci
 
       - name: Validate Terminal
+        if: steps.version.outputs.publish == 'true'
         working-directory: apps/nebula-terminal
         run: |
           npm run build
@@ -96,10 +118,12 @@ jobs:
           cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
 
       - name: Build Windows bundles
+        if: steps.version.outputs.publish == 'true'
         working-directory: apps/nebula-terminal
         run: npm run tauri build
 
       - name: Prepare release files
+        if: steps.version.outputs.publish == 'true'
         id: files
         shell: pwsh
         run: |
@@ -134,16 +158,19 @@ jobs:
           }
 
       - name: Attest portable executable
+        if: steps.version.outputs.publish == 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: terminal-release/Nebula-Terminal.exe
 
       - name: Attest portable package
+        if: steps.version.outputs.publish == 'true'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: terminal-release/Nebula-Terminal-*-windows-x64.zip
 
       - name: Upload release artifact
+        if: steps.version.outputs.publish == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: Nebula-Terminal-${{ steps.version.outputs.version }}-windows-x64
@@ -152,6 +179,7 @@ jobs:
           retention-days: 30
 
       - name: Publish prerelease
+        if: steps.version.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
