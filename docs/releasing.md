@@ -70,8 +70,8 @@ Both the final `Nebula.exe` and the versioned portable ZIP are submitted to GitH
 Users can verify provenance with a recent GitHub CLI:
 
 ```powershell
-gh attestation verify .\Nebula.exe --repo awizzz/custom-shell
-gh attestation verify .\Nebula-0.4.0-windows-x64.zip --repo awizzz/custom-shell
+gh attestation verify .\Nebula.exe --repo awizzz/nebula-shell
+gh attestation verify .\Nebula-0.4.0-windows-x64.zip --repo awizzz/nebula-shell
 ```
 
 This provenance is separate from Authenticode. It proves which GitHub repository and workflow produced the artifact; Authenticode provides Windows publisher trust when a signing provider is configured.
