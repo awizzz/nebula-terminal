@@ -1,4 +1,8 @@
-use crate::{config::{Config, ThemeConfig, UiConfig}, i18n::Translator, platform};
+use crate::{
+    config::{Config, ThemeConfig, UiConfig},
+    i18n::Translator,
+    platform,
+};
 use nu_ansi_term::{Color, Style};
 use std::{
     io::{self, IsTerminal, Write},
@@ -43,10 +47,14 @@ pub fn startup(config: &Config) {
         ("◈", &config.theme.git),
         ("◆", &config.theme.accent),
     ];
-
     let delay = Duration::from_millis(config.ui.animation_speed_ms.clamp(8, 120));
+
     for (glyph, color) in frames {
-        print!("\r\x1b[2K  {} {}", paint(color, glyph, true), paint(color, "NEBULA", true));
+        print!(
+            "\r\x1b[2K  {} {}",
+            paint(color, glyph, true),
+            paint(color, "NEBULA", true)
+        );
         let _ = io::stdout().flush();
         thread::sleep(delay);
     }
@@ -58,7 +66,11 @@ pub fn startup(config: &Config) {
 pub fn banner(config: &Config, translator: &Translator, version: &str) {
     let admin = platform::is_admin();
     let mode_text = translator.text(if admin { "status.admin" } else { "status.user" });
-    let mode_color = if admin { &config.theme.admin } else { &config.theme.success };
+    let mode_color = if admin {
+        &config.theme.admin
+    } else {
+        &config.theme.success
+    };
 
     match config.ui.banner_style.to_ascii_lowercase().as_str() {
         "off" => {}
@@ -81,7 +93,14 @@ pub fn banner(config: &Config, translator: &Translator, version: &str) {
                 paint(&config.theme.accent, "NEBULA", true),
                 paint(&config.theme.muted, &format!("v{version}"), false)
             );
-            println!("  {}", paint(&config.theme.foreground, &translator.text("app.tagline"), false));
+            println!(
+                "  {}",
+                paint(
+                    &config.theme.foreground,
+                    &translator.text("app.tagline"),
+                    false
+                )
+            );
             println!(
                 "  {} · {} · {}",
                 paint(mode_color, &mode_text, true),
@@ -94,7 +113,10 @@ pub fn banner(config: &Config, translator: &Translator, version: &str) {
     }
 
     if config.ui.show_tips && !config.ui.banner_style.eq_ignore_ascii_case("off") {
-        println!("  {}", paint(&config.theme.muted, &translator.text("banner.hint"), false));
+        println!(
+            "  {}",
+            paint(&config.theme.muted, &translator.text("banner.hint"), false)
+        );
         println!();
     }
 }
@@ -108,36 +130,81 @@ fn aurora_banner(
 ) {
     let width = 62usize;
     let title = format!("NEBULA  v{version}");
-    let meta = format!("{}  ·  {}  ·  {}", mode_text, config.general.backend, translator.language());
+    let meta = format!(
+        "{}  ·  {}  ·  {}",
+        mode_text,
+        config.general.backend,
+        translator.language()
+    );
     let tagline = translator.text("app.tagline");
 
     println!();
-    println!("  {}", paint(&config.theme.panel, &format!("╭{}╮", "─".repeat(width)), false));
+    println!(
+        "  {}",
+        paint(
+            &config.theme.panel,
+            &format!("╭{}╮", "─".repeat(width)),
+            false
+        )
+    );
     println!(
         "  {}{}{}",
         paint(&config.theme.panel, "│ ", false),
-        paint(&config.theme.accent, &format!("{title:<width$}", width = width - 2), true),
+        paint(
+            &config.theme.accent,
+            &format!("{title:<width$}", width = width - 2),
+            true
+        ),
         paint(&config.theme.panel, " │", false)
     );
     println!(
         "  {}{}{}",
         paint(&config.theme.panel, "│ ", false),
-        paint(&config.theme.foreground, &format!("{:<width$}", truncate(&tagline, width - 2), width = width - 2), false),
+        paint(
+            &config.theme.foreground,
+            &format!(
+                "{:<width$}",
+                truncate(&tagline, width - 2),
+                width = width - 2
+            ),
+            false
+        ),
         paint(&config.theme.panel, " │", false)
     );
-    println!("  {}", paint(&config.theme.panel, &format!("├{}┤", "─".repeat(width)), false));
+    println!(
+        "  {}",
+        paint(
+            &config.theme.panel,
+            &format!("├{}┤", "─".repeat(width)),
+            false
+        )
+    );
     println!(
         "  {}{}{}",
         paint(&config.theme.panel, "│ ", false),
-        paint(mode_color, &format!("{:<width$}", truncate(&meta, width - 2), width = width - 2), true),
+        paint(
+            mode_color,
+            &format!(
+                "{:<width$}",
+                truncate(&meta, width - 2),
+                width = width - 2
+            ),
+            true
+        ),
         paint(&config.theme.panel, " │", false)
     );
-    println!("  {}", paint(&config.theme.panel, &format!("╰{}╯", "─".repeat(width)), false));
+    println!(
+        "  {}",
+        paint(
+            &config.theme.panel,
+            &format!("╰{}╯", "─".repeat(width)),
+            false
+        )
+    );
 }
 
 fn truncate(value: &str, max: usize) -> String {
-    let count = value.chars().count();
-    if count <= max {
+    if value.chars().count() <= max {
         return value.to_string();
     }
     if max <= 1 {
@@ -150,17 +217,44 @@ fn truncate(value: &str, max: usize) -> String {
 
 pub fn separator(config: &Config) {
     if config.ui.command_separator {
-        println!("{}", paint(&config.theme.panel, "  ────────────────────────────────────────────────────────────", false));
+        println!(
+            "{}",
+            paint(
+                &config.theme.panel,
+                "  ────────────────────────────────────────────────────────────",
+                false
+            )
+        );
     }
 }
 
-pub fn theme_preview(theme: &ThemeConfig, current: &str) {
+pub fn theme_preview(theme: &ThemeConfig, current: &str, translator: &Translator) {
     println!();
-    println!("  {}", paint(&theme.accent, "Theme gallery", true));
+    println!(
+        "  {}",
+        paint(&theme.accent, &translator.text("theme.gallery"), true)
+    );
     println!();
-    for name in ["hypr", "tokyo-night", "catppuccin", "nord", "dracula", "rose-pine", "gruvbox"] {
-        let marker = if name.eq_ignore_ascii_case(current) { "●" } else { "○" };
-        println!("  {}  {:<14} {}", paint(&theme.accent, marker, true), name, palette_bar(name));
+    for name in [
+        "hypr",
+        "tokyo-night",
+        "catppuccin",
+        "nord",
+        "dracula",
+        "rose-pine",
+        "gruvbox",
+    ] {
+        let marker = if name.eq_ignore_ascii_case(current) {
+            "●"
+        } else {
+            "○"
+        };
+        println!(
+            "  {}  {:<14} {}",
+            paint(&theme.accent, marker, true),
+            name,
+            palette_bar(name)
+        );
     }
     println!();
 }
@@ -176,25 +270,52 @@ fn palette_bar(name: &str) -> String {
         _ => &["#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8"],
     };
 
-    colors.iter().map(|color| paint(color, "██", true)).collect::<Vec<_>>().join("")
+    colors
+        .iter()
+        .map(|color| paint(color, "██", true))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
-pub fn ui_status(config: &Config) {
+pub fn ui_status(config: &Config, translator: &Translator) {
     println!();
-    println!("  {}", paint(&config.theme.accent, "Interface", true));
-    println!("  {:<18} {}", "animations", on_off(config.ui.animations, &config.theme));
-    println!("  {:<18} {} ms", "animation speed", config.ui.animation_speed_ms);
-    println!("  {:<18} {}", "banner", config.ui.banner_style);
-    println!("  {:<18} {}", "tips", on_off(config.ui.show_tips, &config.theme));
-    println!("  {:<18} {}", "separator", on_off(config.ui.command_separator, &config.theme));
+    println!(
+        "  {}",
+        paint(&config.theme.accent, &translator.text("ui.title"), true)
+    );
+    println!(
+        "  {:<18} {}",
+        translator.text("ui.animations"),
+        on_off(config.ui.animations, &config.theme, translator)
+    );
+    println!(
+        "  {:<18} {} ms",
+        translator.text("ui.speed"),
+        config.ui.animation_speed_ms
+    );
+    println!(
+        "  {:<18} {}",
+        translator.text("ui.banner"),
+        config.ui.banner_style
+    );
+    println!(
+        "  {:<18} {}",
+        translator.text("ui.tips"),
+        on_off(config.ui.show_tips, &config.theme, translator)
+    );
+    println!(
+        "  {:<18} {}",
+        translator.text("ui.separator"),
+        on_off(config.ui.command_separator, &config.theme, translator)
+    );
     println!();
 }
 
-fn on_off(value: bool, theme: &ThemeConfig) -> String {
+fn on_off(value: bool, theme: &ThemeConfig, translator: &Translator) -> String {
     if value {
-        paint(&theme.success, "on", true)
+        paint(&theme.success, &translator.text("ui.on"), true)
     } else {
-        paint(&theme.muted, "off", false)
+        paint(&theme.muted, &translator.text("ui.off"), false)
     }
 }
 
@@ -206,7 +327,11 @@ pub fn pulse(config: &Config, text: &str) {
 
     let delay = Duration::from_millis(config.ui.animation_speed_ms.clamp(8, 100));
     for glyph in ["·", "◦", "○", "●"] {
-        print!("\r\x1b[2K  {} {}", paint(&config.theme.accent, glyph, true), text);
+        print!(
+            "\r\x1b[2K  {} {}",
+            paint(&config.theme.accent, glyph, true),
+            text
+        );
         let _ = io::stdout().flush();
         thread::sleep(delay);
     }
@@ -214,14 +339,44 @@ pub fn pulse(config: &Config, text: &str) {
 }
 
 pub fn about(config: &Config, translator: &Translator, version: &str) {
-    let admin = if platform::is_admin() { translator.text("status.admin") } else { translator.text("status.user") };
+    let admin = if platform::is_admin() {
+        translator.text("status.admin")
+    } else {
+        translator.text("status.user")
+    };
+
     println!();
-    println!("  {} {}", paint(&config.theme.accent, "Nebula", true), paint(&config.theme.muted, &format!("v{version}"), false));
-    println!("  {:<12} {}", "mode", admin);
-    println!("  {:<12} {}", "backend", config.general.backend);
-    println!("  {:<12} {}", "language", translator.language());
-    println!("  {:<12} {}", "theme", config.theme.preset);
-    println!("  {:<12} {}", "config", Config::path().display());
+    println!(
+        "  {} {}",
+        paint(&config.theme.accent, "Nebula", true),
+        paint(&config.theme.muted, &format!("v{version}"), false)
+    );
+    println!("  {:<14} {}", translator.text("about.mode"), admin);
+    println!(
+        "  {:<14} {}",
+        translator.text("about.backend"),
+        config.general.backend
+    );
+    println!(
+        "  {:<14} {}",
+        translator.text("about.language"),
+        translator.language()
+    );
+    println!(
+        "  {:<14} {}",
+        translator.text("about.theme"),
+        config.theme.preset
+    );
+    println!(
+        "  {:<14} {}",
+        translator.text("about.terminal"),
+        platform::terminal_name()
+    );
+    println!(
+        "  {:<14} {}",
+        translator.text("about.config"),
+        Config::path().display()
+    );
     println!();
 }
 
