@@ -15,6 +15,17 @@ export type CursorStyle = "block" | "bar" | "underline";
 export type TabDensity = "comfortable" | "compact";
 export type SplitDirection = "horizontal" | "vertical";
 
+export interface KeybindingPreferences {
+  newTab: string;
+  closeTab: string;
+  commandPalette: string;
+  settings: string;
+  find: string;
+  splitVertical: string;
+  splitHorizontal: string;
+  closePane: string;
+}
+
 export interface AppearancePreferences {
   accent: string;
   themeId: string;
@@ -34,6 +45,7 @@ export interface AppearancePreferences {
   restoreSession: boolean;
   copyOnSelect: boolean;
   confirmCloseMultipleTabs: boolean;
+  keybindings: KeybindingPreferences;
 }
 
 export interface TerminalPaneModel {
