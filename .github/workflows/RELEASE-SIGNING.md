@@ -1,51 +1,63 @@
-# Signed release setup
+# Release signing setup
 
-Nebula release tags (`v*`) are published only after the Windows executable has been signed and the Authenticode signature has been verified by the CI workflow.
+Nebula can publish releases with or without a code-signing provider.
 
-The release pipeline is wired for SignPath. Until SignPath is configured, normal CI builds still work, but tagged release jobs stop before publishing so an unsigned executable can never become a GitHub Release asset.
+The release workflow always builds and tests the Windows executable, checks that the Git tag matches the Cargo version, generates a SHA-256 checksum, and publishes `Nebula.exe` plus `Nebula.exe.sha256`.
 
-## Signing provider
+## Without SignPath
 
-The workflow works with a SignPath organization/project/policy. The amount of manual intervention depends on the signing policy attached to that project:
+No signing configuration is required.
 
-- A SignPath policy without an approval requirement can provide a fully automatic `tag -> sign -> verify -> release` flow.
-- SignPath Foundation Open Source Code Signing is a possible no-cost option for eligible open-source projects, but its Foundation policy requires manual approval for each release signing request.
+A version tag such as `v0.3.0` creates a GitHub Release automatically. The release title contains `(unsigned)` so users can immediately see that Authenticode signing was not used.
 
-Do not use a self-signed certificate for public releases: it does not provide normal public Windows trust.
+This is the default until a trusted signing provider is configured.
 
-## SignPath setup
+## With SignPath
 
-1. Create or obtain access to a SignPath organization and create/link the Nebula project to this GitHub repository.
-2. Configure the project's default artifact configuration to sign `Nebula.exe` inside the GitHub Actions artifact.
-3. Configure a release signing policy and restrict it to trusted GitHub-hosted builds from this repository.
-4. If the goal is fully unattended releases, use a policy that does not require a manual approval gate.
-5. Add these GitHub repository variables:
-   - `SIGNPATH_ORGANIZATION_ID`
-   - `SIGNPATH_PROJECT_SLUG`
-   - `SIGNPATH_SIGNING_POLICY_SLUG`
-6. Add the repository secret:
-   - `SIGNPATH_API_TOKEN`
+When all SignPath values are present, the same workflow automatically switches to the signed path.
 
-Never commit the API token or any private signing material to the repository.
+Required repository variables:
+
+- `SIGNPATH_ORGANIZATION_ID`
+- `SIGNPATH_PROJECT_SLUG`
+- `SIGNPATH_SIGNING_POLICY_SLUG`
+
+Required repository secret:
+
+- `SIGNPATH_API_TOKEN`
+
+The workflow submits the exact GitHub Actions artifact to SignPath, waits for the result, downloads the signed executable, and verifies the Authenticode signature on the Windows runner before publishing it.
+
+Never commit API tokens, certificates or private signing material to the repository.
+
+## Signing provider notes
+
+The amount of manual intervention depends on the SignPath policy:
+
+- a policy without approval can provide a fully automatic `tag -> sign -> verify -> release` flow;
+- SignPath Foundation can be suitable for eligible open-source projects, but its approval policy may still require a manual signing approval.
+
+A self-signed certificate should not be used as a substitute for public code signing because it does not provide normal Windows publisher trust.
 
 ## Creating a release
 
-Make sure the Cargo package version matches the tag, then push a version tag:
+The Cargo package version and Git tag must match. For Nebula 0.3.0:
 
 ```powershell
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-The workflow will:
+The workflow then:
 
-1. run `cargo check` and `cargo test`;
-2. build the release executable;
-3. upload the unsigned build artifact to GitHub Actions;
-4. submit that exact artifact to SignPath;
-5. download the signed executable;
-6. verify its Authenticode signature locally on the GitHub Windows runner;
-7. generate a SHA-256 checksum;
-8. publish `Nebula.exe` and `Nebula.exe.sha256` to the GitHub Release.
+1. runs `cargo check`;
+2. runs `cargo test`;
+3. builds the release executable;
+4. uploads the CI artifact;
+5. validates `v0.3.0` against `version = "0.3.0"`;
+6. signs and verifies the executable when SignPath is configured;
+7. otherwise keeps the executable unsigned;
+8. generates `Nebula.exe.sha256`;
+9. publishes the GitHub Release.
 
-If signing or signature verification fails, the GitHub Release is not created.
+The release asset names remain identical whether signing is enabled or not, so enabling signing later does not change the download workflow for users.
