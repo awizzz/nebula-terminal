@@ -43,6 +43,16 @@ export const defaultPreferences: AppearancePreferences = {
   restoreSession: true,
   copyOnSelect: false,
   confirmCloseMultipleTabs: true,
+  keybindings: {
+    newTab: "Ctrl+Shift+T",
+    closeTab: "Ctrl+Shift+W",
+    commandPalette: "Ctrl+Shift+P",
+    settings: "Ctrl+,",
+    find: "Ctrl+F",
+    splitVertical: "Ctrl+Shift+D",
+    splitHorizontal: "Ctrl+Shift+E",
+    closePane: "Ctrl+Shift+Q",
+  },
 };
 
 const STORAGE_KEY = "nebula-terminal.preferences.v2";
@@ -51,7 +61,12 @@ export function loadPreferences(): AppearancePreferences {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return defaultPreferences;
-    return { ...defaultPreferences, ...JSON.parse(saved) } as AppearancePreferences;
+    const parsed = JSON.parse(saved) as Partial<AppearancePreferences>;
+    return {
+      ...defaultPreferences,
+      ...parsed,
+      keybindings: { ...defaultPreferences.keybindings, ...(parsed.keybindings ?? {}) },
+    };
   } catch {
     return defaultPreferences;
   }
@@ -78,5 +93,9 @@ export function exportAppearance(preferences: AppearancePreferences): void {
 export async function importAppearance(file: File): Promise<AppearancePreferences> {
   const parsed = JSON.parse(await file.text()) as { version?: number; preferences?: Partial<AppearancePreferences> };
   if (parsed.version !== 1 || !parsed.preferences) throw new Error("Unsupported Nebula Terminal theme file.");
-  return { ...defaultPreferences, ...parsed.preferences };
+  return {
+    ...defaultPreferences,
+    ...parsed.preferences,
+    keybindings: { ...defaultPreferences.keybindings, ...(parsed.preferences.keybindings ?? {}) },
+  };
 }
