@@ -202,6 +202,8 @@ cargo build --locked --release
 - [`SECURITY.md`](SECURITY.md) — security policy and local-data notes
 - [`docs/architecture.md`](docs/architecture.md) — runtime architecture
 - [`docs/releasing.md`](docs/releasing.md) — release process
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — common problems and diagnostics
+- [`docs/roadmap.md`](docs/roadmap.md) — product direction before 1.0
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
 
 Nebula is available under the [MIT License](LICENSE).
