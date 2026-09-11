@@ -1,15 +1,27 @@
 # Nebula Terminal
 
-Nebula Terminal is the graphical desktop host for Nebula Shell. It is currently an early preview and is versioned independently from the stable shell.
+Nebula Terminal is the graphical desktop host for Nebula Shell. The shell remains usable independently; the Terminal adds a native Windows window, PTY sessions, tabs, split panes and deep visual customization.
 
-## Stack
+The desktop line is versioned separately from Nebula Shell. `0.1.x` is a preview series.
 
-- Tauri 2 native desktop host
+## Highlights
+
+- Tauri 2 native desktop host with custom Windows chrome and Mica support
 - React + TypeScript + Vite UI
-- xterm.js terminal viewport with WebGL fallback
-- Rust PTY service using ConPTY on Windows through `portable-pty`
+- xterm.js viewport with WebGL fallback
+- native PTY/ConPTY sessions through the Rust backend
+- Nebula, CMD, Windows PowerShell, PowerShell 7 and WSL profiles
+- draggable tabs, middle-click close, vertical and horizontal split panes
+- persistent workspace restore for tabs and splits
+- command palette (`Ctrl+Shift+P`) and terminal search (`Ctrl+F`)
+- clickable Settings for themes, fonts, opacity, cursor, profiles, animations and shortcuts
+- built-in Nebula, Tokyo Night, Catppuccin, Rose Pine, Nord and Gruvbox themes
+- theme JSON import/export and optional local background image
+- Ctrl+mouse-wheel zoom, Ctrl+Shift+C/V and file path drag-and-drop
 
 ## Development
+
+Requirements: Node.js 24, Rust 1.98.1, the Windows MSVC build tools and WebView2.
 
 ```powershell
 cd apps/nebula-terminal
@@ -17,17 +29,43 @@ npm install
 npm run tauri dev
 ```
 
-For visual work that does not need a PTY, `npm run dev` opens a browser preview with a simulated terminal session.
+For visual work that does not need a PTY:
 
-## Current preview scope
+```powershell
+npm run dev
+```
 
-- custom titlebar and integrated tabs
-- Nebula/CMD/PowerShell profile detection
-- real PTY session streaming in the Tauri host
-- xterm.js WebGL rendering with fallback
-- command palette (`Ctrl+Shift+P`)
-- live appearance panel (`Ctrl+,`)
-- per-user appearance preferences stored locally
-- Windows Mica or solid background mode
+The browser preview uses simulated terminal output. Native profiles only run in the Tauri host.
 
-The desktop preview is intentionally separate from the shell's `0.5.x` release line. See `docs/terminal-ui.md` for the product and architecture direction.
+## Release builds
+
+The `Terminal Release` GitHub Actions workflow produces a Windows prerelease with:
+
+- NSIS installer
+- MSI installer
+- portable ZIP
+- standalone `Nebula-Terminal.exe`
+- SHA-256 files
+- bundled `Nebula.exe`
+- GitHub provenance attestations
+
+Terminal tags use `terminal-v<version>` so they do not conflict with Nebula Shell tags such as `v0.5.0`.
+
+## Keyboard defaults
+
+| Action | Shortcut |
+| --- | --- |
+| New default terminal | `Ctrl+Shift+T` |
+| Close tab | `Ctrl+Shift+W` |
+| Command palette | `Ctrl+Shift+P` |
+| Settings | `Ctrl+,` |
+| Find in terminal | `Ctrl+F` |
+| Split vertically | `Ctrl+Shift+D` |
+| Split horizontally | `Ctrl+Shift+E` |
+| Close active pane | `Ctrl+Shift+Q` |
+
+All shortcuts are editable from Settings.
+
+## Architecture
+
+See [`../../docs/terminal-ui.md`](../../docs/terminal-ui.md) for the product and architecture direction and [`CHANGELOG.md`](CHANGELOG.md) for preview changes.
