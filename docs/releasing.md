@@ -1,23 +1,55 @@
 # Releasing
 
-Nebula releases are built by GitHub Actions on Windows.
+Nebula releases are built and published by the dedicated `Release` GitHub Actions workflow.
 
-## Current flow
+A normal push to `main` never creates a release automatically.
 
-The package version is defined in `Cargo.toml`.
+## Before publishing
 
-On a push to `main`, CI runs formatting, Clippy, checks, tests and a release build. If no GitHub Release exists for `v<package-version>`, the workflow publishes one with:
+Update the version in `Cargo.toml` and regenerate `Cargo.lock`. Update `CHANGELOG.md` with a matching section and make sure the user-facing documentation reflects the new behavior.
+
+Run locally:
+
+```powershell
+cargo fmt -- --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+cargo build --locked --release
+```
+
+Merge the release changes only after CI passes.
+
+## Publish from a tag
+
+Create a tag that exactly matches the Cargo package version:
+
+```powershell
+git tag v0.4.0
+git push origin v0.4.0
+```
+
+The release workflow rejects a tag whose version does not match `Cargo.toml`.
+
+## Publish manually
+
+The same workflow can be started from GitHub Actions with **Run workflow**. Enter the package version without the leading `v`, for example `0.4.0`.
+
+The workflow validates that the requested version matches `Cargo.toml` and publishes the release from the selected commit.
+
+## Release contents
+
+A successful release contains:
 
 ```text
 Nebula.exe
 Nebula.exe.sha256
 ```
 
-If that version already has a release, CI builds normally and skips publication.
+Release notes are taken from the matching version section in `CHANGELOG.md`.
 
 ## Code signing
 
-Signing is optional. When the SignPath repository settings are present, the release artifact is submitted for signing and the returned Authenticode signature is verified before publication.
+Signing is optional. When the required SignPath settings are configured, the exact CI artifact is submitted for signing and the returned Authenticode signature is verified before publication.
 
 Repository variables:
 
@@ -33,18 +65,22 @@ Repository secret:
 SIGNPATH_API_TOKEN
 ```
 
-Without these values, the release is published as unsigned and the release title includes `(unsigned)`.
+If signing is not configured, the same release is published as unsigned and its title contains `(unsigned)`.
 
 Never commit signing tokens, certificates or private keys.
 
-## Release checklist
+## Release workflow guarantees
 
-Before changing the package version:
+Before publishing, the workflow:
 
-1. update `CHANGELOG.md`
-2. run the local checks from `CONTRIBUTING.md`
-3. confirm user-facing docs match the new behavior
-4. merge the version change into `main`
-5. verify the GitHub Actions run and release assets
+1. checks the requested/tagged version against `Cargo.toml`
+2. verifies formatting
+3. runs Clippy with warnings denied
+4. runs the test suite with the committed lockfile
+5. builds the release executable with the committed lockfile
+6. optionally signs the exact uploaded build artifact
+7. verifies Authenticode when signing is enabled
+8. generates `Nebula.exe.sha256`
+9. publishes release notes from `CHANGELOG.md`
 
-The release workflow is defined in `.github/workflows/build.yml`.
+The workflow is defined in `.github/workflows/release.yml`.
