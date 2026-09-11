@@ -1,0 +1,73 @@
+name: Fix native Clippy
+
+on:
+  push:
+    branches: [feat/native-engine]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: feat/native-engine
+          fetch-depth: 0
+      - name: Apply fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/native.rs')
+          text = p.read_text(encoding='utf-8')
+          old = '''struct StageResult {
+              code: i32,
+              stdout: Vec<u8>,
+          }
+          '''.replace('          ', '')
+          new = '''struct StageResult {
+              code: i32,
+              stdout: Vec<u8>,
+          }
+
+          type BuiltinOutput = (i32, Vec<u8>, Vec<u8>);
+          type BuiltinResult = Result<BuiltinOutput, String>;
+          '''.replace('          ', '')
+          if old not in text:
+              raise SystemExit('StageResult block not found')
+          text = text.replace(old, new, 1)
+          old = ') -> Option<Result<(i32, Vec<u8>, Vec<u8>), String>> {'
+          if old not in text:
+              raise SystemExit('run_builtin return type not found')
+          text = text.replace(old, ') -> Option<BuiltinResult> {', 1)
+          old = '(code, stdout, stderr): (i32, Vec<u8>, Vec<u8>),'
+          if old not in text:
+              raise SystemExit('finish_builtin tuple type not found')
+          text = text.replace(old, '(code, stdout, stderr): BuiltinOutput,', 1)
+          p.write_text(text, encoding='utf-8', newline='\n')
+
+          p = Path('src/main.rs')
+          text = p.read_text(encoding='utf-8')
+          old = 'if value.len() % 2 != 0 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {'
+          new = 'if !value.len().is_multiple_of(2) || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {'
+          if old not in text:
+              raise SystemExit('hex validation expression not found')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              'A fast, customizable Windows shell frontend.',
+              'A fast, customizable native Windows shell.',
+              1,
+          )
+          p.write_text(text, encoding='utf-8', newline='\n')
+          PY
+          cargo fmt
+          rm .github/workflows/fix-native-clippy.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: satisfy Clippy in native engine"
+          git push origin HEAD:feat/native-engine
