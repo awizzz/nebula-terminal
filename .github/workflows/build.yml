@@ -3,7 +3,6 @@ name: Build Nebula
 on:
   push:
     branches: [main, "feat/**"]
-    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -54,23 +53,34 @@ jobs:
           path: dist/Nebula.exe
           if-no-files-found: error
 
-      - name: Validate release version
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Determine version release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        id: release
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
           $package = $metadata.packages | Where-Object { $_.name -eq 'nebula-shell' } | Select-Object -First 1
           if (-not $package) {
             throw 'Could not find the nebula-shell package in Cargo metadata.'
           }
-          $expectedTag = "v$($package.version)"
-          $actualTag = '${{ github.ref_name }}'
-          if ($actualTag -ne $expectedTag) {
-            throw "Release tag '$actualTag' does not match Cargo version '$expectedTag'."
+
+          $tag = "v$($package.version)"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$($package.version)" >> $env:GITHUB_OUTPUT
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag already exists. Skipping publication."
+            "publish=false" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "Release $tag does not exist yet. It will be published from this main build."
+            "publish=true" >> $env:GITHUB_OUTPUT
           }
 
       - name: Detect signing configuration
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.publish == 'true'
         id: signing
         shell: pwsh
         env:
@@ -89,7 +99,7 @@ jobs:
           }
 
       - name: Sign release executable with SignPath
-        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.enabled == 'true'
+        if: steps.release.outputs.publish == 'true' && steps.signing.outputs.enabled == 'true'
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -101,16 +111,18 @@ jobs:
           output-artifact-directory: ${{ github.workspace }}/signed
 
       - name: Prepare release assets
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.publish == 'true'
         id: release_assets
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $signed = '${{ steps.signing.outputs.enabled }}' -eq 'true'
+
           if ($signed) {
             $exe = Get-ChildItem -Path signed -Recurse -File -Filter Nebula.exe | Select-Object -First 1
             if (-not $exe) { throw 'SignPath did not return Nebula.exe.' }
             Copy-Item $exe.FullName release/Nebula.exe
+
             $signature = Get-AuthenticodeSignature release/Nebula.exe
             if ($signature.Status -ne 'Valid') {
               throw "Authenticode verification failed: $($signature.Status) - $($signature.StatusMessage)"
@@ -121,11 +133,12 @@ jobs:
             Copy-Item dist/Nebula.exe release/Nebula.exe
             'signed=false' >> $env:GITHUB_OUTPUT
           }
+
           $hash = (Get-FileHash release/Nebula.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Nebula.exe" | Set-Content release/Nebula.exe.sha256 -Encoding ascii
 
       - name: Upload release artifact
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.publish == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: Nebula-windows-x64-release
@@ -135,11 +148,18 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.release.outputs.publish == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = '${{ steps.release.outputs.tag }}'
           $signed = '${{ steps.release_assets.outputs.signed }}' -eq 'true'
-          $title = if ($signed) { "Nebula ${{ github.ref_name }}" } else { "Nebula ${{ github.ref_name }} (unsigned)" }
-          gh release create "${{ github.ref_name }}" release/Nebula.exe release/Nebula.exe.sha256 --verify-tag --generate-notes --title $title
+          $title = if ($signed) { "Nebula $tag" } else { "Nebula $tag (unsigned)" }
+
+          gh release create $tag `
+            release/Nebula.exe `
+            release/Nebula.exe.sha256 `
+            --target "${{ github.sha }}" `
+            --generate-notes `
+            --title $title
