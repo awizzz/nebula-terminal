@@ -71,10 +71,25 @@ fn find_nebula() -> Option<PathBuf> {
 
     if let Ok(current) = env::current_exe() {
         if let Some(parent) = current.parent() {
-            for file in ["Nebula.exe", "nebula.exe"] {
-                let candidate = parent.join(file);
+            for candidate in [
+                parent.join("Nebula.exe"),
+                parent.join("nebula.exe"),
+                parent.join("resources").join("Nebula.exe"),
+                parent.join("resources").join("nebula.exe"),
+            ] {
                 if candidate_exists(&candidate) && candidate != current {
                     return Some(candidate);
+                }
+            }
+
+            for ancestor in parent.ancestors().take(8) {
+                for candidate in [
+                    ancestor.join("target").join("release").join("nebula.exe"),
+                    ancestor.join("target").join("debug").join("nebula.exe"),
+                ] {
+                    if candidate_exists(&candidate) {
+                        return Some(candidate);
+                    }
                 }
             }
         }

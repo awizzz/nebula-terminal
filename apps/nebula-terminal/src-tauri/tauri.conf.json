@@ -33,7 +33,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
+    "resources": ["resources/*"],
     "shortDescription": "A polished terminal built for Nebula Shell",
-    "longDescription": "Nebula Terminal is the graphical desktop host for Nebula Shell with tabs, profiles, native PTY sessions and deep visual customization."
+    "longDescription": "Nebula Terminal is the graphical desktop host for Nebula Shell with tabs, split panes, profiles, native PTY sessions and deep visual customization."
   }
 }

@@ -1,0 +1,166 @@
+name: Terminal Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Nebula Terminal version to publish (for example 0.1.0)"
+        required: true
+        type: string
+  push:
+    tags:
+      - "terminal-v*"
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: terminal-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build Nebula Terminal / Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/nebula-terminal/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+
+      - name: Validate Terminal version
+        id: version
+        shell: pwsh
+        run: |
+          $package = Get-Content apps/nebula-terminal/package.json | ConvertFrom-Json
+          $config = Get-Content apps/nebula-terminal/src-tauri/tauri.conf.json | ConvertFrom-Json
+          $version = [string]$package.version
+          if ($version -ne [string]$config.version) { throw "package.json and tauri.conf.json versions differ." }
+
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            $requested = '${{ inputs.version }}'.TrimStart('v')
+            if ($requested -ne $version) { throw "Requested version '$requested' does not match Terminal version '$version'." }
+            $tag = "terminal-v$requested"
+          } else {
+            $tag = '${{ github.ref_name }}'
+            if ($tag -ne "terminal-v$version") { throw "Tag '$tag' does not match Terminal version 'terminal-v$version'." }
+          }
+
+          $env:GH_TOKEN = '${{ github.token }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Validate Shell
+        run: |
+          cargo fmt -- --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked --all-targets
+
+      - name: Build bundled Nebula Shell
+        run: cargo build --locked --release
+
+      - name: Stage Shell resource
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force apps/nebula-terminal/src-tauri/resources | Out-Null
+          Copy-Item target/release/nebula.exe apps/nebula-terminal/src-tauri/resources/Nebula.exe -Force
+
+      - name: Install Terminal dependencies
+        working-directory: apps/nebula-terminal
+        run: npm ci
+
+      - name: Validate Terminal
+        working-directory: apps/nebula-terminal
+        run: |
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Build Windows bundles
+        working-directory: apps/nebula-terminal
+        run: npm run tauri build
+
+      - name: Prepare release files
+        id: files
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force terminal-release | Out-Null
+          $target = 'apps/nebula-terminal/src-tauri/target/release'
+          $terminalExe = Join-Path $target 'nebula-terminal.exe'
+          if (-not (Test-Path $terminalExe)) { throw 'nebula-terminal.exe was not built.' }
+
+          Copy-Item $terminalExe terminal-release/Nebula-Terminal.exe
+          Copy-Item target/release/nebula.exe terminal-release/Nebula.exe
+
+          $portable = "terminal-release/Nebula-Terminal-$version-windows-x64"
+          New-Item -ItemType Directory -Force $portable | Out-Null
+          Copy-Item $terminalExe (Join-Path $portable 'Nebula-Terminal.exe')
+          Copy-Item target/release/nebula.exe (Join-Path $portable 'Nebula.exe')
+          Copy-Item apps/nebula-terminal/README.md (Join-Path $portable 'README.md')
+          Copy-Item LICENSE (Join-Path $portable 'LICENSE')
+
+          $zip = "$portable.zip"
+          Compress-Archive -Path "$portable/*" -DestinationPath $zip -CompressionLevel Optimal
+
+          $bundles = @()
+          $bundles += Get-ChildItem "$target/bundle/nsis" -File -Filter '*.exe' -ErrorAction SilentlyContinue
+          $bundles += Get-ChildItem "$target/bundle/msi" -File -Filter '*.msi' -ErrorAction SilentlyContinue
+          foreach ($bundle in $bundles) { Copy-Item $bundle.FullName terminal-release/ }
+          if ($bundles.Count -eq 0) { throw 'Tauri did not produce an NSIS or MSI installer.' }
+
+          Get-ChildItem terminal-release -File | Where-Object { $_.Extension -in @('.exe', '.msi', '.zip') } | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256" -Encoding ascii
+          }
+
+      - name: Attest portable executable
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: terminal-release/Nebula-Terminal.exe
+
+      - name: Attest portable package
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: terminal-release/Nebula-Terminal-*-windows-x64.zip
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: Nebula-Terminal-${{ steps.version.outputs.version }}-windows-x64
+          path: terminal-release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          $version = '${{ steps.version.outputs.version }}'
+          $assets = Get-ChildItem terminal-release -File | ForEach-Object { $_.FullName }
+          gh release create $tag $assets `
+            --target '${{ github.sha }}' `
+            --title "Nebula Terminal v$version Preview" `
+            --prerelease `
+            --generate-notes

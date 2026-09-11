@@ -6,11 +6,13 @@ on:
     paths:
       - "apps/nebula-terminal/**"
       - ".github/workflows/terminal-ci.yml"
+      - ".github/workflows/terminal-release.yml"
   push:
-    branches: ["main", "feat/terminal-mvp"]
+    branches: ["main", "feat/terminal-**"]
     paths:
       - "apps/nebula-terminal/**"
       - ".github/workflows/terminal-ci.yml"
+      - ".github/workflows/terminal-release.yml"
 
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
   windows:
     name: Terminal CI / windows
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: apps/nebula-terminal
@@ -35,6 +37,8 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/nebula-terminal/package-lock.json
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -43,7 +47,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build frontend
         run: npm run build
@@ -52,17 +56,10 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
       - name: Lint Rust backend
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
       - name: Check Rust backend
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
 
-      - name: Upload generated lockfiles
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: nebula-terminal-lockfiles
-          path: |
-            apps/nebula-terminal/package-lock.json
-            apps/nebula-terminal/src-tauri/Cargo.lock
-          if-no-files-found: error
-          retention-days: 2
+      - name: Build desktop executable
+        run: npm run tauri build -- --no-bundle
