@@ -204,7 +204,7 @@ pub fn resize_session(
         .cloned()
         .ok_or_else(|| format!("Session '{session_id}' does not exist."))?;
 
-    session
+    let result = session
         .master
         .lock()
         .map_err(|_| lock_error("master"))?
@@ -214,7 +214,9 @@ pub fn resize_session(
             pixel_width: 0,
             pixel_height: 0,
         })
-        .map_err(|error| format!("PTY resize failed: {error}"))
+        .map_err(|error| format!("PTY resize failed: {error}"));
+
+    result
 }
 
 #[tauri::command]
