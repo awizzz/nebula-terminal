@@ -1,48 +1,42 @@
 # Changelog
 
-All notable user-facing changes to Nebula are documented here.
+Notable user-facing changes are listed here.
 
-## 0.3.0
+## 0.3.0 — 2026-09-11
 
-### Interface
+### Added
 
-- Added a dedicated UI layer in `src/ui.rs`.
-- Added short ANSI startup animation with configurable speed.
-- Added `aurora`, `minimal`, `compact` and `off` banner modes.
-- Added `ui` commands for animations, banner layout, tips and command separators.
-- Added `ui demo` and `ui reset`.
-- Added live theme gallery with color previews.
-- Added Rose Pine and Gruvbox themes.
-- Added optional right-side local clock.
+- optional startup animation
+- `aurora`, `minimal`, `compact` and `off` banner modes
+- `ui` command for interface settings
+- live theme preview
+- Rose Pine and Gruvbox themes
+- optional right-side clock
+- file and directory entries in Tab completion
+- persistent alias management
+- backend availability checks
+- `history clear`, `history path`, `about` and `doctor`
+- terminal detection for diagnostics
 
-### Shell experience
+### Changed
 
-- Added current-directory file and folder entries to Tab completion.
-- Completion is rebuilt automatically after directory changes.
-- Added persistent alias management from the shell.
-- Added `backend` command with availability checks.
-- Added `history clear` and `history path`.
-- Added `about` and `doctor` commands.
-- Alias lookup is now case-insensitive.
+- completion is rebuilt after directory changes
+- alias lookup is case-insensitive
+- release builds can be published without a configured code-signing provider
+- CI now checks formatting and Clippy warnings before building
 
-### Windows integration
+## 0.2.0 — 2026-09-11
 
-- Added terminal detection for diagnostics.
-- Added native Win32 local-time retrieval.
-- Kept native UAC elevation and Windows display-language detection.
+### Changed
 
-### Releases
+- replaced the Python prototype with a native Rust executable
 
-- Bumped the package version to 0.3.0.
-- Version tags still produce `Nebula.exe` and `Nebula.exe.sha256`.
-- SignPath is now optional: releases are signed when configured and published as clearly marked unsigned releases otherwise.
+### Added
 
-## 0.2.0
-
-- Replaced the Python prototype with a native Rust executable.
-- Added persistent history, completion and command hints.
-- Added configurable CMD, Windows PowerShell and PowerShell 7 backends.
-- Added Windows display-language detection and FR/EN localization.
-- Added native UAC elevation with visible administrator state.
-- Added configurable prompt templates, RGB themes, aliases and environment variables.
-- Added Windows CI builds and tag-based GitHub Releases.
+- persistent history and command hints
+- CMD, Windows PowerShell and PowerShell 7 backends
+- Windows UI-language detection
+- built-in English and French localization
+- native UAC elevation
+- configurable prompt templates, themes, aliases and environment variables
+- Windows CI builds and GitHub Releases
