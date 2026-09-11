@@ -13,6 +13,9 @@ on:
 permissions:
   actions: read
   contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
 
 jobs:
   release:
@@ -159,6 +162,11 @@ jobs:
           } else {
             "Nebula $version" | Set-Content release/release-notes.md -Encoding utf8
           }
+
+      - name: Attest build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: release/Nebula.exe
 
       - name: Upload final release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
