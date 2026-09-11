@@ -1,9 +1,13 @@
 [general]
-# auto follows the Windows UI language.
+# "auto" follows the Windows display language. You can also use "fr-FR", "en-US", etc.
 language = "auto"
-# cmd, powershell, pwsh
+# Supported command backends: cmd, powershell, pwsh
 backend = "cmd"
 show_banner = true
+# Persistent history can be disabled entirely.
+history_enabled = true
+# Commands beginning with a space are not written to persistent history.
+history_ignore_leading_space = true
 history_limit = 10000
 
 [ui]
@@ -27,7 +31,7 @@ show_hostname = false
 show_time = false
 
 [theme]
-# hypr, tokyo-night, catppuccin, nord, dracula, rose-pine, gruvbox
+# Built-in presets: hypr, tokyo-night, catppuccin, nord, dracula, rose-pine, gruvbox
 preset = "hypr"
 foreground = "#CDD6F4"
 muted = "#7F849C"

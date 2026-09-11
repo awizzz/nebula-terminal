@@ -1,32 +1,69 @@
 # Architecture
 
-Nebula is a shell frontend. It owns the interactive prompt and selected shell state, then delegates normal command execution to a configured Windows shell backend.
+Nebula is a Windows shell frontend. It owns the interactive editor and selected shell state, while normal commands are delegated to a configured Windows command backend.
+
+## Modules
+
+`src/main.rs` is intentionally small. It only starts the shell and handles a fatal startup error.
+
+`src/shell.rs` owns the interactive runtime, built-in command dispatch and persistent Nebula state such as the working directory, drive locations, aliases and environment variables.
+
+`src/editor.rs` owns Reedline integration, history setup, Tab completion, prompt rendering, Git branch display and terminal-title updates.
+
+`src/config.rs` defines the configuration schema, validation, defaults and theme presets. Configuration is stored in `%APPDATA%\Nebula\config.toml` and saved through atomic file replacement.
+
+`src/i18n.rs` selects built-in or user-provided locale files. Tests ensure the built-in English and French locale files expose the same keys.
+
+`src/platform.rs` isolates Windows integration such as UAC elevation, Windows UI-language detection, local time, environment expansion and atomic file replacement.
+
+`src/ui.rs` contains terminal presentation code, theme previews, status output and optional animations.
 
 ## Runtime model
 
-`src/main.rs` currently owns the read-eval loop, command dispatch, prompt construction, completion setup and most built-in commands.
+The main loop follows this sequence:
 
-`src/config.rs` loads and saves `%APPDATA%\Nebula\config.toml` and contains theme presets.
+```text
+read input
+   ↓
+expand Nebula aliases
+   ↓
+handle Nebula built-in command
+   or
+launch selected backend for an external command
+   ↓
+record status and duration
+   ↓
+render the next prompt
+```
 
-`src/i18n.rs` selects built-in or user-provided locale files.
+Built-in commands such as `cd`, `set`, `theme`, `alias`, `history` and `language` are handled by Nebula so their state can persist across commands.
 
-`src/platform.rs` contains Windows integration such as UAC elevation, UI-language detection and local time.
+External commands are currently forwarded to one of:
 
-`src/ui.rs` contains terminal presentation code, theme previews and animations.
+```text
+cmd.exe
+powershell.exe
+pwsh.exe
+```
 
-## Command execution
+Each external command launches a fresh backend process. This preserves broad compatibility with normal command syntax but means backend-specific process state does not persist. For example, a PowerShell variable or function created by one external command is not available to the next external command.
 
-Built-in commands such as `cd`, `set`, `theme` and `language` are handled by Nebula so their state can persist.
+A future persistent-backend implementation should use a Windows pseudoconsole/ConPTY boundary rather than mixing terminal emulation into the current shell runtime.
 
-Other input is forwarded to one of these backends:
+## Shell state
 
-- `cmd.exe`
-- `powershell.exe`
-- `pwsh.exe`
+Nebula currently persists these values for the lifetime of the process:
 
-Each forwarded command currently runs in a child process. Backend-specific process state therefore does not persist between commands.
+- current working directory
+- previous working directory for `cd -`
+- `pushd` / `popd` directory stack
+- last known working directory for each Windows drive
+- environment variables changed with `set`
+- last exit code and command duration
 
-## Data
+Aliases and user configuration are persisted to disk.
+
+## Local data
 
 Default data directory:
 
@@ -34,7 +71,7 @@ Default data directory:
 %APPDATA%\Nebula
 ```
 
-Current files include:
+Files and directories can include:
 
 ```text
 config.toml
@@ -42,8 +79,20 @@ history.txt
 locales\
 ```
 
-Nebula does not require a service or background process.
+Persistent history is optional. With the default configuration, commands beginning with a space are excluded from the history file.
 
-## Refactoring direction
+Nebula does not install a service and does not require a background process.
 
-`src/main.rs` should continue to shrink as the project grows. Natural module boundaries are command dispatch, prompt rendering, completion, history and backend process management.
+## Reliability boundaries
+
+Configuration is validated before being accepted or saved. Invalid backends, invalid theme colors and out-of-range UI/history settings are rejected.
+
+The project pins a Rust toolchain in `rust-toolchain.toml` and commits `Cargo.lock`. CI uses Cargo's `--locked` mode so dependency resolution cannot silently change during a build.
+
+## CI and releases
+
+`.github/workflows/ci.yml` validates normal pushes and pull requests with read-only repository permissions.
+
+`.github/workflows/security.yml` runs a scheduled RustSec dependency audit.
+
+`.github/workflows/release.yml` is the only workflow intended to publish release assets. It runs the same validation, optionally signs the executable, verifies the signature, creates a SHA-256 checksum and publishes the GitHub Release.

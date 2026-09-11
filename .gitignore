@@ -1,5 +1,9 @@
 /target/
+/dist/
+/release/
 *.pdb
 *.ilk
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db

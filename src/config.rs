@@ -20,6 +20,8 @@ pub struct GeneralConfig {
     pub language: String,
     pub backend: String,
     pub show_banner: bool,
+    pub history_enabled: bool,
+    pub history_ignore_leading_space: bool,
     pub history_limit: usize,
 }
 
@@ -87,6 +89,8 @@ impl Default for GeneralConfig {
             language: "auto".into(),
             backend: "cmd".into(),
             show_banner: true,
+            history_enabled: true,
+            history_ignore_leading_space: true,
             history_limit: 10_000,
         }
     }
@@ -154,10 +158,15 @@ impl Config {
 
         let raw = fs::read_to_string(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        toml::from_str(&raw).map_err(|e| format!("invalid config {}: {e}", path.display()))
+        let config: Self =
+            toml::from_str(&raw).map_err(|e| format!("invalid config {}: {e}", path.display()))?;
+        config.validate()?;
+        Ok(config)
     }
 
     pub fn save(&self) -> Result<(), String> {
+        self.validate()?;
+
         let path = Self::path();
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -166,7 +175,60 @@ impl Config {
 
         let raw =
             toml::to_string_pretty(self).map_err(|e| format!("failed to serialize config: {e}"))?;
-        fs::write(&path, raw).map_err(|e| format!("failed to write {}: {e}", path.display()))
+        platform::atomic_write(&path, raw.as_bytes())
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !matches!(
+            self.general.backend.to_ascii_lowercase().as_str(),
+            "cmd" | "powershell" | "pwsh"
+        ) {
+            return Err(format!(
+                "unsupported command backend: {}",
+                self.general.backend
+            ));
+        }
+
+        if !(1..=1_000_000).contains(&self.general.history_limit) {
+            return Err("history_limit must be between 1 and 1000000".into());
+        }
+
+        if !(8..=250).contains(&self.ui.animation_speed_ms) {
+            return Err("ui.animation_speed_ms must be between 8 and 250".into());
+        }
+
+        if !matches!(
+            self.ui.banner_style.to_ascii_lowercase().as_str(),
+            "aurora" | "minimal" | "compact" | "off"
+        ) {
+            return Err(format!(
+                "unsupported ui.banner_style: {}",
+                self.ui.banner_style
+            ));
+        }
+
+        for (name, value) in [
+            ("foreground", &self.theme.foreground),
+            ("muted", &self.theme.muted),
+            ("accent", &self.theme.accent),
+            ("path", &self.theme.path),
+            ("git", &self.theme.git),
+            ("success", &self.theme.success),
+            ("warning", &self.theme.warning),
+            ("error", &self.theme.error),
+            ("admin", &self.theme.admin),
+            ("panel", &self.theme.panel),
+        ] {
+            if !valid_hex_color(value) {
+                return Err(format!("invalid theme color {name}: {value}"));
+            }
+        }
+
+        if self.prompt.indicator.trim().is_empty() {
+            return Err("prompt.indicator cannot be empty".into());
+        }
+
+        Ok(())
     }
 
     pub fn apply_theme_preset(&mut self, name: &str) -> bool {
@@ -220,5 +282,43 @@ impl Config {
         for (key, value) in &self.env {
             std::env::set_var(key, value);
         }
+    }
+}
+
+fn valid_hex_color(value: &str) -> bool {
+    let value = value.strip_prefix('#').unwrap_or(value);
+    value.len() == 6 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_is_valid() {
+        assert!(Config::default().validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_unknown_backend() {
+        let mut config = Config::default();
+        config.general.backend = "fish".into();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_theme_color() {
+        let mut config = Config::default();
+        config.theme.accent = "cyan".into();
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn theme_preset_updates_palette() {
+        let mut config = Config::default();
+        assert!(config.apply_theme_preset("dracula"));
+        assert_eq!(config.theme.preset, "dracula");
+        assert_eq!(config.theme.accent, "#8BE9FD");
+        assert!(config.validate().is_ok());
     }
 }
