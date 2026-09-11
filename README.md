@@ -4,7 +4,7 @@
 [![Security audit](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Nebula is a native Windows shell frontend written in Rust. It keeps normal Windows command execution available while adding a modern prompt, persistent shell state, history controls, completion, themes, localization and UAC helpers.
+Nebula is a native Windows shell written in Rust. Its default execution engine launches programs directly without routing every command through CMD or PowerShell, while keeping both shells available for compatibility when their syntax is needed.
 
 Nebula is a **shell frontend**, not a terminal emulator. It runs inside Windows Terminal, ConHost or another compatible terminal host.
 
@@ -54,8 +54,10 @@ Unsigned releases can trigger a Windows SmartScreen warning. Releases are marked
 
 ## Features
 
-- normal CMD command execution, pipes, redirects and `.bat` / `.cmd` files
-- optional Windows PowerShell and PowerShell 7 backends
+- native executable launch without a CMD or PowerShell intermediary
+- native `&&`, `||`, `;`, pipelines and input/output/error redirection
+- native filesystem and utility built-ins (`ls`, `cat`, `mkdir`, `touch`, `which`, `cp`, `mv` and Windows aliases)
+- explicit CMD, Windows PowerShell and PowerShell 7 compatibility modes
 - persistent working directory, `pushd` / `popd`, `cd -` and remembered directories per drive
 - persistent command history with an on/off switch and private-command exclusion
 - Tab completion for Nebula commands, aliases, executables in `PATH` and local files
@@ -86,7 +88,7 @@ help
 doctor
 theme tokyo-night
 language auto
-backend pwsh
+backend native
 alias gs=git status
 ```
 
@@ -179,7 +181,27 @@ Custom locale overrides can be placed in:
 %APPDATA%\Nebula\locales\<locale>.toml
 ```
 
-### Command backends
+### Command execution
+
+Native mode is the default:
+
+```text
+backend native
+git status
+python app.py
+ping 1.1.1.1
+dir | findstr src
+```
+
+Programs are launched directly by Nebula. CMD and PowerShell are still available when you need shell-specific commands or syntax:
+
+```text
+cmd dir /b
+powershell Get-Process
+pwsh Get-ChildItem
+```
+
+You can also delegate the whole session command path to a compatibility backend:
 
 ```text
 backend cmd
@@ -187,7 +209,7 @@ backend powershell
 backend pwsh
 ```
 
-Nebula currently launches each external command through a fresh backend process. Backend-specific process state such as PowerShell variables, functions and imported modules therefore does not persist between separate commands. Nebula-owned state such as the working directory, aliases and environment variables does persist.
+Compatibility backends still use a fresh shell process for each command, so backend-specific variables, functions and imported modules do not persist between separate commands. Nebula-owned state does persist.
 
 ## Diagnostics
 
@@ -229,7 +251,9 @@ cargo build --locked --release
 - Windows only
 - prebuilt releases are currently x64 only
 - no native terminal-emulator window, tabs, panes, blur or GPU renderer
-- backend-specific PowerShell state is not persistent between commands
+- native pipelines are currently buffered between stages rather than streamed concurrently
+- `.bat` / `.cmd` scripts require explicit CMD compatibility
+- compatibility-backend PowerShell state is not persistent between commands
 - completion is generic rather than command-aware
 - Authenticode signing depends on an external signing provider
 

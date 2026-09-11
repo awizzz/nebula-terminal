@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   windows:
+    name: CI / windows
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

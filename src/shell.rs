@@ -2,7 +2,7 @@ use crate::{
     config::{Config, ThemeConfig},
     editor,
     i18n::Translator,
-    platform, ui,
+    native, platform, ui,
 };
 use reedline::Signal;
 use std::{
@@ -463,9 +463,10 @@ fn handle_backend(
     }
 
     let executable = match requested.as_str() {
-        "cmd" => "cmd.exe",
-        "powershell" => "powershell.exe",
-        "pwsh" => "pwsh.exe",
+        "native" => None,
+        "cmd" => Some("cmd.exe"),
+        "powershell" => Some("powershell.exe"),
+        "pwsh" => Some("pwsh.exe"),
         _ => {
             println!(
                 "{}",
@@ -480,7 +481,7 @@ fn handle_backend(
         }
     };
 
-    if !platform::command_exists(executable) {
+    if executable.is_some_and(|program| !platform::command_exists(program)) {
         println!(
             "{}",
             ui::paint(
@@ -838,16 +839,16 @@ fn run_doctor(state: &mut ShellState, config: &Config, translator: &Translator) 
         translator,
     );
 
-    let backend_exe = match config.general.backend.as_str() {
-        "powershell" => "powershell.exe",
-        "pwsh" => "pwsh.exe",
-        _ => "cmd.exe",
+    let (backend_ok, backend_detail) = match config.general.backend.as_str() {
+        "native" => (true, "Nebula native engine"),
+        "powershell" => (platform::command_exists("powershell.exe"), "powershell.exe"),
+        "pwsh" => (platform::command_exists("pwsh.exe"), "pwsh.exe"),
+        _ => (platform::command_exists("cmd.exe"), "cmd.exe"),
     };
-    let backend_ok = platform::command_exists(backend_exe);
     print_check(
         backend_ok,
         &translator.text("doctor.backend"),
-        backend_exe,
+        backend_detail,
         config,
         translator,
     );
@@ -1139,8 +1140,30 @@ fn handle_set(rest: &str, state: &mut ShellState, translator: &Translator, theme
     }
 }
 
+pub fn run_once(command: &str) -> Result<i32, String> {
+    let mut config = Config::load().unwrap_or_default();
+    config.apply_environment();
+    let mut translator = Translator::from_config(&config);
+    let mut state = ShellState::new();
+    let action = dispatch(command, &mut state, &mut config, &mut translator);
+    if matches!(action, LoopAction::Exit) {
+        return Ok(0);
+    }
+    Ok(state.last_code)
+}
+
 fn execute_external(line: &str, cwd: &Path, config: &Config, translator: &Translator) -> i32 {
     let backend = config.general.backend.to_ascii_lowercase();
+    if backend == "native" {
+        return match native::execute(line, cwd) {
+            Ok(code) => code,
+            Err(error) => {
+                eprintln!("{}", translator.value("msg.native_error", error));
+                1
+            }
+        };
+    }
+
     let status = match backend.as_str() {
         "cmd" => Command::new("cmd.exe")
             .args(["/d", "/s", "/c", line])
@@ -1159,10 +1182,13 @@ fn execute_external(line: &str, cwd: &Path, config: &Config, translator: &Transl
                 "{}",
                 translator.value("msg.backend_unknown", &config.general.backend)
             );
-            Command::new("cmd.exe")
-                .args(["/d", "/s", "/c", line])
-                .current_dir(cwd)
-                .status()
+            return match native::execute(line, cwd) {
+                Ok(code) => code,
+                Err(error) => {
+                    eprintln!("{}", translator.value("msg.native_error", error));
+                    1
+                }
+            };
         }
     };
 

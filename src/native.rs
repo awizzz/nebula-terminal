@@ -11,6 +11,7 @@ use std::{
 enum Connector {
     And,
     Or,
+    Sequence,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +20,7 @@ enum Token {
     Pipe,
     And,
     Or,
+    Sequence,
     In,
     Out(bool),
     ErrOut(bool),
@@ -94,7 +96,7 @@ fn parse_line(line: &str) -> Result<Vec<ChainPart>, String> {
             Token::Pipe => {
                 finish_command(&mut pipeline, &mut command)?;
             }
-            Token::And | Token::Or => {
+            Token::And | Token::Or | Token::Sequence => {
                 finish_command(&mut pipeline, &mut command)?;
                 if pipeline.is_empty() {
                     return Err("conditional operator requires a command".into());
@@ -103,11 +105,12 @@ fn parse_line(line: &str) -> Result<Vec<ChainPart>, String> {
                     gate,
                     pipeline: std::mem::take(&mut pipeline),
                 });
-                gate = Some(if matches!(tokens[index], Token::And) {
-                    Connector::And
-                } else {
-                    Connector::Or
-                });
+                gate = match tokens[index] {
+                    Token::And => Some(Connector::And),
+                    Token::Or => Some(Connector::Or),
+                    Token::Sequence => None,
+                    _ => unreachable!(),
+                };
             }
         }
         index += 1;
@@ -121,7 +124,10 @@ fn parse_line(line: &str) -> Result<Vec<ChainPart>, String> {
     Ok(chain)
 }
 
-fn finish_command(pipeline: &mut Vec<CommandSpec>, command: &mut CommandSpec) -> Result<(), String> {
+fn finish_command(
+    pipeline: &mut Vec<CommandSpec>,
+    command: &mut CommandSpec,
+) -> Result<(), String> {
     if command.argv.is_empty() {
         return Err("pipeline operator requires a command on both sides".into());
     }
@@ -177,6 +183,10 @@ fn lex(line: &str) -> Result<Vec<Token>, String> {
             '|' => {
                 flush_word(&mut tokens, &mut word);
                 tokens.push(Token::Pipe);
+            }
+            ';' => {
+                flush_word(&mut tokens, &mut word);
+                tokens.push(Token::Sequence);
             }
             '2' if word.is_empty() && chars.get(index + 1).copied() == Some('>') => {
                 flush_word(&mut tokens, &mut word);
@@ -304,21 +314,24 @@ fn compatibility_command(argv: &[String]) -> Option<Command> {
         "cmd" => {
             let mut command = Command::new("cmd.exe");
             if argv.len() > 1 {
-                command.args(["/d", "/s", "/c", &join_command(&argv[1..])]);
+                let joined = join_command(&argv[1..]);
+                command.args(["/d", "/s", "/c", joined.as_str()]);
             }
             Some(command)
         }
         "powershell" => {
             let mut command = Command::new("powershell.exe");
             if argv.len() > 1 {
-                command.args(["-NoLogo", "-NoProfile", "-Command", &join_command(&argv[1..])]);
+                let joined = join_command(&argv[1..]);
+                command.args(["-NoLogo", "-NoProfile", "-Command", joined.as_str()]);
             }
             Some(command)
         }
         "pwsh" => {
             let mut command = Command::new("pwsh.exe");
             if argv.len() > 1 {
-                command.args(["-NoLogo", "-NoProfile", "-Command", &join_command(&argv[1..])]);
+                let joined = join_command(&argv[1..]);
+                command.args(["-NoLogo", "-NoProfile", "-Command", joined.as_str()]);
             }
             Some(command)
         }
@@ -604,9 +617,15 @@ mod tests {
         let parsed = parse_line("first a | second >> out.txt || third 2> err.txt").unwrap();
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].pipeline.len(), 2);
-        assert_eq!(parsed[0].pipeline[1].stdout, Some((PathBuf::from("out.txt"), true)));
+        assert_eq!(
+            parsed[0].pipeline[1].stdout,
+            Some((PathBuf::from("out.txt"), true))
+        );
         assert_eq!(parsed[1].gate, Some(Connector::Or));
-        assert_eq!(parsed[1].pipeline[0].stderr, Some((PathBuf::from("err.txt"), false)));
+        assert_eq!(
+            parsed[1].pipeline[0].stderr,
+            Some((PathBuf::from("err.txt"), false))
+        );
     }
 
     #[test]

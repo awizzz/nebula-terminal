@@ -1,8 +1,8 @@
 [general]
 # "auto" follows the Windows display language. You can also use "fr-FR", "en-US", etc.
 language = "auto"
-# Supported command backends: cmd, powershell, pwsh
-backend = "cmd"
+# Supported command backends: native, cmd, powershell, pwsh
+backend = "native"
 show_banner = true
 # Persistent history can be disabled entirely.
 history_enabled = true
