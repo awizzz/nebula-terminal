@@ -1,0 +1,38 @@
+[general]
+# "auto" follows the Windows user locale. You can also use "fr-FR", "en-US", etc.
+language = "auto"
+# Supported backends: cmd, powershell, pwsh
+backend = "cmd"
+show_banner = true
+history_limit = 10000
+
+[prompt]
+template = "╭─ {status} {identity}{cwd}{git}{duration}{exit}"
+indicator_line = "╰─{indicator} "
+indicator = "❯"
+multiline_indicator = "· "
+show_git = true
+show_duration = true
+show_exit_code = true
+show_user = false
+show_hostname = false
+
+[theme]
+# Built-in presets can be applied with: theme <name>
+preset = "hypr"
+foreground = "#CDD6F4"
+muted = "#7F849C"
+accent = "#89DCEB"
+path = "#89B4FA"
+git = "#CBA6F7"
+success = "#A6E3A1"
+warning = "#F9E2AF"
+error = "#F38BA8"
+admin = "#F38BA8"
+
+[aliases]
+ll = "dir"
+gs = "git status"
+
+[env]
+# EDITOR = "code"

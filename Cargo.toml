@@ -1,0 +1,23 @@
+[package]
+name = "nebula-shell"
+version = "0.2.0"
+edition = "2021"
+description = "A fast, customizable Windows shell frontend"
+repository = "https://github.com/awizzz/custom-shell"
+
+[[bin]]
+name = "nebula"
+path = "src/main.rs"
+
+[dependencies]
+nu-ansi-term = "0.50"
+reedline = "0.51"
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = "symbols"
