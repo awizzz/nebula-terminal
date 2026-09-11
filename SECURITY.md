@@ -40,6 +40,12 @@ history clear
 
 Nebula validates configuration values before saving or loading them. Configuration changes are written through a temporary file and replaced atomically.
 
-Published releases include a SHA-256 checksum. When the optional signing provider is configured, the release workflow also verifies the Authenticode signature before publishing the executable.
+Published releases include a SHA-256 checksum and a GitHub Artifact Attestation for the final executable. A recent GitHub CLI can verify that provenance with:
 
-The dependency graph is committed in `Cargo.lock`, normal CI builds use `--locked`, and a scheduled workflow runs `cargo audit` against the RustSec advisory database.
+```powershell
+gh attestation verify .\Nebula.exe --repo awizzz/custom-shell
+```
+
+When the optional signing provider is configured, the release workflow also verifies the Authenticode signature before publishing the executable.
+
+The dependency graph is committed in `Cargo.lock`, normal CI builds use `--locked`, dependency changes are audited before merge, and a scheduled workflow runs `cargo audit` against the RustSec advisory database.
