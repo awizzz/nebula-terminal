@@ -241,11 +241,7 @@ pub fn build_prompt(
     let duration = if config.prompt.show_duration && last_duration > Duration::from_millis(10) {
         format!(
             "  {}",
-            ui::paint(
-                &config.theme.muted,
-                &format_duration(last_duration),
-                false,
-            )
+            ui::paint(&config.theme.muted, &format_duration(last_duration), false,)
         )
     } else {
         String::new()
@@ -254,11 +250,7 @@ pub fn build_prompt(
     let exit = if config.prompt.show_exit_code && last_code != 0 {
         format!(
             "  {}",
-            ui::paint(
-                &config.theme.error,
-                &format!("exit:{last_code}"),
-                false,
-            )
+            ui::paint(&config.theme.error, &format!("exit:{last_code}"), false,)
         )
     } else {
         String::new()

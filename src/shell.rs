@@ -211,7 +211,10 @@ fn dispatch(
                         LoopAction::RebuildEditor
                     }
                     Err(error) => {
-                        eprintln!("{}", ui::paint(&config.theme.error, &error.to_string(), false));
+                        eprintln!(
+                            "{}",
+                            ui::paint(&config.theme.error, &error.to_string(), false)
+                        );
                         state.last_code = 1;
                         LoopAction::Continue
                     }
@@ -295,24 +298,21 @@ fn handle_sudo(rest: &str, state: &mut ShellState, config: &Config, translator: 
         return;
     }
 
-    state.last_code = match platform::run_command_elevated(
-        rest,
-        &state.cwd,
-        &config.general.backend,
-    ) {
-        Ok(()) => 0,
-        Err(error) => {
-            eprintln!(
-                "{}",
-                ui::paint(
-                    &config.theme.error,
-                    &translator.value("msg.elevation_failed", error),
-                    false,
-                )
-            );
-            1
-        }
-    };
+    state.last_code =
+        match platform::run_command_elevated(rest, &state.cwd, &config.general.backend) {
+            Ok(()) => 0,
+            Err(error) => {
+                eprintln!(
+                    "{}",
+                    ui::paint(
+                        &config.theme.error,
+                        &translator.value("msg.elevation_failed", error),
+                        false,
+                    )
+                );
+                1
+            }
+        };
 }
 
 fn handle_config(
