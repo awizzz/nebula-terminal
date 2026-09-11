@@ -10,7 +10,7 @@ Nebula is still pre-1.0. The priorities below describe direction rather than fix
 - expand automated tests around native parsing, Windows path handling, aliases and configuration migration
 - improve executable metadata and Windows packaging
 - publish package-manager manifests after the release format is stable
-- begin the Nebula Terminal design/host phase defined in [`terminal-ui.md`](terminal-ui.md)
+- harden the Nebula Terminal preview with real-world daily use before a stable desktop line
 
 ## Shell runtime
 
@@ -46,21 +46,39 @@ Once the release pipeline and command surface are stable:
 - ARM64 builds
 - Winget package
 - Scoop manifest
-- Windows executable icon and version resources
+- richer Windows executable metadata
 - signed releases when a trusted code-signing setup is available
 
 ## Nebula Terminal
 
-Nebula Shell remains usable independently in any compatible terminal emulator. Nebula Terminal is a separate graphical desktop application that will make Nebula the default experience while still hosting CMD, Windows PowerShell, PowerShell 7, WSL, SSH and custom executable profiles.
+Nebula Shell remains usable independently in any compatible terminal emulator. Nebula Terminal is a separate graphical desktop application that makes Nebula the default experience while still hosting CMD, Windows PowerShell, PowerShell 7 and WSL profiles.
 
-The current architecture direction is documented in [`terminal-ui.md`](terminal-ui.md). The initial implementation track is:
+The architecture is documented in [`terminal-ui.md`](terminal-ui.md).
 
-1. create and approve the complete desktop visual concept and design system
-2. scaffold a Tauri 2 + React/TypeScript host with custom application chrome
-3. integrate xterm.js with a Rust PTY/ConPTY session service
-4. add tabs, split panes, profiles, command palette, clickable settings, theme import/export and keybinding editing
-5. expose structured Nebula Shell metadata to the graphical host without scraping terminal output
-6. harden packaging, updates, accessibility and performance before a stable desktop release
+### Implemented preview foundation
+
+- Tauri 2 + React/TypeScript desktop host with custom application chrome
+- xterm.js backed by native Rust PTY/ConPTY sessions
+- draggable tabs and profile picker
+- vertical and horizontal split panes
+- command palette and terminal search
+- persistent tab/split session restoration
+- clickable settings with theme gallery, background images and live terminal typography
+- editable keyboard shortcuts
+- theme JSON import/export
+- Windows MSI/NSIS and portable ZIP release workflow
+- bundled Nebula Shell resource in Terminal release builds
+
+### Next desktop milestones
+
+- collect feedback from daily use and harden PTY edge cases
+- structured Nebula Shell metadata for cwd, Git state, elevation and command status without scraping terminal text
+- richer profile editing for custom executables, SSH hosts and WSL distributions
+- pane resizing by drag handles and more flexible split trees
+- Windows notifications for completed long-running commands in inactive tabs
+- automated update UX once the preview release format has proven stable
+- accessibility review, keyboard-only QA and performance profiling on low-power hardware
+- ARM64 packaging and package-manager distribution
 
 The terminal must not become a dependency of `nebula.exe`, and the graphical host must not move normal Nebula command execution back through CMD or PowerShell.
 
