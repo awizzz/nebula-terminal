@@ -22,6 +22,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          $allErrors = @()
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            $allErrors += @($errors)
+          }
+
+          if ($allErrors.Count -gt 0) {
+            $allErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:

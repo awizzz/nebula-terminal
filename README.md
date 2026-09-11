@@ -10,9 +10,34 @@ Nebula is a **shell frontend**, not a terminal emulator. It runs inside Windows 
 
 ## Install
 
-Download `Nebula.exe` from the latest GitHub Release and run it directly. The executable is standalone; Python and Rust are not required at runtime.
+### PowerShell installer
 
-Release assets also include `Nebula.exe.sha256`. To verify a download in PowerShell:
+Download the installer, inspect it if desired, then run it:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/awizzz/custom-shell/main/scripts/install.ps1 -OutFile .\install-nebula.ps1
+Get-Content .\install-nebula.ps1
+Unblock-File .\install-nebula.ps1
+.\install-nebula.ps1
+```
+
+The installer runs per-user, does not require administrator privileges, downloads the selected GitHub Release, verifies `Nebula.exe` against the published SHA-256 file and installs it under `%LOCALAPPDATA%\Programs\Nebula`. It also adds that directory to the user `PATH` unless `-NoPath` is supplied.
+
+Useful installer options:
+
+```powershell
+.\install-nebula.ps1 -Version v0.4.0
+.\install-nebula.ps1 -InstallDir D:\Tools\Nebula
+.\install-nebula.ps1 -NoPath
+```
+
+The release also contains `uninstall.ps1` for removing the per-user installation and its `PATH` entry.
+
+### Portable install
+
+Download either `Nebula.exe` directly or the versioned `Nebula-<version>-windows-x64.zip` from the latest GitHub Release. The executable is standalone; Python and Rust are not required at runtime.
+
+Release assets include SHA-256 files. To verify the standalone executable in PowerShell:
 
 ```powershell
 Get-FileHash .\Nebula.exe -Algorithm SHA256
@@ -41,6 +66,18 @@ Unsigned releases can trigger a Windows SmartScreen warning. Releases are marked
 - administrator relaunch and backend-aware one-command UAC elevation
 - Git branch, exit status, command duration and optional local clock in the prompt
 - configuration validation and runtime diagnostics
+- conventional non-interactive `--help` and `--version` startup options
+
+## Command-line startup
+
+```text
+nebula
+nebula --help
+nebula --version
+nebula --admin
+```
+
+Running `nebula` without arguments starts the interactive shell. Unknown startup options fail with exit code `2` rather than being silently ignored.
 
 ## Quick start
 
@@ -183,7 +220,7 @@ Before submitting a change:
 ```powershell
 cargo fmt -- --check
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo test --locked --all-targets
 cargo build --locked --release
 ```
 

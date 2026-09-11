@@ -14,6 +14,10 @@ Notable user-facing changes are listed here.
 - backend-aware `sudo` for CMD, Windows PowerShell and PowerShell 7
 - nested alias expansion with cycle protection
 - automated tests for configuration, locale parity, aliases, parsing and prompt duration formatting
+- conventional `nebula --help`, `nebula -h` and startup-option validation
+- a verified per-user PowerShell installer and matching uninstaller
+- versioned portable ZIP release packages with SHA-256 files
+- build-provenance attestations for both the standalone executable and portable ZIP
 - scheduled RustSec dependency audit
 - MIT license
 
@@ -27,8 +31,11 @@ Notable user-facing changes are listed here.
 - moved remaining built-in UI/help strings into the locale files
 - pin the Rust toolchain and commit `Cargo.lock`
 - build, lint and test with Cargo `--locked` mode
+- run the test suite across all Cargo targets in CI and release workflows
+- validate PowerShell distribution scripts in CI before publishing
 - separate normal CI from release publishing
 - publish releases only from an explicit version tag or manual release workflow
+- serialize release workflows and cancel stale normal CI runs
 - pin GitHub Actions to immutable commit SHAs
 - use changelog sections as GitHub Release notes
 
@@ -37,6 +44,8 @@ Notable user-facing changes are listed here.
 - normal CI now runs with read-only repository permissions
 - persistent command history can be disabled
 - sensitive one-off commands can be excluded from persistent history with a leading space
+- the installer verifies the downloaded executable against the release SHA-256 before installation
+- dependency changes landing on `main` trigger a RustSec audit
 - release signing remains optional, but signed artifacts are verified before publication
 
 ## 0.3.0 — 2026-09-11

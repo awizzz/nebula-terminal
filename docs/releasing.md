@@ -13,7 +13,7 @@ Run locally:
 ```powershell
 cargo fmt -- --check
 cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
+cargo test --locked --all-targets
 cargo build --locked --release
 ```
 
@@ -38,23 +38,40 @@ The workflow validates that the requested version matches `Cargo.toml` and publi
 
 ## Release contents
 
-A successful release contains:
+A successful release contains the standalone executable, its checksum, a versioned portable package and the installer scripts:
 
 ```text
 Nebula.exe
 Nebula.exe.sha256
+Nebula-<version>-windows-x64.zip
+Nebula-<version>-windows-x64.zip.sha256
+install.ps1
+uninstall.ps1
+```
+
+The portable ZIP contains:
+
+```text
+Nebula.exe
+README.md
+CHANGELOG.md
+LICENSE
+config.example.toml
+install.ps1
+uninstall.ps1
 ```
 
 Release notes are taken from the matching version section in `CHANGELOG.md`.
 
 ## Build provenance
 
-The final `Nebula.exe` is submitted to GitHub Artifact Attestations before publication. The attestation records SLSA build provenance and is signed through GitHub's Sigstore-backed attestation service.
+Both the final `Nebula.exe` and the versioned portable ZIP are submitted to GitHub Artifact Attestations before publication. The attestations record SLSA build provenance and are signed through GitHub's Sigstore-backed attestation service.
 
 Users can verify provenance with a recent GitHub CLI:
 
 ```powershell
 gh attestation verify .\Nebula.exe --repo awizzz/custom-shell
+gh attestation verify .\Nebula-0.4.0-windows-x64.zip --repo awizzz/custom-shell
 ```
 
 This provenance is separate from Authenticode. It proves which GitHub repository and workflow produced the artifact; Authenticode provides Windows publisher trust when a signing provider is configured.
@@ -85,15 +102,17 @@ Never commit signing tokens, certificates or private keys.
 
 Before publishing, the workflow:
 
-1. checks the requested/tagged version against `Cargo.toml`
-2. verifies formatting
-3. runs Clippy with warnings denied
-4. runs the test suite with the committed lockfile
-5. builds the release executable with the committed lockfile
-6. optionally signs the exact uploaded build artifact
-7. verifies Authenticode when signing is enabled
-8. generates `Nebula.exe.sha256`
-9. creates a GitHub/Sigstore build-provenance attestation for the final executable
-10. publishes release notes from `CHANGELOG.md`
+1. validates the PowerShell distribution scripts
+2. checks the requested/tagged version against `Cargo.toml`
+3. verifies formatting
+4. runs Clippy with warnings denied
+5. runs the test suite across all Cargo targets with the committed lockfile
+6. builds the release executable with the committed lockfile
+7. optionally signs the exact uploaded build artifact
+8. verifies Authenticode when signing is enabled
+9. generates SHA-256 files for the standalone executable and portable ZIP
+10. creates GitHub/Sigstore build-provenance attestations for the executable and ZIP
+11. publishes the installer and uninstaller alongside the binary artifacts
+12. publishes release notes from `CHANGELOG.md`
 
 The workflow is defined in `.github/workflows/release.yml`.

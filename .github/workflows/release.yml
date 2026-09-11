@@ -29,6 +29,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          $allErrors = @()
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            $allErrors += @($errors)
+          }
+
+          if ($allErrors.Count -gt 0) {
+            $allErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
         with:
@@ -149,6 +169,26 @@ jobs:
           "$hash  Nebula.exe" | Set-Content release/Nebula.exe.sha256 -Encoding ascii
 
           $version = '${{ steps.version.outputs.version }}'
+          $packageName = "Nebula-$version-windows-x64"
+          $packageDir = Join-Path release $packageName
+          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+
+          Copy-Item release/Nebula.exe (Join-Path $packageDir 'Nebula.exe')
+          Copy-Item README.md (Join-Path $packageDir 'README.md')
+          Copy-Item CHANGELOG.md (Join-Path $packageDir 'CHANGELOG.md')
+          Copy-Item LICENSE (Join-Path $packageDir 'LICENSE')
+          Copy-Item config.example.toml (Join-Path $packageDir 'config.example.toml')
+          Copy-Item scripts/install.ps1 (Join-Path $packageDir 'install.ps1')
+          Copy-Item scripts/uninstall.ps1 (Join-Path $packageDir 'uninstall.ps1')
+
+          $zipPath = "release/$packageName.zip"
+          Compress-Archive -Path "$packageDir/*" -DestinationPath $zipPath -CompressionLevel Optimal
+          $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$zipHash  $packageName.zip" | Set-Content "$zipPath.sha256" -Encoding ascii
+
+          Copy-Item scripts/install.ps1 release/install.ps1
+          Copy-Item scripts/uninstall.ps1 release/uninstall.ps1
+
           $lines = Get-Content CHANGELOG.md
           $start = -1
           $end = $lines.Count
@@ -168,10 +208,15 @@ jobs:
             "Nebula $version" | Set-Content release/release-notes.md -Encoding utf8
           }
 
-      - name: Attest build provenance
+      - name: Attest executable provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
           subject-path: release/Nebula.exe
+
+      - name: Attest portable package provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: release/Nebula-*-windows-x64.zip
 
       - name: Upload final release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -180,6 +225,10 @@ jobs:
           path: |
             release/Nebula.exe
             release/Nebula.exe.sha256
+            release/Nebula-*-windows-x64.zip
+            release/Nebula-*-windows-x64.zip.sha256
+            release/install.ps1
+            release/uninstall.ps1
           if-no-files-found: error
           retention-days: 30
 
@@ -191,9 +240,16 @@ jobs:
           $tag = '${{ steps.version.outputs.tag }}'
           $signed = '${{ steps.files.outputs.signed }}' -eq 'true'
           $title = if ($signed) { "Nebula $tag" } else { "Nebula $tag (unsigned)" }
+          $zip = Get-ChildItem release -File -Filter 'Nebula-*-windows-x64.zip' | Select-Object -First 1
+          if (-not $zip) { throw 'Portable package was not created.' }
+
           gh release create $tag `
             release/Nebula.exe `
             release/Nebula.exe.sha256 `
+            $zip.FullName `
+            "$($zip.FullName).sha256" `
+            release/install.ps1 `
+            release/uninstall.ps1 `
             --target '${{ github.sha }}' `
             --title $title `
             --notes-file release/release-notes.md
