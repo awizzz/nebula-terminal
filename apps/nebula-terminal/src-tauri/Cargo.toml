@@ -1,0 +1,23 @@
+[package]
+name = "nebula-terminal"
+version = "0.1.0"
+description = "Nebula Terminal desktop host"
+authors = ["Awizz"]
+edition = "2021"
+rust-version = "1.98"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = "2.6.3"
+
+[dependencies]
+portable-pty = "0.9.0"
+serde = { version = "1", features = ["derive"] }
+tauri = { version = "2.11.5" }
+window-vibrancy = "0.8.0"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true
