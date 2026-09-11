@@ -190,8 +190,11 @@ fn build_editor(config: &Config, cwd: &Path) -> Reedline {
 
     let edit_mode = Box::new(Emacs::new(keybindings));
     let hinter = Box::new(
-        DefaultHinter::default()
-            .with_style(Style::new().italic().fg(ui::parse_color(&config.theme.muted))),
+        DefaultHinter::default().with_style(
+            Style::new()
+                .italic()
+                .fg(ui::parse_color(&config.theme.muted)),
+        ),
     );
 
     editor
@@ -204,10 +207,41 @@ fn build_editor(config: &Config, cwd: &Path) -> Reedline {
 fn completion_values(config: &Config, cwd: &Path) -> Vec<String> {
     let mut values = BTreeSet::new();
     for command in [
-        "about", "admin", "alias", "backend", "cd", "chdir", "clear", "cls", "config",
-        "dir", "doctor", "echo", "exit", "git", "help", "history", "ipconfig", "lang",
-        "language", "netsh", "ping", "popd", "powershell", "pushd", "pwd", "python",
-        "reload", "set", "ssh", "sudo", "systeminfo", "theme", "ui", "version", "where",
+        "about",
+        "admin",
+        "alias",
+        "backend",
+        "cd",
+        "chdir",
+        "clear",
+        "cls",
+        "config",
+        "dir",
+        "doctor",
+        "echo",
+        "exit",
+        "git",
+        "help",
+        "history",
+        "ipconfig",
+        "lang",
+        "language",
+        "netsh",
+        "ping",
+        "popd",
+        "powershell",
+        "pushd",
+        "pwd",
+        "python",
+        "reload",
+        "set",
+        "ssh",
+        "sudo",
+        "systeminfo",
+        "theme",
+        "ui",
+        "version",
+        "where",
         "winget",
     ] {
         values.insert(command.to_string());
@@ -266,11 +300,7 @@ fn build_prompt(state: &ShellState, config: &Config, translator: &Translator) ->
     let status = if admin {
         paint(&config.theme.admin, &translator.text("status.admin"), true)
     } else {
-        paint(
-            &config.theme.success,
-            &translator.text("status.user"),
-            true,
-        )
+        paint(&config.theme.success, &translator.text("status.user"), true)
     };
 
     let identity = match (config.prompt.show_user, config.prompt.show_hostname) {
@@ -478,11 +508,7 @@ fn dispatch(
     }
 }
 
-fn handle_admin(
-    state: &mut ShellState,
-    config: &Config,
-    translator: &Translator,
-) -> LoopAction {
+fn handle_admin(state: &mut ShellState, config: &Config, translator: &Translator) -> LoopAction {
     if platform::is_admin() {
         println!(
             "{}",
@@ -524,12 +550,7 @@ fn handle_admin(
     }
 }
 
-fn handle_sudo(
-    rest: &str,
-    state: &mut ShellState,
-    config: &Config,
-    translator: &Translator,
-) {
+fn handle_sudo(rest: &str, state: &mut ShellState, config: &Config, translator: &Translator) {
     if rest.is_empty() {
         println!("{}", translator.text("msg.sudo_usage"));
         state.last_code = 1;
@@ -904,10 +925,7 @@ fn handle_alias(
                 return LoopAction::RebuildEditor;
             }
         }
-        println!(
-            "{}",
-            translator.value("msg.alias_missing", name)
-        );
+        println!("{}", translator.value("msg.alias_missing", name));
         state.last_code = 1;
         return LoopAction::Continue;
     }
@@ -1024,14 +1042,22 @@ fn run_doctor(state: &mut ShellState, config: &Config, translator: &Translator) 
     print_check(
         ui::animations_available(),
         &translator.text("doctor.animations"),
-        if ui::animations_available() { "TTY" } else { "non-TTY" },
+        if ui::animations_available() {
+            "TTY"
+        } else {
+            "non-TTY"
+        },
         config,
         translator,
     );
     print_check(
         true,
         &translator.text("doctor.admin"),
-        if platform::is_admin() { "ADMIN" } else { "USER" },
+        if platform::is_admin() {
+            "ADMIN"
+        } else {
+            "USER"
+        },
         config,
         translator,
     );
@@ -1040,13 +1066,7 @@ fn run_doctor(state: &mut ShellState, config: &Config, translator: &Translator) 
     state.last_code = if config_ok && backend_ok { 0 } else { 1 };
 }
 
-fn print_check(
-    ok: bool,
-    label: &str,
-    detail: &str,
-    config: &Config,
-    translator: &Translator,
-) {
+fn print_check(ok: bool, label: &str, detail: &str, config: &Config, translator: &Translator) {
     let (color, mark, status_key) = if ok {
         (&config.theme.success, "●", "doctor.ok")
     } else {
@@ -1070,11 +1090,7 @@ fn change_directory(
     let Some(target) = resolve_directory(rest, &state.cwd) else {
         println!(
             "{}",
-            paint(
-                &theme.error,
-                &translator.text("msg.path_not_found"),
-                false,
-            )
+            paint(&theme.error, &translator.text("msg.path_not_found"), false,)
         );
         state.last_code = 1;
         return false;
@@ -1083,11 +1099,7 @@ fn change_directory(
     if !target.exists() {
         println!(
             "{}",
-            paint(
-                &theme.error,
-                &translator.text("msg.path_not_found"),
-                false,
-            )
+            paint(&theme.error, &translator.text("msg.path_not_found"), false,)
         );
         state.last_code = 1;
         return false;
@@ -1135,11 +1147,7 @@ fn switch_drive(
     if !Path::new(&root).exists() {
         println!(
             "{}",
-            paint(
-                &theme.error,
-                &translator.text("msg.path_not_found"),
-                false,
-            )
+            paint(&theme.error, &translator.text("msg.path_not_found"), false,)
         );
         state.last_code = 1;
         return false;
@@ -1173,15 +1181,14 @@ fn resolve_directory(raw: &str, cwd: &Path) -> Option<PathBuf> {
     let raw = raw.trim_matches('"');
     let expanded = expand_environment(raw);
     let path = PathBuf::from(expanded);
-    Some(if path.is_absolute() { path } else { cwd.join(path) })
+    Some(if path.is_absolute() {
+        path
+    } else {
+        cwd.join(path)
+    })
 }
 
-fn handle_set(
-    rest: &str,
-    state: &mut ShellState,
-    translator: &Translator,
-    theme: &ThemeConfig,
-) {
+fn handle_set(rest: &str, state: &mut ShellState, translator: &Translator, theme: &ThemeConfig) {
     let rest = rest.trim();
     if rest.is_empty() {
         let mut vars: Vec<_> = env::vars().collect();
@@ -1266,10 +1273,7 @@ fn execute_external(line: &str, cwd: &Path, config: &Config, translator: &Transl
     }
 }
 
-fn expand_alias(
-    line: &str,
-    aliases: &std::collections::BTreeMap<String, String>,
-) -> String {
+fn expand_alias(line: &str, aliases: &std::collections::BTreeMap<String, String>) -> String {
     let (command, rest) = split_command(line);
     let key = command.to_ascii_lowercase();
     if let Some(replacement) = aliases.get(&key) {
@@ -1384,9 +1388,6 @@ fn print_help(translator: &Translator, theme: &ThemeConfig) {
 
 fn set_terminal_title(cwd: &Path) {
     let admin = if platform::is_admin() { " [ADMIN]" } else { "" };
-    print!(
-        "\x1b]0;{APP_NAME}{admin} — {}\x07",
-        compact_path(cwd)
-    );
+    print!("\x1b]0;{APP_NAME}{admin} — {}\x07", compact_path(cwd));
     let _ = io::stdout().flush();
 }

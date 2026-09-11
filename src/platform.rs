@@ -156,9 +156,8 @@ mod windows {
         }
 
         let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
-        let len = unsafe {
-            GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32)
-        };
+        let len =
+            unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32) };
         buffer_to_string(&buffer, len)
     }
 

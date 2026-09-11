@@ -164,20 +164,41 @@ impl Config {
                 .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
         }
 
-        let raw = toml::to_string_pretty(self)
-            .map_err(|e| format!("failed to serialize config: {e}"))?;
+        let raw =
+            toml::to_string_pretty(self).map_err(|e| format!("failed to serialize config: {e}"))?;
         fs::write(&path, raw).map_err(|e| format!("failed to write {}: {e}", path.display()))
     }
 
     pub fn apply_theme_preset(&mut self, name: &str) -> bool {
         let colors = match name.to_ascii_lowercase().as_str() {
-            "hypr" => ["#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8", "#F38BA8", "#313244"],
-            "tokyo-night" | "tokyo" => ["#C0CAF5", "#565F89", "#7DCFFF", "#7AA2F7", "#BB9AF7", "#9ECE6A", "#E0AF68", "#F7768E", "#F7768E", "#24283B"],
-            "catppuccin" | "mocha" => ["#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8", "#F38BA8", "#313244"],
-            "nord" => ["#D8DEE9", "#7B88A1", "#88C0D0", "#81A1C1", "#B48EAD", "#A3BE8C", "#EBCB8B", "#BF616A", "#BF616A", "#3B4252"],
-            "dracula" => ["#F8F8F2", "#6272A4", "#8BE9FD", "#8BE9FD", "#BD93F9", "#50FA7B", "#F1FA8C", "#FF5555", "#FF5555", "#44475A"],
-            "rose-pine" | "rose" => ["#E0DEF4", "#908CAA", "#9CCFD8", "#C4A7E7", "#EBBCBA", "#9CCFD8", "#F6C177", "#EB6F92", "#EB6F92", "#26233A"],
-            "gruvbox" => ["#EBDBB2", "#928374", "#83A598", "#FABD2F", "#D3869B", "#B8BB26", "#FABD2F", "#FB4934", "#FB4934", "#3C3836"],
+            "hypr" => [
+                "#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF",
+                "#F38BA8", "#F38BA8", "#313244",
+            ],
+            "tokyo-night" | "tokyo" => [
+                "#C0CAF5", "#565F89", "#7DCFFF", "#7AA2F7", "#BB9AF7", "#9ECE6A", "#E0AF68",
+                "#F7768E", "#F7768E", "#24283B",
+            ],
+            "catppuccin" | "mocha" => [
+                "#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF",
+                "#F38BA8", "#F38BA8", "#313244",
+            ],
+            "nord" => [
+                "#D8DEE9", "#7B88A1", "#88C0D0", "#81A1C1", "#B48EAD", "#A3BE8C", "#EBCB8B",
+                "#BF616A", "#BF616A", "#3B4252",
+            ],
+            "dracula" => [
+                "#F8F8F2", "#6272A4", "#8BE9FD", "#8BE9FD", "#BD93F9", "#50FA7B", "#F1FA8C",
+                "#FF5555", "#FF5555", "#44475A",
+            ],
+            "rose-pine" | "rose" => [
+                "#E0DEF4", "#908CAA", "#9CCFD8", "#C4A7E7", "#EBBCBA", "#9CCFD8", "#F6C177",
+                "#EB6F92", "#EB6F92", "#26233A",
+            ],
+            "gruvbox" => [
+                "#EBDBB2", "#928374", "#83A598", "#FABD2F", "#D3869B", "#B8BB26", "#FABD2F",
+                "#FB4934", "#FB4934", "#3C3836",
+            ],
             _ => return false,
         };
 

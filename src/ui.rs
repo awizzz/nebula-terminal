@@ -184,11 +184,7 @@ fn aurora_banner(
         paint(&config.theme.panel, "│ ", false),
         paint(
             mode_color,
-            &format!(
-                "{:<width$}",
-                truncate(&meta, width - 2),
-                width = width - 2
-            ),
+            &format!("{:<width$}", truncate(&meta, width - 2), width = width - 2),
             true
         ),
         paint(&config.theme.panel, " │", false)
