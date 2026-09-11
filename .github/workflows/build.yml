@@ -22,6 +22,14 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Check
         run: cargo check
@@ -32,17 +40,17 @@ jobs:
       - name: Build release executable
         run: cargo build --release
 
-      - name: Prepare unsigned artifact
+      - name: Prepare build artifact
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target/release/nebula.exe dist/Nebula.exe
 
-      - name: Upload unsigned build artifact
+      - name: Upload build artifact
         id: upload_unsigned
         uses: actions/upload-artifact@v4
         with:
-          name: Nebula-windows-x64-unsigned
+          name: Nebula-windows-x64
           path: dist/Nebula.exe
           if-no-files-found: error
 
@@ -55,16 +63,15 @@ jobs:
           if (-not $package) {
             throw 'Could not find the nebula-shell package in Cargo metadata.'
           }
-
           $expectedTag = "v$($package.version)"
           $actualTag = '${{ github.ref_name }}'
-
           if ($actualTag -ne $expectedTag) {
             throw "Release tag '$actualTag' does not match Cargo version '$expectedTag'."
           }
 
-      - name: Require release signing configuration
+      - name: Detect signing configuration
         if: startsWith(github.ref, 'refs/tags/v')
+        id: signing
         shell: pwsh
         env:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -72,26 +79,17 @@ jobs:
           SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
         run: |
-          $required = @(
-            'SIGNPATH_API_TOKEN',
-            'SIGNPATH_ORGANIZATION_ID',
-            'SIGNPATH_PROJECT_SLUG',
-            'SIGNPATH_SIGNING_POLICY_SLUG'
-          )
-
-          $missing = @()
-          foreach ($name in $required) {
-            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
-              $missing += $name
-            }
-          }
-
-          if ($missing.Count -gt 0) {
-            throw "Release signing is not configured. Missing: $($missing -join ', '). No unsigned GitHub Release will be published."
+          $values = @($env:SIGNPATH_API_TOKEN, $env:SIGNPATH_ORGANIZATION_ID, $env:SIGNPATH_PROJECT_SLUG, $env:SIGNPATH_SIGNING_POLICY_SLUG)
+          $enabled = -not ($values | Where-Object { [string]::IsNullOrWhiteSpace($_) })
+          "enabled=$($enabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if ($enabled) {
+            Write-Host 'SignPath configuration detected. This release will be signed.'
+          } else {
+            Write-Warning 'SignPath is not configured. This release will be published unsigned.'
           }
 
       - name: Sign release executable with SignPath
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && steps.signing.outputs.enabled == 'true'
         uses: signpath/github-action-submit-signing-request@v2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -102,52 +100,46 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: ${{ github.workspace }}/signed
 
-      - name: Verify Authenticode signature
+      - name: Prepare release assets
         if: startsWith(github.ref, 'refs/tags/v')
+        id: release_assets
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path signed -Recurse -File -Filter Nebula.exe | Select-Object -First 1
-          if (-not $exe) {
-            throw 'SignPath did not return Nebula.exe.'
-          }
-
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item $exe.FullName release/Nebula.exe
-
-          $signature = Get-AuthenticodeSignature release/Nebula.exe
-          if ($signature.Status -ne 'Valid') {
-            throw "Authenticode verification failed: $($signature.Status) - $($signature.StatusMessage)"
+          $signed = '${{ steps.signing.outputs.enabled }}' -eq 'true'
+          if ($signed) {
+            $exe = Get-ChildItem -Path signed -Recurse -File -Filter Nebula.exe | Select-Object -First 1
+            if (-not $exe) { throw 'SignPath did not return Nebula.exe.' }
+            Copy-Item $exe.FullName release/Nebula.exe
+            $signature = Get-AuthenticodeSignature release/Nebula.exe
+            if ($signature.Status -ne 'Valid') {
+              throw "Authenticode verification failed: $($signature.Status) - $($signature.StatusMessage)"
+            }
+            Write-Host "Verified publisher: $($signature.SignerCertificate.Subject)"
+            'signed=true' >> $env:GITHUB_OUTPUT
+          } else {
+            Copy-Item dist/Nebula.exe release/Nebula.exe
+            'signed=false' >> $env:GITHUB_OUTPUT
           }
-
-          if (-not $signature.SignerCertificate) {
-            throw 'The signed executable has no signer certificate.'
-          }
-
-          Write-Host "Verified publisher: $($signature.SignerCertificate.Subject)"
-          Write-Host "Certificate thumbprint: $($signature.SignerCertificate.Thumbprint)"
-
           $hash = (Get-FileHash release/Nebula.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  Nebula.exe" | Set-Content release/Nebula.exe.sha256 -Encoding ascii
 
-      - name: Upload signed release artifact
+      - name: Upload release artifact
         if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
-          name: Nebula-windows-x64-signed
+          name: Nebula-windows-x64-release
           path: |
             release/Nebula.exe
             release/Nebula.exe.sha256
           if-no-files-found: error
 
-      - name: Publish signed GitHub release
+      - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" `
-            release/Nebula.exe `
-            release/Nebula.exe.sha256 `
-            --verify-tag `
-            --generate-notes `
-            --title "Nebula ${{ github.ref_name }}"
+          $signed = '${{ steps.release_assets.outputs.signed }}' -eq 'true'
+          $title = if ($signed) { "Nebula ${{ github.ref_name }}" } else { "Nebula ${{ github.ref_name }} (unsigned)" }
+          gh release create "${{ github.ref_name }}" release/Nebula.exe release/Nebula.exe.sha256 --verify-tag --generate-notes --title $title

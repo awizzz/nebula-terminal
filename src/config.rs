@@ -7,6 +7,7 @@ use crate::platform;
 #[serde(default)]
 pub struct Config {
     pub general: GeneralConfig,
+    pub ui: UiConfig,
     pub prompt: PromptConfig,
     pub theme: ThemeConfig,
     pub aliases: BTreeMap<String, String>,
@@ -24,6 +25,16 @@ pub struct GeneralConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct UiConfig {
+    pub animations: bool,
+    pub animation_speed_ms: u64,
+    pub banner_style: String,
+    pub show_tips: bool,
+    pub command_separator: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PromptConfig {
     pub template: String,
     pub indicator_line: String,
@@ -34,6 +45,7 @@ pub struct PromptConfig {
     pub show_exit_code: bool,
     pub show_user: bool,
     pub show_hostname: bool,
+    pub show_time: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +61,7 @@ pub struct ThemeConfig {
     pub warning: String,
     pub error: String,
     pub admin: String,
+    pub panel: String,
 }
 
 impl Default for Config {
@@ -59,6 +72,7 @@ impl Default for Config {
 
         Self {
             general: GeneralConfig::default(),
+            ui: UiConfig::default(),
             prompt: PromptConfig::default(),
             theme: ThemeConfig::default(),
             aliases,
@@ -78,6 +92,18 @@ impl Default for GeneralConfig {
     }
 }
 
+impl Default for UiConfig {
+    fn default() -> Self {
+        Self {
+            animations: true,
+            animation_speed_ms: 28,
+            banner_style: "aurora".into(),
+            show_tips: true,
+            command_separator: false,
+        }
+    }
+}
+
 impl Default for PromptConfig {
     fn default() -> Self {
         Self {
@@ -90,6 +116,7 @@ impl Default for PromptConfig {
             show_exit_code: true,
             show_user: false,
             show_hostname: false,
+            show_time: false,
         }
     }
 }
@@ -107,6 +134,7 @@ impl Default for ThemeConfig {
             warning: "#F9E2AF".into(),
             error: "#F38BA8".into(),
             admin: "#F38BA8".into(),
+            panel: "#313244".into(),
         }
     }
 }
@@ -136,18 +164,41 @@ impl Config {
                 .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
         }
 
-        let raw = toml::to_string_pretty(self)
-            .map_err(|e| format!("failed to serialize config: {e}"))?;
+        let raw =
+            toml::to_string_pretty(self).map_err(|e| format!("failed to serialize config: {e}"))?;
         fs::write(&path, raw).map_err(|e| format!("failed to write {}: {e}", path.display()))
     }
 
     pub fn apply_theme_preset(&mut self, name: &str) -> bool {
         let colors = match name.to_ascii_lowercase().as_str() {
-            "hypr" => ["#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8", "#F38BA8"],
-            "tokyo-night" | "tokyo" => ["#C0CAF5", "#565F89", "#7DCFFF", "#7AA2F7", "#BB9AF7", "#9ECE6A", "#E0AF68", "#F7768E", "#F7768E"],
-            "catppuccin" | "mocha" => ["#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF", "#F38BA8", "#F38BA8"],
-            "nord" => ["#D8DEE9", "#7B88A1", "#88C0D0", "#81A1C1", "#B48EAD", "#A3BE8C", "#EBCB8B", "#BF616A", "#BF616A"],
-            "dracula" => ["#F8F8F2", "#6272A4", "#8BE9FD", "#8BE9FD", "#BD93F9", "#50FA7B", "#F1FA8C", "#FF5555", "#FF5555"],
+            "hypr" => [
+                "#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF",
+                "#F38BA8", "#F38BA8", "#313244",
+            ],
+            "tokyo-night" | "tokyo" => [
+                "#C0CAF5", "#565F89", "#7DCFFF", "#7AA2F7", "#BB9AF7", "#9ECE6A", "#E0AF68",
+                "#F7768E", "#F7768E", "#24283B",
+            ],
+            "catppuccin" | "mocha" => [
+                "#CDD6F4", "#7F849C", "#89DCEB", "#89B4FA", "#CBA6F7", "#A6E3A1", "#F9E2AF",
+                "#F38BA8", "#F38BA8", "#313244",
+            ],
+            "nord" => [
+                "#D8DEE9", "#7B88A1", "#88C0D0", "#81A1C1", "#B48EAD", "#A3BE8C", "#EBCB8B",
+                "#BF616A", "#BF616A", "#3B4252",
+            ],
+            "dracula" => [
+                "#F8F8F2", "#6272A4", "#8BE9FD", "#8BE9FD", "#BD93F9", "#50FA7B", "#F1FA8C",
+                "#FF5555", "#FF5555", "#44475A",
+            ],
+            "rose-pine" | "rose" => [
+                "#E0DEF4", "#908CAA", "#9CCFD8", "#C4A7E7", "#EBBCBA", "#9CCFD8", "#F6C177",
+                "#EB6F92", "#EB6F92", "#26233A",
+            ],
+            "gruvbox" => [
+                "#EBDBB2", "#928374", "#83A598", "#FABD2F", "#D3869B", "#B8BB26", "#FABD2F",
+                "#FB4934", "#FB4934", "#3C3836",
+            ],
             _ => return false,
         };
 
@@ -161,6 +212,7 @@ impl Config {
         self.theme.warning = colors[6].into();
         self.theme.error = colors[7].into();
         self.theme.admin = colors[8].into();
+        self.theme.panel = colors[9].into();
         true
     }
 

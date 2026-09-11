@@ -28,6 +28,45 @@ pub fn username() -> String {
         .unwrap_or_else(|_| "user".into())
 }
 
+pub fn terminal_name() -> String {
+    if env::var_os("WT_SESSION").is_some() {
+        return "Windows Terminal".into();
+    }
+    if let Ok(value) = env::var("TERM_PROGRAM") {
+        if !value.trim().is_empty() {
+            return value;
+        }
+    }
+    if env::var_os("ConEmuANSI").is_some() {
+        return "ConEmu".into();
+    }
+    "Windows Console".into()
+}
+
+pub fn command_exists(command: &str) -> bool {
+    #[cfg(windows)]
+    {
+        Command::new("where.exe")
+            .arg(command)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    #[cfg(not(windows))]
+    {
+        Command::new("sh")
+            .args(["-c", &format!("command -v {command}")])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+}
+
 #[cfg(windows)]
 mod windows {
     use std::{
@@ -40,6 +79,18 @@ mod windows {
     const LOCALE_NAME_MAX_LENGTH: usize = 85;
     const SW_SHOWNORMAL: i32 = 1;
 
+    #[repr(C)]
+    struct SystemTime {
+        year: u16,
+        month: u16,
+        day_of_week: u16,
+        day: u16,
+        hour: u16,
+        minute: u16,
+        second: u16,
+        milliseconds: u16,
+    }
+
     #[link(name = "Kernel32")]
     extern "system" {
         fn GetUserDefaultUILanguage() -> u16;
@@ -50,6 +101,7 @@ mod windows {
             flags: u32,
         ) -> i32;
         fn GetUserDefaultLocaleName(locale_name: *mut u16, locale_name_count: i32) -> i32;
+        fn GetLocalTime(system_time: *mut SystemTime);
     }
 
     #[link(name = "Shell32")]
@@ -89,9 +141,6 @@ mod windows {
         let language_id = unsafe { GetUserDefaultUILanguage() };
         if language_id != 0 {
             let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
-            // MAKELCID(language_id, SORT_DEFAULT) is the LANGID itself because
-            // SORT_DEFAULT is zero. LCIDToLocaleName gives us a BCP-47-style
-            // locale name such as fr-FR or en-US.
             let len = unsafe {
                 LCIDToLocaleName(
                     language_id as u32,
@@ -106,13 +155,25 @@ mod windows {
             }
         }
 
-        // Keep a safe fallback for unusual/custom Windows locale setups where
-        // a UI LANGID cannot be converted to a locale name.
         let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
-        let len = unsafe {
-            GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32)
-        };
+        let len =
+            unsafe { GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32) };
         buffer_to_string(&buffer, len)
+    }
+
+    pub fn local_time() -> String {
+        let mut value = SystemTime {
+            year: 0,
+            month: 0,
+            day_of_week: 0,
+            day: 0,
+            hour: 0,
+            minute: 0,
+            second: 0,
+            milliseconds: 0,
+        };
+        unsafe { GetLocalTime(&mut value) };
+        format!("{:02}:{:02}", value.hour, value.minute)
     }
 
     pub fn is_admin() -> bool {
@@ -183,6 +244,18 @@ pub fn system_locale() -> String {
         .ok()
         .and_then(|value| value.split('.').next().map(str::to_owned))
         .unwrap_or_else(|| "en-US".into())
+}
+
+pub fn local_time() -> String {
+    #[cfg(windows)]
+    {
+        windows::local_time()
+    }
+
+    #[cfg(not(windows))]
+    {
+        String::new()
+    }
 }
 
 pub fn is_admin() -> bool {

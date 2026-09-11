@@ -1,6 +1,6 @@
 [package]
 name = "nebula-shell"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "A fast, customizable Windows shell frontend"
 repository = "https://github.com/awizzz/custom-shell"
