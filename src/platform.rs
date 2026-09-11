@@ -1,4 +1,8 @@
-use std::{env, path::{Path, PathBuf}, process::Command};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 pub fn data_dir() -> PathBuf {
     if let Some(path) = env::var_os("APPDATA") {
@@ -38,6 +42,13 @@ mod windows {
 
     #[link(name = "Kernel32")]
     extern "system" {
+        fn GetUserDefaultUILanguage() -> u16;
+        fn LCIDToLocaleName(
+            locale: u32,
+            locale_name: *mut u16,
+            locale_name_count: i32,
+            flags: u32,
+        ) -> i32;
         fn GetUserDefaultLocaleName(locale_name: *mut u16, locale_name_count: i32) -> i32;
     }
 
@@ -62,12 +73,7 @@ mod windows {
         wide(OsStr::new(value))
     }
 
-    pub fn locale() -> Option<String> {
-        let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
-        let len = unsafe {
-            GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32)
-        };
-
+    fn buffer_to_string(buffer: &[u16], len: i32) -> Option<String> {
         if len <= 1 {
             return None;
         }
@@ -77,6 +83,36 @@ mod windows {
                 .to_string_lossy()
                 .into_owned(),
         )
+    }
+
+    pub fn ui_locale() -> Option<String> {
+        let language_id = unsafe { GetUserDefaultUILanguage() };
+        if language_id != 0 {
+            let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
+            // MAKELCID(language_id, SORT_DEFAULT) is the LANGID itself because
+            // SORT_DEFAULT is zero. LCIDToLocaleName gives us a BCP-47-style
+            // locale name such as fr-FR or en-US.
+            let len = unsafe {
+                LCIDToLocaleName(
+                    language_id as u32,
+                    buffer.as_mut_ptr(),
+                    LOCALE_NAME_MAX_LENGTH as i32,
+                    0,
+                )
+            };
+
+            if let Some(locale) = buffer_to_string(&buffer, len) {
+                return Some(locale);
+            }
+        }
+
+        // Keep a safe fallback for unusual/custom Windows locale setups where
+        // a UI LANGID cannot be converted to a locale name.
+        let mut buffer = [0u16; LOCALE_NAME_MAX_LENGTH];
+        let len = unsafe {
+            GetUserDefaultLocaleName(buffer.as_mut_ptr(), LOCALE_NAME_MAX_LENGTH as i32)
+        };
+        buffer_to_string(&buffer, len)
     }
 
     pub fn is_admin() -> bool {
@@ -139,7 +175,7 @@ mod windows {
 
 pub fn system_locale() -> String {
     #[cfg(windows)]
-    if let Some(locale) = windows::locale() {
+    if let Some(locale) = windows::ui_locale() {
         return locale;
     }
 
