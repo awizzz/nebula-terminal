@@ -1,0 +1,68 @@
+name: Terminal CI
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "apps/nebula-terminal/**"
+      - ".github/workflows/terminal-ci.yml"
+      - ".github/workflows/terminal-release.yml"
+  push:
+    branches: ["main", "feat/terminal-**"]
+    paths:
+      - "apps/nebula-terminal/**"
+      - ".github/workflows/terminal-ci.yml"
+      - ".github/workflows/terminal-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terminal-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Terminal CI / windows
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: apps/nebula-terminal
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/nebula-terminal/package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Lint Rust backend
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
+      - name: Test Rust backend
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Check Rust backend
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Build desktop executable
+        run: npm run tauri build -- --no-bundle

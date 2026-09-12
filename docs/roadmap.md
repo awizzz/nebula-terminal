@@ -10,6 +10,7 @@ Nebula is still pre-1.0. The priorities below describe direction rather than fix
 - expand automated tests around native parsing, Windows path handling, aliases and configuration migration
 - improve executable metadata and Windows packaging
 - publish package-manager manifests after the release format is stable
+- harden the Nebula Terminal preview with real-world daily use before a stable desktop line
 
 ## Shell runtime
 
@@ -45,18 +46,49 @@ Once the release pipeline and command surface are stable:
 - ARM64 builds
 - Winget package
 - Scoop manifest
-- Windows executable icon and version resources
+- richer Windows executable metadata
 - signed releases when a trusted code-signing setup is available
 
-## Terminal UI
+## Nebula Terminal
 
-Nebula Shell deliberately remains separate from terminal-emulator concerns such as tabs, panes, blur and GPU rendering.
+Nebula Shell remains usable independently in any compatible terminal emulator. Nebula Terminal is a separate graphical desktop application that makes Nebula the default experience while still hosting CMD, Windows PowerShell, PowerShell 7 and WSL profiles.
 
-A future Nebula Terminal could host Nebula and other shells through ConPTY while providing those graphical features. That would be a separate component rather than a dependency of the shell.
+The architecture is documented in [`terminal-ui.md`](terminal-ui.md).
+
+### Implemented preview foundation
+
+- Tauri 2 + React/TypeScript desktop host with custom application chrome
+- xterm.js backed by native Rust PTY/ConPTY sessions
+- draggable tabs and profile picker
+- vertical and horizontal split panes
+- drag-resizable panes with restored proportions
+- keyboard-driven command palette and previous/next terminal search
+- persistent tab/split session restoration
+- Solar Noir settings with six original palettes, background images and live terminal typography
+- editable keyboard shortcuts
+- visual-only theme JSON import/export
+- starting directory, configurable scrollback and multiline paste protection
+- live session titles, safe path insertion and process restart controls
+- incremental UTF-8 decoding across PTY reads
+- Windows MSI/NSIS and portable ZIP release workflow
+- bundled Nebula Shell resource in Terminal release builds
+
+### Next desktop milestones
+
+- collect feedback from daily use and harden PTY edge cases
+- structured Nebula Shell metadata for cwd, Git state, elevation and command status without scraping terminal text
+- richer profile editing for custom executables, SSH hosts and WSL distributions
+- more flexible split trees and keyboard focus movement between panes
+- Windows notifications for completed long-running commands in inactive tabs
+- automated update UX once the preview release format has proven stable
+- accessibility review, keyboard-only QA and performance profiling on low-power hardware
+- ARM64 packaging and package-manager distribution
+
+The terminal must not become a dependency of `nebula.exe`, and the graphical host must not move normal Nebula command execution back through CMD or PowerShell.
 
 ## 1.0 criteria
 
-A 1.0 release should mean:
+A 1.0 shell release should mean:
 
 - stable configuration format with documented migration behavior
 - reliable update/release process
@@ -65,3 +97,5 @@ A 1.0 release should mean:
 - streaming pipelines and predictable interruption behavior
 - no known high-severity dependency advisories
 - predictable behavior on supported Windows versions
+
+Nebula Terminal can follow its own versioning maturity until its PTY behavior, settings format and desktop update path are similarly stable.
