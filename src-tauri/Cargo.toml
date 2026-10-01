@@ -8,11 +8,11 @@ rust-version = "1.98"
 license = "MIT"
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
 portable-pty = "0.9.0"
 serde = { version = "1", features = ["derive"] }
-tauri = { version = "2.11.5", features = [] }
-tauri-plugin-opener = "2.5.5"
+tauri = { version = "2.12.1", features = [] }
+tauri-plugin-opener = "2.7.0"
 window-vibrancy = "0.8.0"
