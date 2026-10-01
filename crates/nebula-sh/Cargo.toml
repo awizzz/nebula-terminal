@@ -92,3 +92,6 @@ uu_unlink = "0.12.0"
 uu_wc = "0.12.0"
 uu_whoami = "0.12.0"
 uu_yes = "0.12.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

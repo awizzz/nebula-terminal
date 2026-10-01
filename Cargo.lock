@@ -3108,6 +3108,7 @@ dependencies = [
  "uu_yes",
  "uucore",
  "walkdir",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

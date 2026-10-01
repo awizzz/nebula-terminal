@@ -2,7 +2,9 @@
 //! Windows and Linux.
 
 use std::io::{self, Write};
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System, UpdateKind};
+use sysinfo::{
+    Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, Signal, System, UpdateKind,
+};
 
 fn system() -> System {
     System::new_with_specifics(
@@ -73,27 +75,64 @@ pub fn ps(args: &[String]) -> i32 {
     0
 }
 
+/// A signal by name (`TERM`, `SIGTERM`) or number. `Some(None)` is signal 0, which
+/// only checks that the process exists.
+fn signal(spec: &str) -> Option<Option<Signal>> {
+    let name = spec.to_ascii_uppercase();
+    let name = name.strip_prefix("SIG").unwrap_or(&name);
+    Some(Some(match name {
+        "0" => return Some(None),
+        "1" | "HUP" => Signal::Hangup,
+        "2" | "INT" => Signal::Interrupt,
+        "3" | "QUIT" => Signal::Quit,
+        "9" | "KILL" => Signal::Kill,
+        "10" | "USR1" => Signal::User1,
+        "12" | "USR2" => Signal::User2,
+        "15" | "TERM" => Signal::Term,
+        "18" | "CONT" => Signal::Continue,
+        "19" | "STOP" => Signal::Stop,
+        _ => return None,
+    }))
+}
+
+/// Sends `signal`. Windows has no signals: every one of them ends the process.
+fn send(process: &sysinfo::Process, signal: Signal) -> bool {
+    process.kill_with(signal).unwrap_or_else(|| process.kill())
+}
+
 pub fn kill(args: &[String]) -> i32 {
     let mut pids = Vec::new();
-    for arg in args {
+    let mut chosen: Option<Signal> = Some(Signal::Term);
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
         match arg.as_str() {
-            "-l" => {
-                println!("TERM KILL INT HUP");
+            "-l" | "-L" => {
+                println!("HUP INT QUIT KILL USR1 USR2 TERM CONT STOP");
                 return 0;
             }
             "--help" => {
-                println!("Usage: kill [-9|-s SIGNAL] PID…\nStop processes. On Windows every signal ends the process.");
+                println!("Usage: kill [-s SIGNAL | -SIGNAL] PID…\nStop processes. On Windows every signal except 0 ends the process.");
                 return 0;
             }
-            "-s" => {}
-            other if other.starts_with('-') => {}
+            "-s" | "-n" => {
+                let value = iter.next().map(String::as_str).unwrap_or_default();
+                match signal(value) {
+                    Some(signal) => chosen = signal,
+                    None => {
+                        eprintln!("kill: {value}: invalid signal specification");
+                        return 1;
+                    }
+                }
+            }
+            other if other.starts_with('-') && other.len() > 1 => match signal(&other[1..]) {
+                Some(signal) => chosen = signal,
+                None => {
+                    eprintln!("kill: {other}: invalid signal specification");
+                    return 1;
+                }
+            },
             other => match other.parse::<u32>() {
                 Ok(pid) => pids.push(pid),
-                Err(_)
-                    if matches!(
-                        other,
-                        "TERM" | "KILL" | "INT" | "HUP" | "SIGTERM" | "SIGKILL"
-                    ) => {}
                 Err(_) => {
                     eprintln!("kill: {other}: arguments must be process IDs");
                     return 1;
@@ -102,21 +141,24 @@ pub fn kill(args: &[String]) -> i32 {
         }
     }
     if pids.is_empty() {
-        eprintln!("kill: usage: kill [-9] PID…");
+        eprintln!("kill: usage: kill [-s SIGNAL | -SIGNAL] PID…");
         return 2;
     }
     let mut system = system();
     system.refresh_processes(ProcessesToUpdate::All, true);
     let mut status = 0;
     for pid in pids {
-        match system.process(Pid::from_u32(pid)) {
-            Some(process) if process.kill() => {}
-            Some(_) => {
+        match (system.process(Pid::from_u32(pid)), chosen) {
+            (Some(_), None) => {}
+            (Some(process), Some(signal)) if send(process, signal) => {}
+            (Some(_), Some(_)) => {
                 eprintln!("kill: ({pid}) - Operation not permitted");
                 status = 1;
             }
-            None => {
-                eprintln!("kill: ({pid}) - No such process");
+            (None, _) => {
+                if chosen.is_some() {
+                    eprintln!("kill: ({pid}) - No such process");
+                }
                 status = 1;
             }
         }
@@ -148,7 +190,7 @@ pub fn killall(name: &str, args: &[String]) -> i32 {
                 stem == target.trim_end_matches(".exe")
             }
         });
-        if matches && process.kill() {
+        if matches && send(process, Signal::Term) {
             killed += 1;
         }
     }

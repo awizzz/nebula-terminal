@@ -31,6 +31,85 @@ pub fn run_command(argv: &[String]) -> i32 {
     }
 }
 
+/// Leaves room under the Windows limit of 32,767 characters per command line.
+const MAX_COMMAND_LINE: usize = if cfg!(windows) { 30_000 } else { 120_000 };
+
+/// Splits `items` into groups that each fit on one command line after `fixed`,
+/// with at most `max_items` per group.
+pub fn batches(fixed: &[String], items: Vec<String>, max_items: Option<usize>) -> Vec<Vec<String>> {
+    let base: usize = fixed.iter().map(|arg| arg.len() + 3).sum();
+    let mut groups: Vec<Vec<String>> = Vec::new();
+    let mut current: Vec<String> = Vec::new();
+    let mut length = base;
+    for item in items {
+        let cost = item.len() + 3;
+        let full = max_items.is_some_and(|max| current.len() >= max)
+            || (!current.is_empty() && length + cost > MAX_COMMAND_LINE);
+        if full {
+            groups.push(std::mem::take(&mut current));
+            length = base;
+        }
+        length += cost;
+        current.push(item);
+    }
+    if !current.is_empty() {
+        groups.push(current);
+    }
+    groups
+}
+
+/// Asks a yes/no question on the console, even when standard input is a pipe
+/// (`find -ok`).
+pub fn confirm(question: &str) -> bool {
+    use std::io::{BufRead, Write};
+    eprint!("{question} ");
+    let _ = io::stderr().flush();
+    let console = if cfg!(windows) { "CONIN$" } else { "/dev/tty" };
+    let Ok(file) = std::fs::File::open(console) else {
+        return false;
+    };
+    let mut answer = String::new();
+    if io::BufReader::new(file).read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim_start().chars().next(), Some('y' | 'Y'))
+}
+
+#[cfg(windows)]
+fn shell_open(target: &str) -> bool {
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let wide = |text: &str| -> Vec<u16> { text.encode_utf16().chain(Some(0)).collect() };
+    let verb = wide("open");
+    let file = wide(target);
+    // SAFETY: both strings are NUL-terminated UTF-16 buffers that outlive the call.
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            verb.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    // ShellExecute reports success with a value greater than 32.
+    result as isize > 32
+}
+
+#[cfg(not(windows))]
+fn shell_open(target: &str) -> bool {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    Command::new(opener)
+        .arg(target)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
 pub fn open(name: &str, args: &[String]) -> i32 {
     if args.is_empty() || args[0] == "--help" {
         println!("Usage: {name} FILE|FOLDER|URL…\nOpen with the default application.");
@@ -39,18 +118,7 @@ pub fn open(name: &str, args: &[String]) -> i32 {
     let mut status = 0;
     for target in args {
         let target = crate::sys::translate_path(target);
-        let result = if cfg!(windows) {
-            // `start` treats its first quoted argument as a window title, hence the empty one.
-            Command::new("cmd")
-                .args(["/d", "/c", "start", ""])
-                .arg(&target)
-                .status()
-        } else if cfg!(target_os = "macos") {
-            Command::new("open").arg(&target).status()
-        } else {
-            Command::new("xdg-open").arg(&target).status()
-        };
-        if !result.is_ok_and(|status| status.success()) {
+        if !shell_open(&target) {
             eprintln!("{name}: cannot open {target}");
             status = 1;
         }
@@ -72,26 +140,63 @@ pub fn less(args: &[String]) -> i32 {
 }
 
 pub fn xargs(args: &[String]) -> i32 {
-    let mut null = false;
+    let mut separator: Option<char> = None;
     let mut per_call: Option<usize> = None;
     let mut replace: Option<String> = None;
+    let mut skip_empty = false;
+    let mut trace = false;
     let mut index = 0;
     while index < args.len() {
-        match args[index].as_str() {
-            "-0" | "--null" => null = true,
-            "-n" => {
-                index += 1;
-                per_call = args.get(index).and_then(|n| n.parse().ok());
+        let arg = args[index].as_str();
+        let value = |index: &mut usize| -> Option<String> {
+            if arg.len() > 2 && !arg.starts_with("--") {
+                Some(arg[2..].to_owned())
+            } else {
+                *index += 1;
+                args.get(*index).cloned()
             }
-            "-I" => {
-                index += 1;
-                replace = args.get(index).cloned();
+        };
+        match arg {
+            "-0" | "--null" => separator = Some('\0'),
+            "-r" | "--no-run-if-empty" => skip_empty = true,
+            "-t" | "--verbose" => trace = true,
+            _ if arg.starts_with("-n") || arg.starts_with("-L") => {
+                match value(&mut index)
+                    .and_then(|n| n.parse().ok())
+                    .filter(|n| *n > 0)
+                {
+                    Some(n) => per_call = Some(n),
+                    None => {
+                        eprintln!("xargs: {arg}: a positive number is required");
+                        return 1;
+                    }
+                }
+                if arg.starts_with("-L") {
+                    separator.get_or_insert('\n');
+                }
+            }
+            _ if arg.starts_with("-I") => replace = value(&mut index),
+            _ if arg.starts_with("-d") => {
+                let delimiter = value(&mut index).unwrap_or_default();
+                separator = Some(match delimiter.as_str() {
+                    "\\n" => '\n',
+                    "\\t" => '\t',
+                    "\\0" => '\0',
+                    other => other.chars().next().unwrap_or('\n'),
+                });
             }
             "--help" => {
-                println!("Usage: xargs [-0] [-n N] [-I REPLACE] [COMMAND [ARGS…]]\nBuild and run commands from standard input (default command: echo).");
+                println!("Usage: xargs [-0] [-d DELIM] [-n N] [-L N] [-I REPLACE] [-r] [-t] [COMMAND [ARGS…]]\nBuild and run commands from standard input (default command: echo).");
                 return 0;
             }
-            arg if arg.starts_with("-n") && arg.len() > 2 => per_call = arg[2..].parse().ok(),
+            "--" => {
+                index += 1;
+                break;
+            }
+            _ if arg.starts_with('-') && arg.len() > 1 => {
+                eprintln!("xargs: {arg}: unsupported option");
+                return 1;
+            }
             _ => break,
         }
         index += 1;
@@ -106,8 +211,8 @@ pub fn xargs(args: &[String]) -> i32 {
         eprintln!("xargs: cannot read standard input");
         return 1;
     }
-    let items: Vec<String> = if null || replace.is_some() {
-        let separator = if null { '\0' } else { '\n' };
+    let items: Vec<String> = if separator.is_some() || replace.is_some() {
+        let separator = separator.unwrap_or('\n');
         input
             .split(separator)
             .map(|item| item.trim_end_matches('\r').to_owned())
@@ -117,6 +222,12 @@ pub fn xargs(args: &[String]) -> i32 {
         split_words(&input)
     };
 
+    let run = |argv: &[String]| {
+        if trace {
+            eprintln!("{}", argv.join(" "));
+        }
+        code_for(run_command(argv))
+    };
     let mut status = 0;
     if let Some(placeholder) = replace {
         for item in &items {
@@ -124,21 +235,16 @@ pub fn xargs(args: &[String]) -> i32 {
                 .iter()
                 .map(|part| part.replace(&placeholder, item))
                 .collect();
-            status = status.max(code_for(run_command(&argv)));
+            status = status.max(run(&argv));
         }
         return status;
     }
-    let size = per_call.filter(|n| *n > 0).unwrap_or(items.len().max(1));
     if items.is_empty() {
-        return code_for(run_command(&command));
+        return if skip_empty { 0 } else { run(&command) };
     }
-    for chunk in items.chunks(size) {
-        let argv: Vec<String> = command
-            .iter()
-            .cloned()
-            .chain(chunk.iter().cloned())
-            .collect();
-        status = status.max(code_for(run_command(&argv)));
+    for chunk in batches(&command, items, per_call) {
+        let argv: Vec<String> = command.iter().cloned().chain(chunk).collect();
+        status = status.max(run(&argv));
     }
     status
 }
@@ -192,5 +298,21 @@ mod tests {
             super::split_words("a  b\n'c d' \"e\"\n"),
             vec!["a", "b", "c d", "e"]
         );
+    }
+
+    #[test]
+    fn batches_respect_count_and_length() {
+        let items: Vec<String> = (0..10).map(|n| n.to_string()).collect();
+        let groups = super::batches(&["echo".into()], items, Some(4));
+        assert_eq!(
+            groups.iter().map(Vec::len).collect::<Vec<_>>(),
+            vec![4, 4, 2]
+        );
+        let long: Vec<String> = (0..300).map(|_| "x".repeat(1000)).collect();
+        let groups = super::batches(&["rm".into()], long, None);
+        assert!(groups.len() > 1);
+        assert!(groups
+            .iter()
+            .all(|group| group.len() * 1003 <= super::MAX_COMMAND_LINE));
     }
 }

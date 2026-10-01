@@ -296,6 +296,17 @@ struct Searcher<'a> {
 }
 
 impl Searcher<'_> {
+    /// Writes output; once the reader is gone (`grep x | head -1`), there is no
+    /// point in searching further.
+    fn emit(&mut self, bytes: &[u8]) {
+        if let Err(error) = self.out.write_all(bytes) {
+            if error.kind() != io::ErrorKind::BrokenPipe {
+                eprintln!("grep: write error: {error}");
+            }
+            std::process::exit(2);
+        }
+    }
+
     fn prefix(&self, name: &str, number: usize, separator: u8, buffer: &mut Vec<u8>) {
         if self.show_names {
             self.painter.paint("35", name.as_bytes(), buffer);
@@ -356,7 +367,7 @@ impl Searcher<'_> {
             }
             buffer.push(b'\n');
         }
-        let _ = self.out.write_all(&buffer);
+        self.emit(&buffer);
     }
 
     /// Searches one input. Returns the number of selected lines.
@@ -445,7 +456,7 @@ impl Searcher<'_> {
         }
 
         if binary && selected > 0 && !listing {
-            let _ = writeln!(self.out, "grep: {name}: binary file matches");
+            self.emit(format!("grep: {name}: binary file matches\n").as_bytes());
         }
         if options.count {
             let mut buffer = Vec::new();
@@ -454,7 +465,7 @@ impl Searcher<'_> {
                 self.painter.paint("36", b":", &mut buffer);
             }
             buffer.extend_from_slice(format!("{selected}\n").as_bytes());
-            let _ = self.out.write_all(&buffer);
+            self.emit(&buffer);
         }
         if (options.files_with_matches && selected > 0)
             || (options.files_without_match && selected == 0)
@@ -462,7 +473,7 @@ impl Searcher<'_> {
             let mut buffer = Vec::new();
             self.painter.paint("35", name.as_bytes(), &mut buffer);
             buffer.push(b'\n');
-            let _ = self.out.write_all(&buffer);
+            self.emit(&buffer);
         }
         selected
     }

@@ -51,7 +51,8 @@ enum Expr {
     Newer(SystemTime),
     Print(bool),
     Delete,
-    Exec(Vec<String>, bool),
+    /// Command, batched with `+`, ask first (`-ok`).
+    Exec(Vec<String>, bool, bool),
     Prune,
     Not(Box<Expr>),
     And(Box<Expr>, Box<Expr>),
@@ -62,6 +63,8 @@ struct Parser {
     tokens: Vec<String>,
     pos: usize,
     has_action: bool,
+    /// `-delete` needs children visited before their directory.
+    deletes: bool,
     max_depth: Option<usize>,
     min_depth: usize,
 }
@@ -192,20 +195,22 @@ impl Parser {
             }
             "-delete" => {
                 self.has_action = true;
+                self.deletes = true;
                 Expr::Delete
             }
             "-exec" | "-ok" => {
                 self.has_action = true;
+                let ask = token == "-ok";
                 let mut command = Vec::new();
                 loop {
                     let part = self
                         .next()
                         .ok_or("missing argument to `-exec' (end it with \\; or +)")?;
                     match part.as_str() {
-                        ";" => return Ok(Expr::Exec(command, false)),
-                        "+" if command.last().map(String::as_str) == Some("{}") => {
+                        ";" => return Ok(Expr::Exec(command, false, ask)),
+                        "+" if !ask && command.last().map(String::as_str) == Some("{}") => {
                             command.pop();
-                            return Ok(Expr::Exec(command, true));
+                            return Ok(Expr::Exec(command, true, false));
                         }
                         _ => command.push(part),
                     }
@@ -301,7 +306,7 @@ fn evaluate(
             }
             true
         }
-        Expr::Exec(command, batch) => {
+        Expr::Exec(command, batch, ask) => {
             if *batch {
                 match run.batch.iter_mut().find(|(cmd, _)| cmd == command) {
                     Some((_, paths)) => paths.push(path.to_owned()),
@@ -314,6 +319,9 @@ fn evaluate(
                 .map(|part| part.replace("{}", path))
                 .collect();
             let _ = run.out.flush();
+            if *ask && !super::misc::confirm(&format!("< {} > ?", argv.join(" "))) {
+                return false;
+            }
             super::misc::run_command(&argv) == 0
         }
         Expr::Prune => {
@@ -352,6 +360,7 @@ pub fn run(args: &[String]) -> i32 {
         tokens: args[split..].to_vec(),
         pos: 0,
         has_action: false,
+        deletes: false,
         max_depth: None,
         min_depth: 0,
     };
@@ -375,7 +384,7 @@ pub fn run(args: &[String]) -> i32 {
     } else {
         Expr::And(Box::new(expr), Box::new(Expr::Print(false)))
     };
-    let deletes = format!("{expr:?}").contains("Delete");
+    let deletes = parser.deletes;
 
     let mut run = Run {
         out: io::stdout().lock(),
@@ -431,9 +440,11 @@ pub fn run(args: &[String]) -> i32 {
     }
     let _ = run.out.flush();
     for (command, paths) in std::mem::take(&mut run.batch) {
-        let argv: Vec<String> = command.into_iter().chain(paths).collect();
-        if super::misc::run_command(&argv) != 0 {
-            run.status = 1;
+        for group in super::misc::batches(&command, paths, None) {
+            let argv: Vec<String> = command.iter().cloned().chain(group).collect();
+            if super::misc::run_command(&argv) != 0 {
+                run.status = 1;
+            }
         }
     }
     run.status
