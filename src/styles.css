@@ -219,6 +219,20 @@ kbd { font: inherit; }
   background: var(--accent);
   animation: pop-in var(--dur-3) var(--ease-spring);
 }
+/* A long command finished while its tab was in the background. */
+.tab__done {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 22%, transparent);
+  animation: pop-in var(--dur-3) var(--ease-spring);
+}
+.tab__done.is-failed {
+  background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 22%, transparent);
+}
 /* A tab's own color: a short bar along its top edge, full strength on the active tab. */
 .tab__color {
   position: absolute;

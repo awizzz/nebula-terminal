@@ -10,6 +10,8 @@ interface TitlebarProps {
   tabs: TerminalTab[];
   activeTabId: string;
   activity: ReadonlySet<string>;
+  /** Tabs where a long command finished in the background, and whether it succeeded. */
+  finished: ReadonlyMap<string, boolean>;
   closing: ReadonlySet<string>;
   /** The tab whose name is being edited in place. */
   renamingId: string | null;
@@ -30,7 +32,7 @@ interface TitlebarProps {
   onOpenSettings: () => void;
 }
 
-function tabTitle(tab: TerminalTab): string {
+export function tabTitle(tab: TerminalTab): string {
   return tab.customTitle ?? tab.title;
 }
 
@@ -87,6 +89,7 @@ export default function Titlebar({
   tabs,
   activeTabId,
   activity,
+  finished,
   closing,
   renamingId,
   newTabShortcut,
@@ -167,7 +170,9 @@ export default function Titlebar({
                 ? <TabRename tab={tab} onCommit={(name) => { onRename(tab.id, name); onRenameEnd(); }} onCancel={onRenameEnd} />
                 : <span className="tab__title">{title}</span>}
               {tab.panes.length > 1 && <span className="tab__panes" aria-label={`${tab.panes.length} panes`}>{tab.panes.length}</span>}
-              {activity.has(tab.id) && !active && <span className="tab__activity" aria-label="New output" />}
+              {!active && finished.has(tab.id)
+                ? <span className={`tab__done ${finished.get(tab.id) ? "" : "is-failed"}`} aria-label={finished.get(tab.id) ? "Command finished" : "Command failed"} />
+                : activity.has(tab.id) && !active && <span className="tab__activity" aria-label="New output" />}
             </>
           );
           return (

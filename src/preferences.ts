@@ -57,6 +57,9 @@ export const defaultPreferences: AppearancePreferences = {
   confirmCloseMultipleTabs: true,
   scrollback: 10_000,
   gpuAcceleration: true,
+  notifyLongCommands: true,
+  longCommandSeconds: 10,
+  checkForUpdates: true,
   keybindings: defaultKeybindings,
 };
 
@@ -121,6 +124,9 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     confirmCloseMultipleTabs: booleanFrom(value.confirmCloseMultipleTabs, defaultPreferences.confirmCloseMultipleTabs),
     scrollback: Math.round(numberIn(value.scrollback, defaultPreferences.scrollback, 1_000, 100_000)),
     gpuAcceleration: booleanFrom(value.gpuAcceleration, defaultPreferences.gpuAcceleration),
+    notifyLongCommands: booleanFrom(value.notifyLongCommands, defaultPreferences.notifyLongCommands),
+    longCommandSeconds: Math.round(numberIn(value.longCommandSeconds, defaultPreferences.longCommandSeconds, 3, 3_600)),
+    checkForUpdates: booleanFrom(value.checkForUpdates, defaultPreferences.checkForUpdates),
     keybindings,
   };
 }

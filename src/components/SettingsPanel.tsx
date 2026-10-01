@@ -658,6 +658,16 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <Switch label="Confirm multi-line paste" checked={preferences.confirmMultilinePaste} onChange={(value) => patch("confirmMultilinePaste", value)} />
                   </Row>
                 </Group>
+                <Group title="Notifications">
+                  <Row label="Notify when a long command finishes" description="When its tab is in the background or the window is not in front. Needs Nebula, or a program that sends notifications.">
+                    <Switch label="Notify when a long command finishes" checked={preferences.notifyLongCommands} onChange={(value) => patch("notifyLongCommands", value)} />
+                  </Row>
+                  <Row label="Long means at least">
+                    <select className="field field--select" value={preferences.longCommandSeconds} disabled={!preferences.notifyLongCommands} onChange={(event) => patch("longCommandSeconds", Number(event.target.value))}>
+                      {[5, 10, 30, 60, 300].map((seconds) => <option key={seconds} value={seconds}>{seconds < 60 ? `${seconds} seconds` : `${seconds / 60} minute${seconds > 60 ? "s" : ""}`}</option>)}
+                    </select>
+                  </Row>
+                </Group>
                 <Group title="Tabs">
                   <Row label="Reopen tabs on launch" description="Restores tabs and splits. Shells start fresh.">
                     <Switch label="Reopen tabs on launch" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} />

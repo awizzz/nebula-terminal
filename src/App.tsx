@@ -2,8 +2,9 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
-import Titlebar from "./components/Titlebar";
-import TerminalPane from "./components/TerminalPane";
+import Titlebar, { tabTitle } from "./components/Titlebar";
+import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
+import { finishedMessage, notify } from "./notify";
 import SearchBar from "./components/SearchBar";
 import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
@@ -94,6 +95,7 @@ export default function App() {
   const [searchSignal, setSearchSignal] = useState({ nonce: 0, backwards: false });
   const [searchResult, setSearchResult] = useState<{ index: number; count: number } | null>(null);
   const [activity, setActivity] = useState<ReadonlySet<string>>(() => new Set());
+  const [finished, setFinished] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [closing, setClosing] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
@@ -196,7 +198,33 @@ export default function App() {
       next.delete(activeTabId);
       return next;
     });
+    setFinished((current) => {
+      if (!current.has(activeTabId)) return current;
+      const next = new Map(current);
+      next.delete(activeTabId);
+      return next;
+    });
   }, [activeTabId]);
+
+  /** The user can't see this tab: another tab is in front, or the window is in the background. */
+  const tabUnseen = useCallback((tabId: string) => document.hidden || !document.hasFocus() || tabId !== activeTabIdRef.current, []);
+
+  const commandFinished = useCallback((tabId: string, command: FinishedCommand) => {
+    const { notifyLongCommands, longCommandSeconds } = preferencesRef.current;
+    if (!notifyLongCommands || command.seconds < longCommandSeconds || !tabUnseen(tabId)) return;
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    if (tabId !== activeTabIdRef.current) {
+      setFinished((current) => new Map(current).set(tabId, command.code === null || command.code === 0));
+    }
+    const { title, body } = finishedMessage(command, tab ? tabTitle(tab) : "Nebula Terminal");
+    notify(title, body);
+  }, [tabUnseen]);
+
+  /** OSC 9 / OSC 777 from a program: shown when its tab is out of sight. */
+  const programNotification = useCallback((tabId: string, title: string, body: string) => {
+    if (!preferencesRef.current.notifyLongCommands || !tabUnseen(tabId)) return;
+    notify(title, body);
+  }, [tabUnseen]);
 
   const closeWindow = useCallback(() => {
     if (!nativeHost) return;
@@ -616,6 +644,7 @@ export default function App() {
         tabs={tabs}
         activeTabId={activeTabId}
         activity={activity}
+        finished={finished}
         closing={closing}
         renamingId={renaming ? renamingTabId : null}
         newTabShortcut={keys.newTab}
@@ -658,6 +687,8 @@ export default function App() {
                         onFontSizeDelta={adjustFontSize}
                         onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
                         onActivity={() => markActivity(tab.id)}
+                        onCommandFinished={(command) => commandFinished(tab.id, command)}
+                        onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onSearchResult={setSearchResult}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
                         onClose={() => closePane(tab.id, pane.id)}

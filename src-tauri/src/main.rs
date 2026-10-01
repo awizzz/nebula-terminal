@@ -45,6 +45,7 @@ fn windows_build() -> Option<u32> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
         .setup(|app| {

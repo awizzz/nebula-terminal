@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Window controls for the custom titlebar and opening web links in the default browser.",
+  "description": "Window controls for the custom titlebar, opening web links in the default browser, and desktop notifications when a long command finishes.",
   "windows": [
     "main"
   ],
@@ -23,6 +23,9 @@
           "url": "http://*"
         }
       ]
-    }
+    },
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "notification:allow-notify"
   ]
 }

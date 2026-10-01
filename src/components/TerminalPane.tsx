@@ -26,7 +26,16 @@ interface TerminalPaneProps {
   onActivity: () => void;
   onSearchResult: (result: { index: number; count: number }) => void;
   onContextMenu: (x: number, y: number) => void;
+  onCommandFinished: (finished: FinishedCommand) => void;
+  onNotify: (title: string, body: string) => void;
   onClose: () => void;
+}
+
+/** A command that ran between shell-integration marks (OSC 133;C and 133;D). */
+export interface FinishedCommand {
+  command: string;
+  code: number | null;
+  seconds: number;
 }
 
 type ConnectionState = "starting" | "ready" | "closed" | "preview";
@@ -93,6 +102,8 @@ export default function TerminalPane({
   onActivity,
   onSearchResult,
   onContextMenu,
+  onCommandFinished,
+  onNotify,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -104,7 +115,7 @@ export default function TerminalPane({
   const focusedRef = useRef(focused);
   const visibleRef = useRef(visible);
   const preferencesRef = useRef(preferences);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify });
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
@@ -113,7 +124,7 @@ export default function TerminalPane({
   focusedRef.current = focused;
   visibleRef.current = visible;
   preferencesRef.current = preferences;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -188,9 +199,43 @@ export default function TerminalPane({
       const sessionId = sessionRef.current;
       if (isTauri() && sessionId) void invoke("resize_session", { sessionId, cols, rows }).catch(() => undefined);
     });
+    let lastTitle = "";
     const titleDisposable = terminal.onTitleChange((title) => {
       const clean = title.trim().slice(0, 120);
-      if (clean) callbacksRef.current.onTitleChange(clean);
+      if (!clean) return;
+      lastTitle = clean;
+      callbacksRef.current.onTitleChange(clean);
+    });
+
+    // Shell integration: Nebula marks where each command starts and ends.
+    let running: { command: string; startedAt: number } | null = null;
+    const integration = terminal.parser.registerOscHandler(133, (data) => {
+      const [mark, code] = data.split(";");
+      if (mark === "C") {
+        running = { command: lastTitle, startedAt: Date.now() };
+      } else if (mark === "D" && running) {
+        const parsed = code === undefined ? Number.NaN : Number.parseInt(code, 10);
+        callbacksRef.current.onCommandFinished({
+          command: running.command,
+          code: Number.isFinite(parsed) ? parsed : null,
+          seconds: (Date.now() - running.startedAt) / 1000,
+        });
+        running = null;
+      }
+      return true;
+    });
+    // Programs can ask for a notification: OSC 9;text (iTerm2) and OSC 777;notify;title;body.
+    const notification = terminal.parser.registerOscHandler(9, (data) => {
+      // OSC 9;4;… is a progress report (ConEmu, Windows Terminal), not a message.
+      if (/^\d;/.test(data)) return false;
+      callbacksRef.current.onNotify(profile.name, data.slice(0, 300));
+      return true;
+    });
+    const titledNotification = terminal.parser.registerOscHandler(777, (data) => {
+      const [kind, title = "", ...body] = data.split(";");
+      if (kind !== "notify") return false;
+      callbacksRef.current.onNotify(title.slice(0, 120) || profile.name, body.join(";").slice(0, 300));
+      return true;
     });
     const searchDisposable = search.onDidChangeResults(({ resultIndex, resultCount }) => {
       callbacksRef.current.onSearchResult({ index: resultIndex, count: resultCount });
@@ -352,6 +397,9 @@ export default function TerminalPane({
       observer.disconnect();
       resizeDisposable.dispose();
       titleDisposable.dispose();
+      integration.dispose();
+      notification.dispose();
+      titledNotification.dispose();
       searchDisposable.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();

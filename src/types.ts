@@ -93,6 +93,9 @@ export interface AppearancePreferences {
   confirmCloseMultipleTabs: boolean;
   scrollback: number;
   gpuAcceleration: boolean;
+  notifyLongCommands: boolean;
+  longCommandSeconds: number;
+  checkForUpdates: boolean;
   keybindings: KeybindingPreferences;
 }
 
