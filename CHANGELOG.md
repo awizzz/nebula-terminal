@@ -1,109 +1,54 @@
-# Changelog
+# Nebula Terminal changelog
 
-Notable user-facing changes are listed here.
-
-## 0.5.0 — 2026-09-11
+## 0.2.0
 
 ### Added
 
-- native command engine that launches executables without routing through CMD or PowerShell
-- native parsing for `&&`, `||`, `;`, pipelines and standard input/output/error redirection
-- native built-ins for `echo`, `dir`/`ls`, `type`/`cat`, `mkdir`, `touch`, `where`/`which`, `copy`/`cp` and `move`/`mv`
-- explicit `cmd <command>`, `powershell <command>` and `pwsh <command>` compatibility from native mode
-- native administrator elevation for `sudo` without using CMD as an intermediary
+- Solar Noir design language with a new orbital application icon and six original color palettes
+- restrained tab, session, palette and settings motion with reduced-motion and no-motion modes
+- drag-resizable split panes with restored pane proportions
+- multiline paste confirmation, configurable scrollback and a configurable starting directory
+- live terminal titles, previous/next search controls and one-click session restart after process exit
+
+### Fixed
+
+- global shortcuts now work while the xterm input has focus
+- terminal search now runs while its search field is focused
+- PTY sessions created during an unmount race are closed instead of leaking
+- PTY resize events stay synchronized after font and layout changes
+- UTF-8 characters split across PTY reads are decoded without corruption
+- saved preferences, themes and workspace snapshots are validated and bounded before use
+- theme files only carry visual settings and never expose local paths or change paste safeguards and shortcuts
+- dragged file paths are always quoted before they are inserted into the command line
+- the selected default profile is honored on a fresh workspace
 
 ### Changed
 
-- `native` is now the default command backend
-- CMD, Windows PowerShell and PowerShell 7 remain selectable compatibility backends
-- repository references now use `awizzz/nebula-shell`
+- Settings and the command palette load separately from the terminal surface
+- workspace restoration now describes its scope accurately: layout is restored and processes start fresh
+- the CI and release pipelines run the PTY backend tests
+- release builds skip unavailable public provenance attestations for private repositories
+- newer pushes replace stale in-progress release builds on the same branch
 
-### Notes
-
-- `.bat` and `.cmd` scripts require CMD compatibility (`cmd script.cmd` or `backend cmd`)
-- native pipelines are currently buffered between stages rather than streamed concurrently
-
-## 0.4.0 — 2026-09-11
+## 0.1.0
 
 ### Added
 
-- `cd -` to return to the previous working directory
-- remembered working directory for each Windows drive
-- `history on`, `history off` and `history status`
-- optional exclusion of commands beginning with a space from persistent history
-- `config check` for configuration validation
-- backend-aware `sudo` for CMD, Windows PowerShell and PowerShell 7
-- nested alias expansion with cycle protection
-- automated tests for configuration, locale parity, aliases, parsing and prompt duration formatting
-- conventional `nebula --help`, `nebula -h` and startup-option validation
-- a verified per-user PowerShell installer and matching uninstaller
-- versioned portable ZIP release packages with SHA-256 files
-- build-provenance attestations for both the standalone executable and portable ZIP
-- scheduled RustSec dependency audit
-- MIT license
+- native Tauri 2 desktop host with custom Windows chrome and Mica support
+- xterm.js terminal renderer backed by native PTY sessions
+- Nebula, CMD, Windows PowerShell, PowerShell 7 and WSL profile detection
+- draggable tabs with middle-click close and a profile picker
+- vertical and horizontal split panes with independent PTY sessions
+- command palette and in-terminal search
+- persistent workspace restoration for tabs and splits
+- configurable keyboard shortcuts
+- theme gallery with Nebula, Tokyo Night, Catppuccin, Rose Pine, Nord and Gruvbox
+- theme import/export, custom accent, background image and opacity controls
+- live font, line height, padding, cursor and animation settings
+- Ctrl+mouse-wheel terminal zoom, copy-on-select, Ctrl+Shift+C/V and file path drag-and-drop
+- Windows MSI/NSIS and portable package release pipeline
+- bundled Nebula Shell resource in release builds
 
-### Changed
+### Status
 
-- split the monolithic runtime into dedicated shell and editor modules
-- validate configuration before loading or saving it
-- save configuration through atomic file replacement
-- use the Windows environment-string API for `%VARIABLE%` expansion
-- honor the `EDITOR` environment variable before falling back to Notepad
-- moved remaining built-in UI/help strings into the locale files
-- pin the Rust toolchain and commit `Cargo.lock`
-- build, lint and test with Cargo `--locked` mode
-- run the test suite across all Cargo targets in CI and release workflows
-- validate PowerShell distribution scripts in CI before publishing
-- separate normal CI from release publishing
-- publish releases only from an explicit version tag or manual release workflow
-- serialize release workflows and cancel stale normal CI runs
-- pin GitHub Actions to immutable commit SHAs
-- use changelog sections as GitHub Release notes
-
-### Security
-
-- normal CI now runs with read-only repository permissions
-- persistent command history can be disabled
-- sensitive one-off commands can be excluded from persistent history with a leading space
-- the installer verifies the downloaded executable against the release SHA-256 before installation
-- dependency changes landing on `main` trigger a RustSec audit
-- release signing remains optional, but signed artifacts are verified before publication
-
-## 0.3.0 — 2026-09-11
-
-### Added
-
-- optional startup animation
-- `aurora`, `minimal`, `compact` and `off` banner modes
-- `ui` command for interface settings
-- live theme preview
-- Rose Pine and Gruvbox themes
-- optional right-side clock
-- file and directory entries in Tab completion
-- persistent alias management
-- backend availability checks
-- `history clear`, `history path`, `about` and `doctor`
-- terminal detection for diagnostics
-
-### Changed
-
-- completion is rebuilt after directory changes
-- alias lookup is case-insensitive
-- release builds can be published without a configured code-signing provider
-- CI now checks formatting and Clippy warnings before building
-
-## 0.2.0 — 2026-09-11
-
-### Changed
-
-- replaced the Python prototype with a native Rust executable
-
-### Added
-
-- persistent history and command hints
-- CMD, Windows PowerShell and PowerShell 7 backends
-- Windows UI-language detection
-- built-in English and French localization
-- native UAC elevation
-- configurable prompt templates, themes, aliases and environment variables
-- Windows CI builds and GitHub Releases
+0.1.0 is a preview release. Settings and PTY behavior may still change before the stable desktop line.

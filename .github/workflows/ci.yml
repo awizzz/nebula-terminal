@@ -2,46 +2,32 @@ name: CI
 
 on:
   push:
-    branches: [main, "feat/**", "fix/**", "chore/**"]
+    branches: ["main"]
   pull_request:
-    branches: [main]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   windows:
     name: CI / windows
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Validate PowerShell scripts
-        shell: pwsh
-        run: |
-          $allErrors = @()
-          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              $_.FullName,
-              [ref]$tokens,
-              [ref]$errors
-            ) | Out-Null
-            $allErrors += @($errors)
-          }
-
-          if ($allErrors.Count -gt 0) {
-            $allErrors | ForEach-Object { Write-Error $_.Message }
-            exit 1
-          }
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: npm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -49,28 +35,28 @@ jobs:
           toolchain: 1.98.1
           components: rustfmt, clippy
 
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - name: Install frontend dependencies
+        run: npm ci
 
-      - name: Lint
-        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Type-check and build frontend
+        run: npm run build
 
-      - name: Test
-        run: cargo test --locked --all-targets
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
-      - name: Build release executable
-        run: cargo build --locked --release
+      - name: Lint Rust backend
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
-      - name: Prepare artifact
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/nebula.exe dist/Nebula.exe
+      - name: Test Rust backend
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
 
-      - name: Upload Windows build
+      - name: Build desktop executable
+        run: npm run tauri build -- --no-bundle
+
+      - name: Upload executable
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: Nebula-windows-x64
-          path: dist/Nebula.exe
+          name: Nebula-Terminal-windows-x64
+          path: src-tauri/target/release/nebula-terminal.exe
           if-no-files-found: error
           retention-days: 14
