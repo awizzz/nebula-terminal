@@ -3031,6 +3031,7 @@ dependencies = [
 name = "nebula-sh"
 version = "1.0.0"
 dependencies = [
+ "crossterm",
  "ctrlc",
  "glob",
  "jiff",

@@ -17,6 +17,7 @@ pub fn closest(name: &str, shell: &Shell) -> Option<String> {
     let candidates = commands::all_names()
         .map(str::to_owned)
         .chain(shell.aliases.keys().cloned())
+        .chain(shell.functions.keys().cloned())
         .chain(path_commands().iter().cloned());
     let mut best: Option<(usize, String)> = None;
     for candidate in candidates {

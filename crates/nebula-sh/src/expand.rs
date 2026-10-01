@@ -1,12 +1,27 @@
-//! Word expansion: `~`, variables, command substitution, field splitting and globbing.
+//! Word expansion: `~`, parameters, command substitution, arithmetic, field
+//! splitting and globbing.
 
-use crate::parse::{Part, Word};
+use crate::parse::{Anchor, ParamOp, Part, Word};
 use glob::{MatchOptions, Pattern};
 
 pub trait Context {
-    fn var(&self, name: &str) -> Option<String>;
+    fn var(&mut self, name: &str) -> Option<String>;
+    fn set_var(&mut self, name: &str, value: &str);
+    /// `$1`, `$2`…
+    fn positional(&self) -> Vec<String>;
     fn substitute(&mut self, source: &str) -> String;
+    /// Evaluates an arithmetic expression (with its `$` expansions not yet done).
+    /// Returns `None` after reporting an error.
+    fn arith(&mut self, source: &str) -> Option<i64>;
     fn home(&self) -> Option<String>;
+    /// Reports an expansion error; the command that contains it does not run.
+    fn fail(&mut self, message: String);
+    /// Called when `$name` is used but not set (an error under `set -u`).
+    fn unset(&mut self, _name: &str) {}
+    /// `${name:?message}` failed; a script stops there.
+    fn required(&mut self, message: String) {
+        self.fail(message);
+    }
 }
 
 /// One output field made of segments; `true` marks text that may be treated as a glob.
@@ -77,6 +92,337 @@ fn split_into(fields: &mut Vec<Field>, value: &str) {
     }
 }
 
+fn push_value(fields: &mut Vec<Field>, value: &str, quoted: bool) {
+    if quoted {
+        let field = fields.last_mut().expect("field");
+        field.push(value, false);
+        field.quoted = true;
+    } else {
+        split_into(fields, value);
+    }
+}
+
+/// Glob options for `case`, `[[ == ]]` and `${name#pattern}`: `*` matches `/` too.
+pub fn text_match_options() -> MatchOptions {
+    MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: false,
+        require_literal_leading_dot: false,
+    }
+}
+
+/// Turns a word into a glob pattern: unquoted text keeps its wildcards, quoted text
+/// and quoted expansions match literally.
+pub fn pattern(word: &Word, context: &mut impl Context) -> String {
+    single_with_pattern(word, context).1
+}
+
+/// Expands a word to one value and, in the same pass, to the glob pattern it
+/// stands for (for `[[ $x == $pattern ]]`).
+pub fn single_with_pattern(word: &Word, context: &mut impl Context) -> (String, String) {
+    let mut value = String::new();
+    let mut pattern = String::new();
+    for part in &word.0 {
+        match part {
+            Part::Lit(text) => {
+                value.push_str(text);
+                pattern.push_str(&text.replace("[^", "[!"));
+            }
+            Part::Quoted(text) => {
+                value.push_str(text);
+                pattern.push_str(&Pattern::escape(text));
+            }
+            Part::Tilde => {
+                let home = context.home().unwrap_or_else(|| "~".to_owned());
+                pattern.push_str(&Pattern::escape(&home));
+                value.push_str(&home);
+            }
+            other => {
+                let quoted = matches!(
+                    other,
+                    Part::Var { quoted: true, .. }
+                        | Part::Param { quoted: true, .. }
+                        | Part::Subst { quoted: true, .. }
+                        | Part::Arith { quoted: true, .. }
+                );
+                let text = expand_single(&Word(vec![other.clone()]), context);
+                if quoted {
+                    pattern.push_str(&Pattern::escape(&text));
+                } else {
+                    pattern.push_str(&text);
+                }
+                value.push_str(&text);
+            }
+        }
+    }
+    (value, pattern)
+}
+
+/// Matches `text` against a shell pattern built by [`pattern`].
+pub fn matches(pattern: &str, text: &str) -> bool {
+    match Pattern::new(pattern) {
+        Ok(compiled) => compiled.matches_with(text, text_match_options()),
+        Err(_) => pattern == text,
+    }
+}
+
+fn char_boundaries(text: &str) -> Vec<usize> {
+    let mut bounds: Vec<usize> = text.char_indices().map(|(index, _)| index).collect();
+    bounds.push(text.len());
+    bounds
+}
+
+fn remove_prefix(value: &str, pattern: &str, longest: bool) -> String {
+    let bounds = char_boundaries(value);
+    let candidates: Box<dyn Iterator<Item = &usize>> = if longest {
+        Box::new(bounds.iter().rev())
+    } else {
+        Box::new(bounds.iter())
+    };
+    for &end in candidates {
+        if matches(pattern, &value[..end]) {
+            return value[end..].to_owned();
+        }
+    }
+    value.to_owned()
+}
+
+fn remove_suffix(value: &str, pattern: &str, longest: bool) -> String {
+    let bounds = char_boundaries(value);
+    let candidates: Box<dyn Iterator<Item = &usize>> = if longest {
+        Box::new(bounds.iter())
+    } else {
+        Box::new(bounds.iter().rev())
+    };
+    for &start in candidates {
+        if matches(pattern, &value[start..]) {
+            return value[..start].to_owned();
+        }
+    }
+    value.to_owned()
+}
+
+fn replace(value: &str, pattern: &str, replacement: &str, all: bool, anchor: Anchor) -> String {
+    if pattern.is_empty() {
+        return value.to_owned();
+    }
+    let bounds = char_boundaries(value);
+    match anchor {
+        Anchor::Start => {
+            for &end in bounds.iter().rev() {
+                if matches(pattern, &value[..end]) {
+                    return format!("{replacement}{}", &value[end..]);
+                }
+            }
+            value.to_owned()
+        }
+        Anchor::End => {
+            for &start in &bounds {
+                if matches(pattern, &value[start..]) {
+                    return format!("{}{replacement}", &value[..start]);
+                }
+            }
+            value.to_owned()
+        }
+        Anchor::None => {
+            let mut out = String::new();
+            let mut index = 0;
+            let mut replaced = false;
+            while index < bounds.len() - 1 {
+                let start = bounds[index];
+                let found = (!replaced || all)
+                    .then(|| {
+                        bounds[index + 1..]
+                            .iter()
+                            .rev()
+                            .find(|&&end| matches(pattern, &value[start..end]))
+                            .copied()
+                    })
+                    .flatten();
+                match found {
+                    Some(end) => {
+                        out.push_str(replacement);
+                        replaced = true;
+                        index = bounds
+                            .iter()
+                            .position(|&b| b == end)
+                            .unwrap_or(bounds.len());
+                    }
+                    None => {
+                        out.push_str(&value[start..bounds[index + 1]]);
+                        index += 1;
+                    }
+                }
+            }
+            out
+        }
+    }
+}
+
+fn substring(value: &str, offset: i64, length: Option<i64>) -> String {
+    let chars: Vec<char> = value.chars().collect();
+    let len = i64::try_from(chars.len()).unwrap_or(i64::MAX);
+    let start = if offset < 0 {
+        (len + offset).max(0)
+    } else {
+        offset.min(len)
+    };
+    let end = match length {
+        None => len,
+        Some(length) if length < 0 => (len + length).max(start),
+        Some(length) => (start + length).min(len),
+    };
+    let start = usize::try_from(start).unwrap_or(0);
+    let end = usize::try_from(end).unwrap_or(0);
+    chars[start..end.max(start)].iter().collect()
+}
+
+fn change_case(value: &str, upper: bool, all: bool) -> String {
+    let convert = |c: char| -> String {
+        if upper {
+            c.to_uppercase().collect()
+        } else {
+            c.to_lowercase().collect()
+        }
+    };
+    if all {
+        value.chars().map(convert).collect()
+    } else {
+        let mut chars = value.chars();
+        match chars.next() {
+            Some(first) => format!("{}{}", convert(first), chars.as_str()),
+            None => String::new(),
+        }
+    }
+}
+
+fn lookup(name: &str, context: &mut impl Context) -> Option<String> {
+    match name {
+        "@" | "*" => {
+            let params = context.positional();
+            (!params.is_empty()).then(|| params.join(" "))
+        }
+        "#" => Some(context.positional().len().to_string()),
+        _ => context.var(name),
+    }
+}
+
+/// A value that must exist: reports unset variables (for `set -u`).
+fn lookup_used(name: &str, context: &mut impl Context) -> String {
+    match lookup(name, context) {
+        Some(value) => value,
+        None => {
+            if !matches!(name, "@" | "*") {
+                context.unset(name);
+            }
+            String::new()
+        }
+    }
+}
+
+/// Expands `${name<op>…}` to a single value.
+fn parameter(name: &str, op: &ParamOp, context: &mut impl Context) -> String {
+    let value = lookup(name, context);
+    let unset_or_null = |colon: bool| match &value {
+        None => true,
+        Some(text) => colon && text.is_empty(),
+    };
+    match op {
+        ParamOp::Length => {
+            if name == "@" || name == "*" {
+                context.positional().len().to_string()
+            } else {
+                lookup_used(name, context).chars().count().to_string()
+            }
+        }
+        ParamOp::Default { colon, word } => {
+            if unset_or_null(*colon) {
+                expand_single(word, context)
+            } else {
+                value.unwrap_or_default()
+            }
+        }
+        ParamOp::Assign { colon, word } => {
+            if unset_or_null(*colon) {
+                let text = expand_single(word, context);
+                if crate::parse::is_name(name) {
+                    context.set_var(name, &text);
+                } else {
+                    context.fail(format!("${name}: cannot assign in this way"));
+                }
+                text
+            } else {
+                value.unwrap_or_default()
+            }
+        }
+        ParamOp::Alternative { colon, word } => {
+            if unset_or_null(*colon) {
+                String::new()
+            } else {
+                expand_single(word, context)
+            }
+        }
+        ParamOp::Error { colon, word } => {
+            if unset_or_null(*colon) {
+                let message = expand_single(word, context);
+                let message = if message.is_empty() {
+                    "parameter null or not set".to_owned()
+                } else {
+                    message
+                };
+                context.required(format!("{name}: {message}"));
+                String::new()
+            } else {
+                value.unwrap_or_default()
+            }
+        }
+        ParamOp::RemovePrefix {
+            longest,
+            pattern: word,
+        } => {
+            let pattern = pattern(word, context);
+            remove_prefix(&value.unwrap_or_default(), &pattern, *longest)
+        }
+        ParamOp::RemoveSuffix {
+            longest,
+            pattern: word,
+        } => {
+            let pattern = pattern(word, context);
+            remove_suffix(&value.unwrap_or_default(), &pattern, *longest)
+        }
+        ParamOp::Replace {
+            all,
+            anchor,
+            pattern: word,
+            replacement,
+        } => {
+            let pattern = pattern(word, context);
+            let replacement = expand_single(replacement, context);
+            replace(
+                &value.unwrap_or_default(),
+                &pattern,
+                &replacement,
+                *all,
+                *anchor,
+            )
+        }
+        ParamOp::Substring { offset, length } => {
+            let Some(offset) = context.arith(offset) else {
+                return String::new();
+            };
+            let length = match length {
+                Some(length) => match context.arith(length) {
+                    Some(length) => Some(length),
+                    None => return String::new(),
+                },
+                None => None,
+            };
+            substring(&value.unwrap_or_default(), offset, length)
+        }
+        ParamOp::Case { upper, all } => change_case(&value.unwrap_or_default(), *upper, *all),
+    }
+}
+
 /// Expands a word into zero or more arguments.
 pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String> {
     let mut fields = vec![Field::default()];
@@ -92,26 +438,36 @@ pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String
                 let home = context.home().unwrap_or_else(|| "~".to_owned());
                 fields.last_mut().expect("field").push(&home, false);
             }
-            Part::Var { name, quoted } => {
-                let value = context.var(name).unwrap_or_default();
-                if *quoted {
+            Part::Var { name, quoted: true } if name == "@" => {
+                // "$@" keeps every argument as its own word.
+                for (index, param) in context.positional().iter().enumerate() {
+                    if index > 0 {
+                        fields.push(Field::default());
+                    }
                     let field = fields.last_mut().expect("field");
-                    field.push(&value, false);
+                    field.push(param, false);
                     field.quoted = true;
-                } else {
-                    split_into(&mut fields, &value);
                 }
+            }
+            Part::Var { name, quoted } => {
+                let value = lookup_used(name, context);
+                push_value(&mut fields, &value, *quoted);
+            }
+            Part::Param { name, op, quoted } => {
+                let value = parameter(name, op, context);
+                push_value(&mut fields, &value, *quoted);
             }
             Part::Subst { source, quoted } => {
                 let value = context.substitute(source);
                 let value = value.trim_end_matches(['\n', '\r']);
-                if *quoted {
-                    let field = fields.last_mut().expect("field");
-                    field.push(value, false);
-                    field.quoted = true;
-                } else {
-                    split_into(&mut fields, value);
-                }
+                push_value(&mut fields, value, *quoted);
+            }
+            Part::Arith { source, quoted } => {
+                let value = context
+                    .arith(source)
+                    .map(|value| value.to_string())
+                    .unwrap_or_default();
+                push_value(&mut fields, &value, *quoted);
             }
         }
     }
@@ -154,54 +510,107 @@ pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String
     out
 }
 
-/// Expands a word that must stay a single value (assignment values, redirect targets).
+/// Expands a word that must stay a single value (assignment values, redirect targets,
+/// `case` words): no field splitting, no globbing.
 pub fn expand_single(word: &Word, context: &mut impl Context) -> String {
-    let mut fields = Vec::new();
-    for part in &word.0 {
-        let quoted_part = match part {
+    let quoted: Vec<Part> = word
+        .0
+        .iter()
+        .map(|part| match part {
+            Part::Var { name, .. } if name == "@" => Part::Var {
+                name: "*".into(),
+                quoted: true,
+            },
             Part::Var { name, .. } => Part::Var {
                 name: name.clone(),
+                quoted: true,
+            },
+            Part::Param { name, op, .. } => Part::Param {
+                name: name.clone(),
+                op: op.clone(),
                 quoted: true,
             },
             Part::Subst { source, .. } => Part::Subst {
                 source: source.clone(),
                 quoted: true,
             },
+            Part::Arith { source, .. } => Part::Arith {
+                source: source.clone(),
+                quoted: true,
+            },
             other => other.clone(),
-        };
-        fields.push(quoted_part);
-    }
-    expand(&Word(fields), context, false).join(" ")
+        })
+        .collect();
+    expand(&Word(quoted), context, false).join(" ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parse::parse;
+    use crate::parse::{parse, Command};
     use std::collections::HashMap;
 
-    struct Vars(HashMap<&'static str, &'static str>);
+    struct Vars {
+        vars: HashMap<String, String>,
+        args: Vec<String>,
+        errors: Vec<String>,
+    }
 
     impl Context for Vars {
-        fn var(&self, name: &str) -> Option<String> {
-            self.0.get(name).map(|v| (*v).to_owned())
+        fn var(&mut self, name: &str) -> Option<String> {
+            self.vars.get(name).cloned()
+        }
+        fn set_var(&mut self, name: &str, value: &str) {
+            self.vars.insert(name.to_owned(), value.to_owned());
+        }
+        fn positional(&self) -> Vec<String> {
+            self.args.clone()
         }
         fn substitute(&mut self, source: &str) -> String {
             format!("<{source}>\n")
         }
+        fn arith(&mut self, source: &str) -> Option<i64> {
+            source.trim().parse().ok()
+        }
         fn home(&self) -> Option<String> {
             Some("/home/me".into())
         }
+        fn fail(&mut self, message: String) {
+            self.errors.push(message);
+        }
+    }
+
+    fn vars() -> Vars {
+        Vars {
+            vars: [
+                ("A", "one two"),
+                ("E", ""),
+                ("X", "x"),
+                ("F", "archive.tar.gz"),
+                ("P", "/usr/local/bin"),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.to_owned(), v.to_owned()))
+            .collect(),
+            args: vec!["a b".into(), "c".into()],
+            errors: Vec::new(),
+        }
+    }
+
+    fn run_with(context: &mut Vars, source: &str) -> Vec<String> {
+        let list = parse(source).unwrap();
+        let Command::Simple(command) = &list.0[0].1.commands[0] else {
+            panic!("not a simple command");
+        };
+        command
+            .words
+            .iter()
+            .flat_map(|w| expand(w, context, false))
+            .collect()
     }
 
     fn run(source: &str) -> Vec<String> {
-        let mut vars = Vars(HashMap::from([("A", "one two"), ("E", ""), ("X", "x")]));
-        let list = parse(source).unwrap();
-        list.0[0].1.commands[0]
-            .words
-            .iter()
-            .flat_map(|w| expand(w, &mut vars, false))
-            .collect()
+        run_with(&mut vars(), source)
     }
 
     #[test]
@@ -225,5 +634,70 @@ mod tests {
     #[test]
     fn substitutes_commands_without_trailing_newline() {
         assert_eq!(run("echo \"$(date)\""), vec!["echo", "<date>"]);
+    }
+
+    #[test]
+    fn expands_positional_parameters() {
+        assert_eq!(run("echo \"$@\""), vec!["echo", "a b", "c"]);
+        assert_eq!(run("echo $@"), vec!["echo", "a", "b", "c"]);
+        assert_eq!(run("echo \"$*\" $#"), vec!["echo", "a b c", "2"]);
+        assert_eq!(run("echo \"x$@y\""), vec!["echo", "xa b", "cy"]);
+        let mut empty = vars();
+        empty.args.clear();
+        assert_eq!(run_with(&mut empty, "echo \"$@\""), vec!["echo"]);
+    }
+
+    #[test]
+    fn applies_parameter_operators() {
+        assert_eq!(
+            run("echo ${MISSING:-a b} \"${E:-default}\" ${X:+set} ${#F}"),
+            vec!["echo", "a", "b", "default", "set", "14"]
+        );
+        assert_eq!(
+            run("echo ${F%.*} ${F%%.*} ${F#*.} ${F##*.}"),
+            vec!["echo", "archive.tar", "archive", "tar.gz", "gz"]
+        );
+        assert_eq!(
+            run("echo ${P/\\/usr/~} ${P//\\//:} ${F/#arch/ARCH} ${F/%gz/xz}"),
+            vec![
+                "echo",
+                "~/local/bin",
+                ":usr:local:bin",
+                "ARCHive.tar.gz",
+                "archive.tar.xz"
+            ]
+        );
+        assert_eq!(
+            run("echo ${F:0:7} ${F: -2} ${F:8:-3} ${X^^} ${A^}"),
+            vec!["echo", "archive", "gz", "tar", "X", "One", "two"]
+        );
+    }
+
+    #[test]
+    fn assigns_defaults() {
+        let mut context = vars();
+        assert_eq!(
+            run_with(&mut context, "echo ${NEW:=value}"),
+            vec!["echo", "value"]
+        );
+        assert_eq!(context.vars["NEW"], "value");
+    }
+
+    #[test]
+    fn reports_missing_required_values() {
+        let mut context = vars();
+        run_with(&mut context, "echo ${MISSING:?give a value}");
+        assert_eq!(context.errors, vec!["MISSING: give a value"]);
+    }
+
+    #[test]
+    fn replaces_with_patterns() {
+        assert_eq!(
+            replace("hello world", "o", "0", true, Anchor::None),
+            "hell0 w0rld"
+        );
+        assert_eq!(replace("hello", "l*", "L", false, Anchor::None), "heL");
+        assert_eq!(replace("aaa", "a", "b", false, Anchor::None), "baa");
+        assert_eq!(remove_prefix("héllo", "h?", false), "llo");
     }
 }

@@ -139,7 +139,7 @@ fn tree_draws_a_tree() {
 #[test]
 fn aliases_and_builtins() {
     assert_eq!(run("alias hi='echo hi there'; hi you").1, "hi there you\n");
-    assert!(run("type cd").1.contains("built-in"));
+    assert!(run("type cd").1.contains("builtin"));
     assert!(run("type ls").1.contains("Nebula command"));
 }
 
@@ -166,4 +166,137 @@ fn runs_utilities_directly() {
         .output()
         .unwrap();
     assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "direct");
+}
+
+#[test]
+fn runs_control_flow() {
+    assert_eq!(
+        run("for i in 1 2 3; do if [ $i -eq 2 ]; then continue; fi; echo $i; done").1,
+        "1\n3\n"
+    );
+    assert_eq!(
+        run("n=0; while (( n < 3 )); do n=$((n + 1)); done; echo $n").1,
+        "3\n"
+    );
+    assert_eq!(run("until true; do echo never; done; echo ok").1, "ok\n");
+    assert_eq!(
+        run("for ((i = 0; i < 3; i++)); do printf '%s' $i; done").1,
+        "012"
+    );
+    assert_eq!(
+        run("case app.tar.gz in *.zip) echo zip;; *.tar.*) echo tar;; esac").1,
+        "tar\n"
+    );
+    assert_eq!(
+        run("for a in x y; do for b in 1 2; do [ $b = 2 ] && break 2; echo $a$b; done; done").1,
+        "x1\n"
+    );
+}
+
+#[test]
+fn runs_functions() {
+    assert_eq!(
+        run("greet() { local who=${1:-world}; echo \"hi $who ($#)\"; }; greet; greet Ada x").1,
+        "hi world (0)\nhi Ada (2)\n"
+    );
+    assert_eq!(run("f() { return 4; }; f; echo $?").1, "4\n");
+    assert_eq!(
+        run("x=1; f() { local x=2; }; f; echo $x").1,
+        "1\n"
+    );
+    assert_eq!(
+        run("fact() { if (( $1 <= 1 )); then echo 1; else echo $(( $1 * $(fact $(( $1 - 1 ))) )); fi; }; fact 5").1,
+        "120\n"
+    );
+    assert_eq!(run("up() { tr a-z A-Z; }; echo hi | up").1, "HI\n");
+    let (code, _, err) = run("f() { f; }; f");
+    assert_eq!(code, 1);
+    assert!(err.contains("maximum function nesting"), "{err}");
+}
+
+#[test]
+fn expands_parameters_and_arithmetic() {
+    assert_eq!(
+        run("f=report.tar.gz; echo ${f%%.*} ${f#*.} ${#f} ${f/tar/zip} ${f^^}").1,
+        "report tar.gz 13 report.zip.gz REPORT.TAR.GZ\n"
+    );
+    assert_eq!(run("echo $((7 * (3 + 1) % 5)) $((2 ** 10))").1, "3 1024\n");
+    assert_eq!(run("set -- a 'b c' d; for x in \"$@\"; do echo \"[$x]\"; done").1, "[a]\n[b c]\n[d]\n");
+    let (_, out, err) = run("echo $((1 / 0)); echo next");
+    assert_eq!(out, "next\n");
+    assert!(err.contains("division by 0"), "{err}");
+}
+
+#[test]
+fn tests_conditions() {
+    assert_eq!(run("[ -d / ] && [ ! -f / ] && echo dir").1, "dir\n");
+    assert_eq!(run("test 10 -gt 9 && test abc = abc && echo yes").1, "yes\n");
+    assert_eq!(
+        run("v=1.20; [[ $v == 1.* && $v =~ ^[0-9]+\\.[0-9]+$ ]] && echo match").1,
+        "match\n"
+    );
+    assert_eq!(run("[[ a < b ]] && echo less").1, "less\n");
+    assert_eq!(run("[ 1 -eq ]; echo $?").1, "2\n");
+}
+
+#[test]
+fn reads_input_and_here_documents() {
+    assert_eq!(
+        run("printf 'a b c\\nd e\\n' | while read first rest; do echo \"$first|$rest\"; done").1,
+        "a|b c\nd|e\n"
+    );
+    assert_eq!(run("read -r x y <<< 'one two three'; echo $y").1, "two three\n");
+    assert_eq!(
+        run("name=Nebula\ncat <<EOF\nHello $name\n$((1 + 1))\nEOF").1,
+        "Hello Nebula\n2\n"
+    );
+    assert_eq!(run("cat <<'EOF'\n$literal\nEOF").1, "$literal\n");
+}
+
+#[test]
+fn isolates_subshells_and_substitutions() {
+    let dir = scratch("subshell");
+    let (_, out, _) = run_in(&dir, "(cd / && pwd); x=$(cd /; echo in); pwd | grep -c subshell; echo $x");
+    assert_eq!(out.lines().collect::<Vec<_>>()[1..], ["1", "in"]);
+    assert_eq!(run("x=$(false) || echo failed").1, "failed\n");
+    assert_eq!(run("(exit 3); echo $?").1, "3\n");
+    assert_eq!(run("echo before; (exit 5); echo after").1, "before\nafter\n");
+}
+
+#[test]
+fn honours_shell_options() {
+    let (code, out, _) = run("set -e; echo one; false; echo two");
+    assert_eq!((code, out.as_str()), (1, "one\n"));
+    assert_eq!(run("set -e; false || true; if false; then :; fi; echo kept").1, "kept\n");
+    assert_eq!(run("set -o pipefail; false | true; echo $?").1, "1\n");
+    let (code, _, err) = run("set -u; echo $NEBULA_SURELY_UNSET; echo no");
+    assert_eq!(code, 1);
+    assert!(err.contains("unbound variable"), "{err}");
+}
+
+#[test]
+fn runs_script_files_with_arguments() {
+    let dir = scratch("script");
+    std::fs::write(
+        dir.join("hello.sh"),
+        "#!/usr/bin/env nebula\r\nfor name in \"$@\"; do\r\n  echo \"hello $name from $(basename $0)\"\r\ndone\r\n",
+    )
+    .unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_nebula-sh"))
+        .arg(dir.join("hello.sh"))
+        .args(["Ada", "Linus"])
+        .env("NO_COLOR", "1")
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).replace("\r\n", "\n"),
+        "hello Ada from hello.sh\nhello Linus from hello.sh\n"
+    );
+}
+
+#[test]
+fn pipelines_do_not_deadlock_on_aliases() {
+    assert_eq!(run("alias big='seq 1 100000'; big | tail -1").1, "100000\n");
+    assert_eq!(run("alias ls='ls -a'; ls -d /").1.trim(), "/");
+    assert_eq!(run("yes | grep y | head -2").1, "y\ny\n");
 }

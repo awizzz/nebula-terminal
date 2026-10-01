@@ -1,9 +1,11 @@
 //! Nebula: a Linux-style command interpreter for Windows.
 //!
-//! `nebula-sh` starts an interactive shell. `nebula-sh -c "line"` runs one line.
-//! `nebula-sh <command> [args]` runs one of Nebula's commands (`ls`, `grep`…)
-//! directly; the shell uses that form to run them in pipelines.
+//! `nebula-sh` starts an interactive shell. `nebula-sh -c "line"` runs one line,
+//! `nebula-sh script.sh args…` runs a script. `nebula-sh <command> [args]` runs one
+//! of Nebula's commands (`ls`, `grep`…) directly; the shell uses that form to run
+//! them in pipelines.
 
+mod arith;
 mod builtins;
 mod commands;
 mod coreutils;
@@ -17,11 +19,16 @@ mod prompt;
 mod style;
 mod suggest;
 mod sys;
+mod test;
 
 use std::ffi::OsString;
 use std::process::ExitCode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Functions can recurse deeply; give the interpreter more room than the default
+/// 1 MB main-thread stack on Windows.
+const STACK_SIZE: usize = 256 * 1024 * 1024;
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().collect();
@@ -36,32 +43,68 @@ fn main() -> ExitCode {
         return exit(code);
     }
 
+    let args: Vec<String> = args
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    match std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(move || shell_main(&args))
+    {
+        Ok(handle) => handle.join().unwrap_or(ExitCode::FAILURE),
+        Err(_) => ExitCode::FAILURE,
+    }
+}
+
+fn shell_main(args: &[String]) -> ExitCode {
     let mut shell = exec::Shell::new();
     prepare_environment();
     ignore_interrupts(&shell);
+    let first = args.get(1).map_or("", String::as_str);
 
     match first {
         "-c" => {
-            let line = args
-                .get(2)
-                .map(|arg| arg.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            exit(shell.run_line(&line))
+            let line = args.get(2).cloned().unwrap_or_default();
+            if let Some(name) = args.get(3) {
+                shell.script_name = name.clone();
+            }
+            shell.positional = args.get(4..).map(<[String]>::to_vec).unwrap_or_default();
+            let status = shell.run_line(&line);
+            exit(shell.exit_code.unwrap_or(status))
+        }
+        // Used by the shell itself to run pipeline stages and `( … )`.
+        "--subshell" => {
+            let path = args.get(2).cloned().unwrap_or_default();
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let _ = std::fs::remove_file(&path);
+            shell.last_status = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(0);
+            if let Some(name) = args.get(4) {
+                shell.script_name = name.clone();
+            }
+            let status = shell.run_line(&text);
+            exit(shell.exit_code.unwrap_or(status))
         }
         "--version" | "-V" => {
             println!("nebula {VERSION}");
             ExitCode::SUCCESS
         }
         "--help" | "-h" => {
-            println!("Usage: nebula-sh [-c COMMAND | SCRIPT | COMMAND [ARGS…]]");
+            println!(
+                "Usage: nebula-sh [-c COMMAND [NAME [ARGS…]] | SCRIPT [ARGS…] | COMMAND [ARGS…]]"
+            );
             ExitCode::SUCCESS
         }
         "" => {
             sys::enable_ansi();
             exit(editor::interactive(&mut shell))
         }
-        script => match std::fs::read_to_string(script) {
-            Ok(text) => exit(shell.run_line(&text)),
+        script => match std::fs::read_to_string(sys::translate_path(script)) {
+            Ok(text) => {
+                shell.script_name = script.to_owned();
+                shell.positional = args[2..].to_vec();
+                let status = shell.run_line(&text);
+                exit(shell.exit_code.unwrap_or(status))
+            }
             Err(error) => {
                 eprintln!("nebula: {script}: {}", exec::describe_io_error(&error));
                 ExitCode::from(127)

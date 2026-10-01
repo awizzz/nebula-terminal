@@ -1,41 +1,61 @@
 //! Commands that run inside the shell process.
 
 use crate::commands;
-use crate::exec::{Resolution, Shell};
+use crate::exec::{Flow, Io, Resolution, Shell};
+use crate::parse;
 use crate::style::{self, Paint};
 use crate::sys;
 use std::env;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
-pub fn run(shell: &mut Shell, argv: &[String], out: &mut dyn Write, err: &mut dyn Write) -> i32 {
+pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
+    let mut out = io.stdout.writer();
+    let mut err = io.stderr.writer();
     let args = &argv[1..];
     let result = match argv[0].as_str() {
-        "cd" => cd(shell, args, out),
-        "pushd" => pushd(shell, args, out),
-        "popd" => popd(shell, out),
-        "dirs" => dirs(shell, out),
+        "cd" => cd(shell, args, &mut out),
+        "pushd" => pushd(shell, args, &mut out),
+        "popd" => popd(shell, &mut out),
+        "dirs" => dirs(shell, &mut out),
         "exit" => exit(shell, args),
-        "export" => export(args, out),
-        "unset" => {
-            for name in args {
-                env::remove_var(name);
-            }
-            Ok(0)
-        }
-        "alias" => alias(shell, args, out),
+        "export" => export(args, &mut out),
+        "unset" => unset(shell, args),
+        "alias" => alias(shell, args, &mut out),
         "unalias" => unalias(shell, args),
-        "history" => history(shell, args, out),
-        "source" | "." => source(shell, args),
-        "type" => describe(shell, args, out, false),
-        "which" => describe(shell, args, out, true),
+        "history" => history(shell, args, &mut out),
+        "source" | "." => source(shell, args, io),
+        "type" => describe(shell, args, &mut out),
+        "which" => which(shell, args, &mut out),
         "clear" => {
             let _ = write!(out, "\x1b[H\x1b[2J\x1b[3J");
             Ok(0)
         }
-        "help" => help(out),
+        "help" => help(&mut out),
+        "echo" => echo(args, &mut out),
+        "true" | ":" => Ok(0),
+        "false" => Ok(1),
+        "test" | "[" => crate::test::builtin(&argv[0], args, &|name| env::var_os(name).is_some())
+            .map(|value| i32::from(!value))
+            .map_err(|message| (message, 2))
+            .or_else(|(message, code)| {
+                let _ = writeln!(err, "{}: {message}", argv[0]);
+                Ok::<i32, String>(code)
+            }),
+        "local" => local(shell, args),
+        "declare" | "typeset" => declare(shell, args, &mut out),
+        "return" => flow(shell, args, "return"),
+        "break" => flow(shell, args, "break"),
+        "continue" => flow(shell, args, "continue"),
+        "shift" => shift(shell, args),
+        "set" => set(shell, args, &mut out),
+        "read" => read(args, io, &mut err),
+        "eval" => Ok(shell.run_source(&args.join(" "), io, "eval: ")),
+        "command" => command(shell, args, io, &mut out),
+        "let" => let_(shell, args),
         other => Err(format!("{other}: not a builtin")),
     };
+    let _ = out.flush();
     match result {
         Ok(code) => code,
         Err(message) => {
@@ -126,8 +146,17 @@ fn exit(shell: &mut Shell, args: &[String]) -> Outcome {
     Ok(code)
 }
 
+fn valid_name(name: &str) -> Result<(), String> {
+    if parse::is_name(name) {
+        Ok(())
+    } else {
+        Err(format!("`{name}`: not a valid identifier"))
+    }
+}
+
 fn export(args: &[String], out: &mut dyn Write) -> Outcome {
-    if args.is_empty() || args == ["-p"] {
+    let names: Vec<&String> = args.iter().filter(|arg| !arg.starts_with('-')).collect();
+    if names.is_empty() {
         let mut vars: Vec<(String, String)> = env::vars().collect();
         vars.sort_by_key(|(name, _)| name.to_lowercase());
         for (name, value) in vars {
@@ -135,12 +164,40 @@ fn export(args: &[String], out: &mut dyn Write) -> Outcome {
         }
         return Ok(0);
     }
-    for arg in args {
-        if let Some((name, value)) = arg.split_once('=') {
-            if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                return Err(format!("`{arg}`: not a valid identifier"));
+    for arg in names {
+        // Every Nebula variable is already an environment variable.
+        match arg.split_once('=') {
+            Some((name, value)) => {
+                valid_name(name)?;
+                env::set_var(name, value);
             }
-            env::set_var(name, value);
+            None => valid_name(arg)?,
+        }
+    }
+    Ok(0)
+}
+
+fn unset(shell: &mut Shell, args: &[String]) -> Outcome {
+    let mut functions = false;
+    let mut variables = false;
+    for arg in args {
+        match arg.as_str() {
+            "-f" => functions = true,
+            "-v" => variables = true,
+            name => {
+                if functions {
+                    shell.functions.remove(name);
+                } else if variables
+                    || env::var_os(name).is_some()
+                    || !shell.functions.contains_key(name)
+                {
+                    if !name.is_empty() && !name.contains('=') {
+                        env::remove_var(name);
+                    }
+                } else {
+                    shell.functions.remove(name);
+                }
+            }
         }
     }
     Ok(0)
@@ -149,7 +206,7 @@ fn export(args: &[String], out: &mut dyn Write) -> Outcome {
 fn alias(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
     if args.is_empty() {
         for (name, value) in &shell.aliases {
-            let _ = writeln!(out, "alias {name}={}", crate::parse::quote(value));
+            let _ = writeln!(out, "alias {name}={}", parse::quote(value));
         }
         return Ok(0);
     }
@@ -161,7 +218,7 @@ fn alias(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
             }
             _ => match shell.aliases.get(arg) {
                 Some(value) => {
-                    let _ = writeln!(out, "alias {arg}={}", crate::parse::quote(value));
+                    let _ = writeln!(out, "alias {arg}={}", parse::quote(value));
                 }
                 None => {
                     status = 1;
@@ -203,32 +260,102 @@ fn history(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
     Ok(0)
 }
 
-fn source(shell: &mut Shell, args: &[String]) -> Outcome {
+fn source(shell: &mut Shell, args: &[String], io: &Io) -> Outcome {
     let path = args.first().ok_or("filename argument required")?;
     let text = std::fs::read_to_string(resolve_dir(path))
         .map_err(|error| format!("{path}: {}", crate::exec::describe_io_error(&error)))?;
-    Ok(shell.run_line(&text))
+    let saved =
+        (args.len() > 1).then(|| std::mem::replace(&mut shell.positional, args[1..].to_vec()));
+    let status = shell.run_source(&text, io, &format!("{path}: "));
+    if let Some(saved) = saved {
+        shell.positional = saved;
+    }
+    if shell.flow == Some(Flow::Return) {
+        shell.flow = None;
+    }
+    Ok(status)
 }
 
-fn describe(shell: &mut Shell, args: &[String], out: &mut dyn Write, which: bool) -> Outcome {
+fn describe(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let (kind_only, names) = match args.first().map(String::as_str) {
+        Some("-t") => (true, &args[1..]),
+        _ => (false, args),
+    };
     let mut status = 0;
-    for name in args {
+    for name in names {
+        if parse::KEYWORDS.contains(&name.as_str()) {
+            let _ = if kind_only {
+                writeln!(out, "keyword")
+            } else {
+                writeln!(out, "{name} is a shell keyword")
+            };
+            continue;
+        }
         match shell.resolve(name) {
             Resolution::Alias(value) => {
+                let _ = if kind_only {
+                    writeln!(out, "alias")
+                } else {
+                    writeln!(out, "{name} is aliased to `{value}`")
+                };
+            }
+            Resolution::Function(function) => {
+                let _ = if kind_only {
+                    writeln!(out, "function")
+                } else {
+                    writeln!(out, "{name} is a function\n{}", function.source)
+                };
+            }
+            Resolution::Builtin => {
+                let _ = if kind_only {
+                    writeln!(out, "builtin")
+                } else {
+                    writeln!(out, "{name} is a shell builtin")
+                };
+            }
+            Resolution::Util => {
+                let _ = if kind_only {
+                    writeln!(out, "file")
+                } else {
+                    writeln!(out, "{name} is a Nebula command")
+                };
+            }
+            Resolution::External(path) => {
+                let _ = if kind_only {
+                    writeln!(out, "file")
+                } else {
+                    writeln!(out, "{name} is {}", path.display())
+                };
+            }
+            Resolution::Missing => {
+                status = 1;
+                if !kind_only {
+                    let _ = writeln!(out, "{name} not found");
+                }
+            }
+        }
+    }
+    Ok(status)
+}
+
+fn which(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let mut status = 0;
+    for name in args.iter().filter(|arg| !arg.starts_with('-')) {
+        match shell.resolve(name) {
+            Resolution::External(path) => {
+                let _ = writeln!(out, "{}", path.display());
+            }
+            Resolution::Alias(value) => {
                 let _ = writeln!(out, "{name}: aliased to {value}");
+            }
+            Resolution::Function(_) => {
+                let _ = writeln!(out, "{name}: shell function");
             }
             Resolution::Builtin => {
                 let _ = writeln!(out, "{name}: shell built-in");
             }
             Resolution::Util => {
                 let _ = writeln!(out, "{name}: Nebula command");
-            }
-            Resolution::External(path) => {
-                if which {
-                    let _ = writeln!(out, "{}", path.display());
-                } else {
-                    let _ = writeln!(out, "{name} is {}", path.display());
-                }
             }
             Resolution::Missing => {
                 status = 1;
@@ -237,6 +364,538 @@ fn describe(shell: &mut Shell, args: &[String], out: &mut dyn Write, which: bool
         }
     }
     Ok(status)
+}
+
+/// `echo [-neE] args…`, with the escapes of `echo -e`.
+fn echo(args: &[String], out: &mut dyn Write) -> Outcome {
+    let mut newline = true;
+    let mut escapes = false;
+    let mut index = 0;
+    while let Some(arg) = args.get(index) {
+        let Some(flags) = arg.strip_prefix('-') else {
+            break;
+        };
+        if flags.is_empty() || !flags.chars().all(|c| matches!(c, 'n' | 'e' | 'E')) {
+            break;
+        }
+        for flag in flags.chars() {
+            match flag {
+                'n' => newline = false,
+                'e' => escapes = true,
+                _ => escapes = false,
+            }
+        }
+        index += 1;
+    }
+    let text = args[index..].join(" ");
+    if !escapes {
+        let _ = out.write_all(text.as_bytes());
+        if newline {
+            let _ = out.write_all(b"\n");
+        }
+        return Ok(0);
+    }
+    let (text, stop) = unescape(&text);
+    let _ = out.write_all(text.as_bytes());
+    if newline && !stop {
+        let _ = out.write_all(b"\n");
+    }
+    Ok(0)
+}
+
+/// Backslash escapes of `echo -e`. Returns the text and whether `\c` cut it short.
+fn unescape(text: &str) -> (String, bool) {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        let Some(next) = chars.next() else {
+            out.push('\\');
+            break;
+        };
+        match next {
+            'n' => out.push('\n'),
+            't' => out.push('\t'),
+            'r' => out.push('\r'),
+            'a' => out.push('\x07'),
+            'b' => out.push('\x08'),
+            'e' | 'E' => out.push('\x1b'),
+            'f' => out.push('\x0c'),
+            'v' => out.push('\x0b'),
+            '\\' => out.push('\\'),
+            'c' => return (out, true),
+            '0' => {
+                let mut value = 0u32;
+                for _ in 0..3 {
+                    match chars.peek().and_then(|d| d.to_digit(8)) {
+                        Some(d) => {
+                            value = value * 8 + d;
+                            chars.next();
+                        }
+                        None => break,
+                    }
+                }
+                out.extend(char::from_u32(value));
+            }
+            'x' => {
+                let mut value = 0u32;
+                let mut digits = 0;
+                while digits < 2 {
+                    match chars.peek().and_then(|d| d.to_digit(16)) {
+                        Some(d) => {
+                            value = value * 16 + d;
+                            chars.next();
+                            digits += 1;
+                        }
+                        None => break,
+                    }
+                }
+                if digits == 0 {
+                    out.push_str("\\x");
+                } else {
+                    out.extend(char::from_u32(value));
+                }
+            }
+            other => {
+                out.push('\\');
+                out.push(other);
+            }
+        }
+    }
+    (out, false)
+}
+
+fn local(shell: &mut Shell, args: &[String]) -> Outcome {
+    for arg in args.iter().filter(|arg| !arg.starts_with('-')) {
+        let (name, value) = match arg.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (arg.as_str(), None),
+        };
+        valid_name(name)?;
+        shell.declare_local(name, value)?;
+    }
+    Ok(0)
+}
+
+fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let mut global = false;
+    let mut functions = None;
+    let mut names = Vec::new();
+    for arg in args {
+        match arg.strip_prefix('-') {
+            Some(flags) if !flags.is_empty() && !arg.contains('=') => {
+                for flag in flags.chars() {
+                    match flag {
+                        'g' => global = true,
+                        'f' => functions = Some(true),
+                        'F' => functions = Some(false),
+                        'a' | 'A' => return Err("arrays are not supported".into()),
+                        // -x, -i, -r, -p and the rest: every variable is already exported.
+                        _ => {}
+                    }
+                }
+            }
+            _ => names.push(arg),
+        }
+    }
+    if let Some(with_body) = functions {
+        for function in shell.functions.values() {
+            if names.is_empty() || names.iter().any(|name| **name == function.name) {
+                let _ = if with_body {
+                    writeln!(out, "{}", function.source)
+                } else {
+                    writeln!(out, "declare -f {}", function.name)
+                };
+            }
+        }
+        return Ok(0);
+    }
+    if names.is_empty() {
+        return set(shell, &[], out);
+    }
+    for arg in names {
+        let (name, value) = match arg.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (arg.as_str(), None),
+        };
+        valid_name(name)?;
+        if shell.in_function() && !global {
+            let value = value.map(str::to_owned).or_else(|| env::var(name).ok());
+            shell.declare_local(name, value.as_deref())?;
+        } else if let Some(value) = value {
+            env::set_var(name, value);
+        }
+    }
+    Ok(0)
+}
+
+fn flow(shell: &mut Shell, args: &[String], which: &str) -> Outcome {
+    let number = match args.first() {
+        Some(value) => Some(
+            value
+                .parse::<i32>()
+                .map_err(|_| format!("{value}: numeric argument required"))?,
+        ),
+        None => None,
+    };
+    if which == "return" {
+        shell.flow = Some(Flow::Return);
+        return Ok(number.unwrap_or(shell.last_status));
+    }
+    if shell.loop_depth == 0 {
+        return Err("only meaningful in a `for`, `while` or `until` loop".into());
+    }
+    let levels = usize::try_from(number.unwrap_or(1))
+        .ok()
+        .filter(|levels| *levels > 0)
+        .ok_or("loop count out of range")?
+        .min(shell.loop_depth);
+    shell.flow = Some(if which == "break" {
+        Flow::Break(levels)
+    } else {
+        Flow::Continue(levels)
+    });
+    Ok(0)
+}
+
+fn shift(shell: &mut Shell, args: &[String]) -> Outcome {
+    let count = match args.first() {
+        Some(value) => value
+            .parse::<usize>()
+            .map_err(|_| format!("{value}: numeric argument required"))?,
+        None => 1,
+    };
+    if count > shell.positional.len() {
+        return Ok(1);
+    }
+    shell.positional.drain(..count);
+    Ok(0)
+}
+
+fn set(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    if args.is_empty() {
+        let mut vars: Vec<(String, String)> = env::vars().collect();
+        vars.sort_by_key(|(name, _)| name.to_lowercase());
+        for (name, value) in vars {
+            let _ = writeln!(out, "{name}={}", parse::quote(&value));
+        }
+        return Ok(0);
+    }
+    let mut index = 0;
+    while let Some(arg) = args.get(index) {
+        if arg == "--" {
+            shell.positional = args[index + 1..].to_vec();
+            return Ok(0);
+        }
+        let (enable, flags) = match (arg.strip_prefix('-'), arg.strip_prefix('+')) {
+            (Some(flags), _) if !flags.is_empty() => (true, flags),
+            (_, Some(flags)) if !flags.is_empty() => (false, flags),
+            _ => {
+                shell.positional = args[index..].to_vec();
+                return Ok(0);
+            }
+        };
+        for flag in flags.chars() {
+            match flag {
+                'e' => shell.options.errexit = enable,
+                'u' => shell.options.nounset = enable,
+                'x' => shell.options.xtrace = enable,
+                'o' => {
+                    index += 1;
+                    match args.get(index).map(String::as_str) {
+                        Some("errexit") => shell.options.errexit = enable,
+                        Some("nounset") => shell.options.nounset = enable,
+                        Some("xtrace") => shell.options.xtrace = enable,
+                        Some("pipefail") => shell.options.pipefail = enable,
+                        Some(other) => return Err(format!("{other}: unknown option name")),
+                        None => {
+                            let options = shell.options;
+                            for (name, on) in [
+                                ("errexit", options.errexit),
+                                ("nounset", options.nounset),
+                                ("pipefail", options.pipefail),
+                                ("xtrace", options.xtrace),
+                            ] {
+                                let _ =
+                                    writeln!(out, "{name:<12}{}", if on { "on" } else { "off" });
+                            }
+                        }
+                    }
+                }
+                other => return Err(format!("-{other}: unsupported option")),
+            }
+        }
+        index += 1;
+    }
+    Ok(0)
+}
+
+struct ReadOptions {
+    raw: bool,
+    silent: bool,
+    prompt: Option<String>,
+    delimiter: u8,
+    count: Option<usize>,
+}
+
+fn read(args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
+    let mut options = ReadOptions {
+        raw: false,
+        silent: false,
+        prompt: None,
+        delimiter: b'\n',
+        count: None,
+    };
+    let mut names = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        match arg.as_str() {
+            "-r" => options.raw = true,
+            "-s" => options.silent = true,
+            "-p" => options.prompt = Some(iter.next().cloned().unwrap_or_default()),
+            "-d" => {
+                options.delimiter = iter.next().and_then(|d| d.bytes().next()).unwrap_or(0);
+            }
+            "-n" | "-N" => {
+                let value = iter.next().cloned().unwrap_or_default();
+                options.count = Some(
+                    value
+                        .parse()
+                        .map_err(|_| format!("{value}: invalid count"))?,
+                );
+            }
+            "-a" => return Err("arrays are not supported".into()),
+            "-t" | "-u" => return Err(format!("{arg}: unsupported option")),
+            flags if flags.starts_with('-') && flags.len() > 1 => {
+                for flag in flags[1..].chars() {
+                    match flag {
+                        'r' => options.raw = true,
+                        's' => options.silent = true,
+                        other => return Err(format!("-{other}: unsupported option")),
+                    }
+                }
+            }
+            name => {
+                valid_name(name)?;
+                names.push(name.to_owned());
+            }
+        }
+    }
+    if names.is_empty() {
+        names.push("REPLY".to_owned());
+    }
+
+    let terminal = io.stdin.is_terminal();
+    if let Some(prompt) = &options.prompt {
+        if terminal {
+            let _ = write!(err, "{prompt}");
+            let _ = err.flush();
+        }
+    }
+    let (line, complete) = if terminal && options.silent {
+        read_silently(err)?
+    } else {
+        read_record(io, &options)?
+    };
+    let line = if options.raw {
+        line
+    } else {
+        strip_backslashes(&line)
+    };
+    let ifs = env::var("IFS").unwrap_or_else(|_| " \t\n".to_owned());
+    let values = split_fields(&line, &ifs, names.len());
+    for (name, value) in names.iter().zip(values) {
+        env::set_var(name, value);
+    }
+    Ok(i32::from(!complete))
+}
+
+/// Reads up to the delimiter. Returns the text and whether a delimiter was found
+/// (`false` at end of input, which makes `read` fail and ends `while read` loops).
+fn read_record(io: &Io, options: &ReadOptions) -> Result<(String, bool), String> {
+    let mut reader = io.stdin.reader().map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    let mut byte = [0u8];
+    loop {
+        if options
+            .count
+            .is_some_and(|count| String::from_utf8_lossy(&bytes).chars().count() >= count)
+        {
+            return Ok((String::from_utf8_lossy(&bytes).into_owned(), true));
+        }
+        match reader.read(&mut byte) {
+            Ok(0) => {
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                let text = text.strip_suffix('\r').unwrap_or(&text).to_owned();
+                return Ok((text, false));
+            }
+            Ok(_) => {
+                if byte[0] == options.delimiter {
+                    // A backslash before the newline continues the line (without -r).
+                    if !options.raw
+                        && options.delimiter == b'\n'
+                        && bytes.last() == Some(&b'\\')
+                        && trailing_backslashes(&bytes) % 2 == 1
+                    {
+                        bytes.pop();
+                        if bytes.last() == Some(&b'\r') {
+                            bytes.pop();
+                        }
+                        continue;
+                    }
+                    let text = String::from_utf8_lossy(&bytes).into_owned();
+                    let text = if options.delimiter == b'\n' {
+                        text.strip_suffix('\r').unwrap_or(&text).to_owned()
+                    } else {
+                        text
+                    };
+                    return Ok((text, true));
+                }
+                bytes.push(byte[0]);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+}
+
+fn trailing_backslashes(bytes: &[u8]) -> usize {
+    bytes.iter().rev().take_while(|b| **b == b'\\').count()
+}
+
+/// `read -s`: reads a line from the console without echoing it.
+fn read_silently(err: &mut dyn Write) -> Result<(String, bool), String> {
+    use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+    crossterm::terminal::enable_raw_mode().map_err(|error| error.to_string())?;
+    let mut line = String::new();
+    let result = loop {
+        match event::read() {
+            Ok(Event::Key(key)) if key.kind != KeyEventKind::Release => match key.code {
+                KeyCode::Enter => break Ok((line, true)),
+                KeyCode::Backspace => {
+                    line.pop();
+                }
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    break Err("interrupted".to_owned())
+                }
+                KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    break Ok((line, false))
+                }
+                KeyCode::Char(c) => line.push(c),
+                _ => {}
+            },
+            Ok(Event::Paste(text)) => line.push_str(&text),
+            Ok(_) => {}
+            Err(error) => break Err(error.to_string()),
+        }
+    };
+    let _ = crossterm::terminal::disable_raw_mode();
+    let _ = writeln!(err);
+    result
+}
+
+fn strip_backslashes(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(next) = chars.next() {
+                out.push(next);
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// Splits a line for `read` the way bash does with `IFS`: whitespace separators
+/// collapse and are trimmed; the last variable gets the rest of the line.
+fn split_fields(line: &str, ifs: &str, count: usize) -> Vec<String> {
+    if ifs.is_empty() {
+        let mut fields = vec![line.to_owned()];
+        fields.resize(count, String::new());
+        return fields;
+    }
+    let is_space = |c: char| ifs.contains(c) && c.is_whitespace();
+    let is_separator = |c: char| ifs.contains(c);
+    let mut fields = Vec::with_capacity(count);
+    let mut rest = line.trim_matches(is_space);
+    while fields.len() + 1 < count && !rest.is_empty() {
+        match rest.find(is_separator) {
+            Some(index) => {
+                fields.push(rest[..index].to_owned());
+                rest = rest[index..].trim_start_matches(is_space);
+                if let Some(c) = rest
+                    .chars()
+                    .next()
+                    .filter(|c| !c.is_whitespace() && is_separator(*c))
+                {
+                    rest = rest[c.len_utf8()..].trim_start_matches(is_space);
+                }
+            }
+            None => {
+                fields.push(rest.to_owned());
+                rest = "";
+            }
+        }
+    }
+    if fields.len() < count {
+        fields.push(rest.to_owned());
+    }
+    fields.resize(count, String::new());
+    fields
+}
+
+fn command(shell: &mut Shell, args: &[String], io: &Io, out: &mut dyn Write) -> Outcome {
+    let (mode, names) = match args.first().map(String::as_str) {
+        Some("-v") => (Some(false), &args[1..]),
+        Some("-V") => (Some(true), &args[1..]),
+        _ => (None, args),
+    };
+    match mode {
+        Some(true) => describe(shell, names, out),
+        Some(false) => {
+            let mut status = 0;
+            for name in names {
+                match shell.resolve(name) {
+                    Resolution::Alias(value) => {
+                        let _ = writeln!(out, "alias {name}={}", parse::quote(&value));
+                    }
+                    Resolution::External(path) => {
+                        let _ = writeln!(out, "{}", path.display());
+                    }
+                    Resolution::Missing => status = 1,
+                    _ => {
+                        let _ = writeln!(out, "{name}");
+                    }
+                }
+            }
+            Ok(status)
+        }
+        None if names.is_empty() => Ok(0),
+        None => {
+            let _ = out.flush();
+            Ok(shell.run_bypassing_functions(names.to_vec(), io))
+        }
+    }
+}
+
+fn let_(shell: &mut Shell, args: &[String]) -> Outcome {
+    if args.is_empty() {
+        return Err("expression expected".into());
+    }
+    let mut last = 0;
+    for arg in args {
+        match crate::expand::Context::arith(shell, arg) {
+            Some(value) => last = value,
+            None => return Ok(1),
+        }
+    }
+    Ok(i32::from(last == 0))
 }
 
 fn help(out: &mut dyn Write) -> Outcome {
@@ -263,16 +922,27 @@ fn help(out: &mut dyn Write) -> Outcome {
             ],
         ),
         (
+            "Scripting",
+            &[
+                "test", "read", "local", "return", "shift", "set", "eval", "let", "command",
+                "source",
+            ],
+        ),
+        (
             "Shell",
             &[
-                "alias", "history", "type", "which", "source", "pushd", "popd", "clear", "exit",
+                "alias", "history", "type", "which", "pushd", "popd", "clear", "exit",
             ],
         ),
     ];
     let _ = writeln!(out, "{}", "Nebula — Linux commands on Windows".bold());
     let _ = writeln!(
         out,
-        "Every command supports --help. Windows programs (git, node, python…) run as usual.\n"
+        "Every command supports --help. Windows programs (git, node, python…) run as usual."
+    );
+    let _ = writeln!(
+        out,
+        "Scripts can use if, for, while, until, case, functions, $((…)) and [[ … ]].\n"
     );
     for (title, names) in groups {
         let _ = writeln!(out, "{}", title.paint(style::ACCENT).bold());
@@ -295,4 +965,28 @@ fn help(out: &mut dyn Write) -> Outcome {
     let _ = writeln!(out, "{}", "Also available".paint(style::ACCENT).bold());
     let _ = writeln!(out, "  {}", others.join(" ").dim());
     Ok(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn splits_read_fields_like_bash() {
+        assert_eq!(
+            split_fields("  a  b  c d ", " \t\n", 2),
+            vec!["a", "b  c d"]
+        );
+        assert_eq!(split_fields("a", " \t\n", 3), vec!["a", "", ""]);
+        assert_eq!(split_fields("  keep  ", "", 1), vec!["  keep  "]);
+        assert_eq!(split_fields("x:y::z", ":", 4), vec!["x", "y", "", "z"]);
+        assert_eq!(split_fields("root:x:0", ":", 2), vec!["root", "x:0"]);
+    }
+
+    #[test]
+    fn unescapes_echo_e() {
+        assert_eq!(unescape(r"a\tb\n"), ("a\tb\n".to_owned(), false));
+        assert_eq!(unescape(r"\x41\0101"), ("AA".to_owned(), false));
+        assert_eq!(unescape(r"stop\chere"), ("stop".to_owned(), true));
+    }
 }
