@@ -91,6 +91,9 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const hydratedRef = useRef(false);
   const closingWindowRef = useRef(false);
+  /** Tabs playing their close animation; they are gone as far as every action is concerned. */
+  const closingRef = useRef(new Set<string>());
+  const [micaFailed, setMicaFailed] = useState(false);
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const activeTabIdRef = useRef(activeTabId);
@@ -142,13 +145,20 @@ export default function App() {
     root.dataset.scheme = theme.scheme;
     root.dataset.animation = preferences.animationLevel;
     root.dataset.density = preferences.tabDensity;
-    root.dataset.background = preferences.backgroundMode;
+    root.dataset.background = preferences.backgroundMode === "mica" && micaFailed ? "solid" : preferences.backgroundMode;
     root.dataset.host = nativeHost ? "native" : "browser";
     root.style.setProperty("--on-accent", readableOn(preferences.accent));
     root.style.setProperty("--term-surface", preferences.terminalOpacity >= 1 ? theme.background : `color-mix(in srgb, ${theme.background} ${Math.round(preferences.terminalOpacity * 100)}%, transparent)`);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
-    if (nativeHost) void invoke("set_window_effect", { mode: preferences.backgroundMode, dark: theme.scheme === "dark" }).catch(() => undefined);
-  }, [nativeHost, preferences, theme]);
+  }, [micaFailed, nativeHost, preferences, theme]);
+
+  useEffect(() => {
+    if (!nativeHost) return;
+    // Mica needs Windows 11; elsewhere fall back to an opaque window instead of a see-through one.
+    void invoke("set_window_effect", { mode: preferences.backgroundMode, dark: theme.scheme === "dark" })
+      .then(() => setMicaFailed(false))
+      .catch(() => setMicaFailed(preferences.backgroundMode === "mica"));
+  }, [nativeHost, preferences.backgroundMode, theme.scheme]);
 
   useEffect(() => {
     if (hydratedRef.current && preferences.restoreSession && tabs.length) saveSession(tabs, activeTabId);
@@ -178,24 +188,26 @@ export default function App() {
   useEffect(() => {
     if (!nativeHost) return;
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     void getCurrentWindow().onCloseRequested((event) => {
-      const count = tabsRef.current.length;
+      const count = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id)).length;
       if (closingWindowRef.current || !preferencesRef.current.confirmCloseMultipleTabs || count <= 1) return;
       event.preventDefault();
       setConfirmation({ title: `Close ${count} tabs?`, body: "Every shell running in this window will be stopped.", action: "Close all", run: closeWindow });
-    }).then((dispose) => { unlisten = dispose; });
-    return () => unlisten?.();
+    }).then((dispose) => { if (disposed) dispose(); else unlisten = dispose; });
+    return () => { disposed = true; unlisten?.(); };
   }, [closeWindow, nativeHost]);
 
   useEffect(() => {
     if (!nativeHost) return;
     let unlisten: (() => void) | undefined;
+    let disposed = false;
     void getCurrentWindow().onDragDropEvent((event) => {
       if (event.payload.type === "drop" && event.payload.paths.length) {
         window.dispatchEvent(new CustomEvent("nebula:insert-paths", { detail: event.payload.paths }));
       }
-    }).then((dispose) => { unlisten = dispose; });
-    return () => unlisten?.();
+    }).then((dispose) => { if (disposed) dispose(); else unlisten = dispose; });
+    return () => { disposed = true; unlisten?.(); };
   }, [nativeHost]);
 
   const resolveProfile = useCallback((profileId?: string) => pickProfile(profiles, profileId ?? preferences.defaultProfileId), [preferences.defaultProfileId, profiles]);
@@ -209,42 +221,40 @@ export default function App() {
   }, [resolveProfile]);
 
   const removeTabs = useCallback((ids: string[]) => {
-    const remove = new Set(ids);
+    const closingIds = closingRef.current;
+    const remove = new Set(ids.filter((id) => !closingIds.has(id)));
+    if (remove.size === 0) return;
     const current = tabsRef.current;
-    const remaining = current.filter((tab) => !remove.has(tab.id));
-    if (remaining.length === 0) {
+    const live = current.filter((tab) => !closingIds.has(tab.id) && !remove.has(tab.id));
+    if (live.length === 0) {
       if (nativeHost) {
         closeWindow();
         return;
       }
+      // The browser preview has no window to close; keep one tab open.
       const profile = resolveProfile();
-      if (profile) remaining.push(makeTab(profile));
+      if (profile) {
+        const replacement = makeTab(profile);
+        live.push(replacement);
+        setTabs((latest) => [...latest, replacement]);
+      }
     }
-    if (remove.has(activeTabIdRef.current)) {
+    if (remove.has(activeTabIdRef.current) || closingIds.has(activeTabIdRef.current)) {
       const index = current.findIndex((tab) => tab.id === activeTabIdRef.current);
-      const neighbor = current.slice(index + 1).find((tab) => !remove.has(tab.id))
-        ?? current.slice(0, index).reverse().find((tab) => !remove.has(tab.id))
-        ?? remaining[0];
+      const isLive = (tab: TerminalTab) => live.includes(tab);
+      const neighbor = current.slice(index + 1).find(isLive) ?? current.slice(0, Math.max(index, 0)).reverse().find(isLive) ?? live[0];
       if (neighbor) setActiveTabId(neighbor.id);
     }
 
+    remove.forEach((id) => closingIds.add(id));
+    setClosing(new Set(closingIds));
     const finish = () => {
-      setTabs((latest) => {
-        const kept = latest.filter((tab) => !remove.has(tab.id));
-        return kept.length ? kept : remaining;
-      });
-      setClosing((latest) => {
-        const next = new Set(latest);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
+      setTabs((latest) => latest.filter((tab) => !remove.has(tab.id)));
+      remove.forEach((id) => closingIds.delete(id));
+      setClosing(new Set(closingIds));
     };
-    if (preferencesRef.current.animationLevel === "off" || remaining.some((tab) => !current.includes(tab))) {
-      finish();
-      return;
-    }
-    setClosing((latest) => new Set([...latest, ...ids]));
-    window.setTimeout(finish, TAB_CLOSE_MS);
+    if (preferencesRef.current.animationLevel === "off") finish();
+    else window.setTimeout(finish, TAB_CLOSE_MS);
   }, [closeWindow, nativeHost, resolveProfile]);
 
   const closeTab = useCallback((id: string) => removeTabs([id]), [removeTabs]);
@@ -263,12 +273,12 @@ export default function App() {
   }, []);
 
   const cycleTab = useCallback((delta: number) => {
-    const open = tabsRef.current.filter((tab) => !closing.has(tab.id));
+    const open = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id));
     if (open.length < 2) return;
     const index = open.findIndex((tab) => tab.id === activeTabIdRef.current);
     const next = open[(index + delta + open.length) % open.length];
     if (next) setActiveTabId(next.id);
-  }, [closing]);
+  }, []);
 
   const setActivePane = useCallback((tabId: string, paneId: string) => {
     setTabs((current) => current.map((tab) => tab.id === tabId && tab.activePaneId !== paneId ? { ...tab, activePaneId: paneId } : tab));
@@ -455,8 +465,10 @@ export default function App() {
         event.stopPropagation();
         return;
       }
-      if (event.ctrlKey && event.altKey && !event.shiftKey && /^Digit[1-9]$/.test(event.code)) {
-        const visible = tabsRef.current.filter((tab) => !closing.has(tab.id));
+      // On Windows AltGr arrives as Ctrl+Alt; never steal the character it types (~ # { [ | on AZERTY…).
+      const typesCharacter = event.key.length === 1 && !/^[0-9]$/.test(event.key);
+      if (event.ctrlKey && event.altKey && !event.shiftKey && !event.getModifierState("AltGraph") && !typesCharacter && /^Digit[1-9]$/.test(event.code)) {
+        const visible = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id));
         const digit = Number(event.code.slice(5));
         const target = digit === 9 ? visible.at(-1) : visible[digit - 1];
         if (target) {
@@ -468,7 +480,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, closing, cycleTab, focusNeighborPane, keys, menu, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {

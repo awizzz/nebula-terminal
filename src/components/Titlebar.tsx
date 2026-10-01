@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronDown, Plus, Search, Settings2, X } from "lucide-react";
@@ -47,6 +47,43 @@ export default function Titlebar({
   onOpenSettings,
 }: TitlebarProps) {
   const menuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  const suppressClickRef = useRef(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+
+  // Pointer-driven reordering: WebView2 keeps HTML5 drag-and-drop for native file drops.
+  const startDrag = (event: ReactPointerEvent, tabId: string) => {
+    if (event.button !== 0 || (event.target as HTMLElement).closest(".tab__close")) return;
+    const startX = event.clientX;
+    let dragging = false;
+    const move = (moveEvent: PointerEvent) => {
+      if (!dragging) {
+        if (Math.abs(moveEvent.clientX - startX) < 6) return;
+        dragging = true;
+        setDraggingId(tabId);
+        onSelectTab(tabId);
+      }
+      const target = [...(stripRef.current?.querySelectorAll<HTMLElement>(".tab[data-tab-id]") ?? [])].find((element) => {
+        const rect = element.getBoundingClientRect();
+        return moveEvent.clientX >= rect.left && moveEvent.clientX <= rect.right;
+      });
+      const targetId = target?.dataset.tabId;
+      if (targetId && targetId !== tabId) onMoveTab(tabId, targetId);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (dragging) {
+        suppressClickRef.current = true;
+        setDraggingId(null);
+        requestAnimationFrame(() => { suppressClickRef.current = false; });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
   const native = isTauri();
 
   const windowAction = (action: "minimize" | "maximize" | "close") => {
@@ -57,7 +94,7 @@ export default function Titlebar({
 
   return (
     <header className="titlebar">
-      <div className="tab-strip" role="tablist" aria-label="Terminal tabs" data-tauri-drag-region>
+      <div ref={stripRef} className="tab-strip" role="tablist" aria-label="Terminal tabs" data-tauri-drag-region>
         {tabs.map((tab, index) => {
           const pane = tab.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab.panes[0];
           const active = tab.id === activeTabId;
@@ -65,13 +102,15 @@ export default function Titlebar({
           return (
             <div
               key={tab.id}
-              draggable={!closing.has(tab.id)}
+              data-tab-id={closing.has(tab.id) ? undefined : tab.id}
               className={[
                 "tab",
                 active && "is-active",
                 nextActive && "is-before-active",
                 closing.has(tab.id) && "is-closing",
+                draggingId === tab.id && "is-dragging",
               ].filter(Boolean).join(" ")}
+              onPointerDown={(event) => startDrag(event, tab.id)}
               onAuxClick={(event) => {
                 if (event.button === 1) {
                   event.preventDefault();
@@ -82,17 +121,6 @@ export default function Titlebar({
                 event.preventDefault();
                 onTabContextMenu(tab.id, event.clientX, event.clientY);
               }}
-              onDragStart={(event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/nebula-tab", tab.id);
-              }}
-              onDragOver={(event) => {
-                if (event.dataTransfer.types.includes("text/nebula-tab")) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                const fromId = event.dataTransfer.getData("text/nebula-tab");
-                if (fromId && fromId !== tab.id) onMoveTab(fromId, tab.id);
-              }}
             >
               <button
                 className="tab__button"
@@ -100,7 +128,7 @@ export default function Titlebar({
                 role="tab"
                 aria-selected={active}
                 title={tab.title}
-                onClick={() => onSelectTab(tab.id)}
+                onClick={() => !suppressClickRef.current && onSelectTab(tab.id)}
               >
                 {pane && <ProfileIcon kind={pane.profile.kind} size={15} />}
                 <span className="tab__title">{tab.title}</span>

@@ -145,6 +145,8 @@ kbd { font: inherit; }
 }
 .tab:hover { background: var(--hover); color: var(--text); }
 .tab.is-active { background: var(--term-surface); color: var(--text); z-index: 1; }
+.tab.is-dragging { z-index: 2; }
+.tab.is-dragging .tab__button { cursor: grabbing; }
 .tab.is-closing { animation: tab-out 150ms var(--ease-standard) forwards; pointer-events: none; }
 
 /* Concave corners so the active tab flows into the terminal below it. */

@@ -103,7 +103,7 @@ fn lock_error(name: &str) -> String {
 }
 
 #[tauri::command]
-pub fn start_session(
+pub async fn start_session(
     profile_id: String,
     cols: u16,
     rows: u16,
@@ -111,7 +111,8 @@ pub fn start_session(
     on_event: Channel<PtyEvent>,
     state: State<'_, PtyState>,
 ) -> Result<String, String> {
-    let profile = profiles::resolve_profile(&profile_id)?;
+    let custom_cwd = cwd.as_deref().is_some_and(|value| !value.trim().is_empty());
+    let profile = profiles::resolve_profile(&profile_id, custom_cwd)?;
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -245,7 +246,7 @@ pub fn start_session(
 }
 
 #[tauri::command]
-pub fn write_session(
+pub async fn write_session(
     session_id: String,
     data: String,
     state: State<'_, PtyState>,
@@ -267,7 +268,7 @@ pub fn write_session(
 }
 
 #[tauri::command]
-pub fn resize_session(
+pub async fn resize_session(
     session_id: String,
     cols: u16,
     rows: u16,
@@ -298,7 +299,7 @@ pub fn resize_session(
 }
 
 #[tauri::command]
-pub fn close_session(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
+pub async fn close_session(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
     let session = state
         .inner
         .sessions

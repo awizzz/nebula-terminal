@@ -53,6 +53,7 @@ export interface AppearancePreferences {
   confirmMultilinePaste: boolean;
   confirmCloseMultipleTabs: boolean;
   scrollback: number;
+  gpuAcceleration: boolean;
   keybindings: KeybindingPreferences;
 }
 
