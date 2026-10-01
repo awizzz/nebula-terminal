@@ -200,10 +200,7 @@ fn runs_functions() {
         "hi world (0)\nhi Ada (2)\n"
     );
     assert_eq!(run("f() { return 4; }; f; echo $?").1, "4\n");
-    assert_eq!(
-        run("x=1; f() { local x=2; }; f; echo $x").1,
-        "1\n"
-    );
+    assert_eq!(run("x=1; f() { local x=2; }; f; echo $x").1, "1\n");
     assert_eq!(
         run("fact() { if (( $1 <= 1 )); then echo 1; else echo $(( $1 * $(fact $(( $1 - 1 ))) )); fi; }; fact 5").1,
         "120\n"
@@ -221,7 +218,10 @@ fn expands_parameters_and_arithmetic() {
         "report tar.gz 13 report.zip.gz REPORT.TAR.GZ\n"
     );
     assert_eq!(run("echo $((7 * (3 + 1) % 5)) $((2 ** 10))").1, "3 1024\n");
-    assert_eq!(run("set -- a 'b c' d; for x in \"$@\"; do echo \"[$x]\"; done").1, "[a]\n[b c]\n[d]\n");
+    assert_eq!(
+        run("set -- a 'b c' d; for x in \"$@\"; do echo \"[$x]\"; done").1,
+        "[a]\n[b c]\n[d]\n"
+    );
     let (_, out, err) = run("echo $((1 / 0)); echo next");
     assert_eq!(out, "next\n");
     assert!(err.contains("division by 0"), "{err}");
@@ -230,7 +230,10 @@ fn expands_parameters_and_arithmetic() {
 #[test]
 fn tests_conditions() {
     assert_eq!(run("[ -d / ] && [ ! -f / ] && echo dir").1, "dir\n");
-    assert_eq!(run("test 10 -gt 9 && test abc = abc && echo yes").1, "yes\n");
+    assert_eq!(
+        run("test 10 -gt 9 && test abc = abc && echo yes").1,
+        "yes\n"
+    );
     assert_eq!(
         run("v=1.20; [[ $v == 1.* && $v =~ ^[0-9]+\\.[0-9]+$ ]] && echo match").1,
         "match\n"
@@ -245,7 +248,10 @@ fn reads_input_and_here_documents() {
         run("printf 'a b c\\nd e\\n' | while read first rest; do echo \"$first|$rest\"; done").1,
         "a|b c\nd|e\n"
     );
-    assert_eq!(run("read -r x y <<< 'one two three'; echo $y").1, "two three\n");
+    assert_eq!(
+        run("read -r x y <<< 'one two three'; echo $y").1,
+        "two three\n"
+    );
     assert_eq!(
         run("name=Nebula\ncat <<EOF\nHello $name\n$((1 + 1))\nEOF").1,
         "Hello Nebula\n2\n"
@@ -256,18 +262,27 @@ fn reads_input_and_here_documents() {
 #[test]
 fn isolates_subshells_and_substitutions() {
     let dir = scratch("subshell");
-    let (_, out, _) = run_in(&dir, "(cd / && pwd); x=$(cd /; echo in); pwd | grep -c subshell; echo $x");
+    let (_, out, _) = run_in(
+        &dir,
+        "(cd / && pwd); x=$(cd /; echo in); pwd | grep -c subshell; echo $x",
+    );
     assert_eq!(out.lines().collect::<Vec<_>>()[1..], ["1", "in"]);
     assert_eq!(run("x=$(false) || echo failed").1, "failed\n");
     assert_eq!(run("(exit 3); echo $?").1, "3\n");
-    assert_eq!(run("echo before; (exit 5); echo after").1, "before\nafter\n");
+    assert_eq!(
+        run("echo before; (exit 5); echo after").1,
+        "before\nafter\n"
+    );
 }
 
 #[test]
 fn honours_shell_options() {
     let (code, out, _) = run("set -e; echo one; false; echo two");
     assert_eq!((code, out.as_str()), (1, "one\n"));
-    assert_eq!(run("set -e; false || true; if false; then :; fi; echo kept").1, "kept\n");
+    assert_eq!(
+        run("set -e; false || true; if false; then :; fi; echo kept").1,
+        "kept\n"
+    );
     assert_eq!(run("set -o pipefail; false | true; echo $?").1, "1\n");
     let (code, _, err) = run("set -u; echo $NEBULA_SURELY_UNSET; echo no");
     assert_eq!(code, 1);

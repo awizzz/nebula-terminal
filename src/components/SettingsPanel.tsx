@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
 import { Check, Info, Keyboard, Monitor, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
 import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
@@ -17,7 +17,7 @@ interface SettingsPanelProps {
   initialPage?: SettingsPage;
   profiles: TerminalProfile[];
   preferences: AppearancePreferences;
-  onChange: (next: AppearancePreferences) => void;
+  onChange: Dispatch<SetStateAction<AppearancePreferences>>;
   onClose: () => void;
   onReset: () => void;
   onClearSession: () => void;
@@ -142,6 +142,8 @@ function ShortcutRecorder({ action, value, conflict, onChange }: { action: strin
       }
       const shortcut = shortcutFromEvent(event);
       if (!shortcut) return;
+      // A bare key would be swallowed in every terminal (Tab, Enter, letters).
+      if (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F([1-9]|1[0-9]|2[0-4])$/.test(event.key)) return;
       onChange(shortcut);
       setRecording(false);
     };
@@ -439,7 +441,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   const importTheme = async (file?: File) => {
     if (!file) return;
     try {
-      onChange(await importAppearance(file, preferences));
+      onChange(await importAppearance(file));
       setMessage({ tone: "info", text: `Imported ${file.name}` });
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
@@ -451,7 +453,8 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
     if (!file.type.startsWith("image/")) return setMessage({ tone: "error", text: "Choose an image file." });
     if (file.size > 40_000_000) return setMessage({ tone: "error", text: "Choose an image smaller than 40 MB." });
     try {
-      onChange({ ...preferences, backgroundMode: "image", backgroundImage: await shrinkImage(file) });
+      const backgroundImage = await shrinkImage(file);
+      onChange((current) => ({ ...current, backgroundMode: "image", backgroundImage }));
       setMessage(null);
     } catch {
       setMessage({ tone: "error", text: "This image could not be read." });

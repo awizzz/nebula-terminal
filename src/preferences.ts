@@ -172,11 +172,14 @@ export function exportAppearance(preferences: AppearancePreferences): void {
   URL.revokeObjectURL(url);
 }
 
-export async function importAppearance(file: File, current: AppearancePreferences): Promise<AppearancePreferences> {
+/**
+ * Reads a theme file and returns a function that applies it, so settings changed
+ * while the file was being read are kept.
+ */
+export async function importAppearance(file: File): Promise<(current: AppearancePreferences) => AppearancePreferences> {
   if (file.size > 1_000_000) throw new Error("This theme file is too large.");
   const parsed = JSON.parse(await file.text()) as { version?: number; appearance?: unknown; preferences?: unknown };
   const imported = parsed.version === 2 ? parsed.appearance : parsed.version === 1 ? parsed.preferences : undefined;
   if (!isRecord(imported)) throw new Error("This is not a Nebula Terminal theme file.");
-  const sanitized = sanitizePreferences({ ...current, ...imported });
-  return { ...current, ...pickThemePreferences(sanitized) };
+  return (current) => ({ ...current, ...pickThemePreferences(sanitizePreferences({ ...current, ...imported })) });
 }

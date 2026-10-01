@@ -7,6 +7,8 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openExternal } from "../external";
 import { registerPane } from "../paneRegistry";
+import { windowsBuild } from "../platform";
+import { isPaste, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
 import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
@@ -34,12 +36,12 @@ function withSymbols(fontFamily: string): string {
   return `${fontFamily}, "Nebula Symbols"`;
 }
 
-function quoteDroppedPath(path: string): string {
-  return `"${path.replaceAll('"', '\\"')}"`;
-}
-
-function lineCount(text: string): number {
-  return text.replace(/\r\n/g, "\n").replace(/[\r\n]+$/, "").split(/[\r\n]/).length;
+/** Ctrl+<letter> on any keyboard layout: Cyrillic or Greek layouts report another `key`. */
+function isControlLetter(event: KeyboardEvent, letter: "c" | "v"): boolean {
+  if (!event.ctrlKey || event.altKey) return false;
+  const key = event.key.toLowerCase();
+  if (key === letter) return true;
+  return !/^[a-z]$/.test(key) && event.code === `Key${letter.toUpperCase()}`;
 }
 
 /** Nebula's prompt as the real interpreter draws it (see crates/nebula-sh/src/prompt.rs). */
@@ -98,6 +100,7 @@ export default function TerminalPane({
   const fitRef = useRef<FitAddon | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const sessionRef = useRef<string | null>(null);
+  const writeRef = useRef<(data: string) => void>(() => undefined);
   const focusedRef = useRef(focused);
   const visibleRef = useRef(visible);
   const preferencesRef = useRef(preferences);
@@ -138,10 +141,19 @@ export default function TerminalPane({
       scrollback: preferencesRef.current.scrollback,
       smoothScrollDuration: preferencesRef.current.animationLevel === "full" ? 80 : 0,
       drawBoldTextInBrightColors: false,
-      // ConPTY reflows wrapped lines itself; xterm must not do it a second time.
-      windowsPty: isTauri() && navigator.userAgent.includes("Windows") ? { backend: "conpty" } : undefined,
       minimumContrastRatio: 1,
       theme: colors,
+      // OSC 8 hyperlinks follow the same Ctrl+click rule as detected links.
+      linkHandler: {
+        activate: (event, uri) => {
+          if (event.ctrlKey || !isTauri()) openExternal(uri);
+        },
+      },
+    });
+    // ConPTY reflows wrapped lines itself; xterm only stays out of its way when it
+    // knows the Windows build.
+    void windowsBuild().then((buildNumber) => {
+      if (!disposed && buildNumber) terminal.options.windowsPty = { backend: "conpty", buildNumber };
     });
     const fit = new FitAddon();
     const search = new SearchAddon();
@@ -184,14 +196,19 @@ export default function TerminalPane({
       callbacksRef.current.onSearchResult({ index: resultIndex, count: resultCount });
     });
 
+    // Input typed while the shell starts waits here instead of being lost.
+    let queued: string[] = [];
+    let exited = false;
+    const send = (sessionId: string, data: string) => {
+      void invoke("write_session", { sessionId, data }).catch((error) => {
+        if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
+      });
+    };
     const writeRaw = (data: string) => {
       const sessionId = sessionRef.current;
       if (isTauri()) {
-        if (sessionId) {
-          void invoke("write_session", { sessionId, data }).catch((error) => {
-            if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
-          });
-        }
+        if (sessionId) send(sessionId, data);
+        else if (!exited) queued.push(data);
         return;
       }
       if (data === "\r") terminal.write(`\r\n${previewPrompt(profile)}`);
@@ -199,12 +216,19 @@ export default function TerminalPane({
       else if (!data.startsWith("\x1b") && data >= " ") terminal.write(data.replace(/\r?\n/g, `\r\n${previewPrompt(profile)}`));
     };
 
+    writeRef.current = writeRaw;
+
     const writeInput = (data: string) => {
-      if (preferencesRef.current.confirmMultilinePaste && lineCount(data) > 1) {
-        setPendingPaste(data);
+      if (!isPaste(data)) {
+        writeRaw(data);
         return;
       }
-      writeRaw(data);
+      if (pasteLineCount(data) > 1) {
+        if (preferencesRef.current.confirmMultilinePaste) setPendingPaste(data);
+        else writeRaw(data);
+        return;
+      }
+      writeRaw(trimSingleLinePaste(data));
     };
 
     const paste = () => {
@@ -227,6 +251,8 @@ export default function TerminalPane({
         } else if (message.event === "exit") {
           setExitCode(message.data.code ?? null);
           setConnectionState("closed");
+          exited = true;
+          queued = [];
           sessionRef.current = null;
         } else if (message.event === "error" && message.data.message) {
           terminal.writeln(`\r\n\x1b[31m${message.data.message}\x1b[0m`);
@@ -245,9 +271,13 @@ export default function TerminalPane({
           void invoke("close_session", { sessionId }).catch(() => undefined);
           return;
         }
+        // The shell may already have exited (a missing WSL distribution, for example).
+        if (exited) return;
         sessionRef.current = sessionId;
         setConnectionState((state) => state === "closed" ? state : "ready");
         void invoke("resize_session", { sessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
+        for (const data of queued) send(sessionId, data);
+        queued = [];
       }).catch((error) => {
         if (disposed) return;
         terminal.writeln(`\x1b[31mCould not start ${profile.name}: ${String(error)}\x1b[0m`);
@@ -266,14 +296,13 @@ export default function TerminalPane({
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
-      const key = event.key.toLowerCase();
       // Windows conventions: Ctrl+C copies when text is selected and interrupts otherwise; Ctrl+V pastes.
-      if (event.ctrlKey && !event.altKey && key === "c" && terminal.hasSelection()) {
+      if (isControlLetter(event, "c") && terminal.hasSelection()) {
         copy();
         if (!event.shiftKey) terminal.clearSelection();
         return false;
       }
-      if (event.ctrlKey && !event.altKey && key === "v") {
+      if (isControlLetter(event, "v")) {
         event.preventDefault();
         paste();
         return false;
@@ -303,7 +332,7 @@ export default function TerminalPane({
       if (!focusedRef.current) return;
       const paths = (event as CustomEvent<string[]>).detail;
       if (!Array.isArray(paths)) return;
-      const text = paths.map(quoteDroppedPath).join(" ");
+      const text = paths.map((path) => quoteDroppedPath(path, profile)).join(" ");
       if (text) writeRaw(text);
     };
     window.addEventListener("nebula:insert-paths", insertDropped);
@@ -435,15 +464,14 @@ export default function TerminalPane({
     const data = pendingPaste;
     setPendingPaste(null);
     if (!data) return;
-    const sessionId = sessionRef.current;
-    if (isTauri() && sessionId) void invoke("write_session", { sessionId, data }).catch(() => undefined);
-    else if (!isTauri()) terminalRef.current?.write(data.replace(/\r?\n/g, `\r\n${previewPrompt(profile)}`));
+    if (isTauri()) writeRef.current(data);
+    else terminalRef.current?.write(previewText(data).replace(/\n/g, `\r\n${previewPrompt(profile)}`));
     requestAnimationFrame(() => terminalRef.current?.focus());
   };
 
   // xterm sends pasted newlines as \r and may wrap them in bracketed-paste markers.
-  const pastePreview = pendingPaste?.replace(/\x1b\[20[01]~/g, "").replace(/\r\n?/g, "\n") ?? "";
-  const pasteLines = pendingPaste ? lineCount(pastePreview) : 0;
+  const pastePreview = pendingPaste ? previewText(pendingPaste) : "";
+  const pasteLines = pendingPaste ? pasteLineCount(pendingPaste) : 0;
 
   return (
     <section

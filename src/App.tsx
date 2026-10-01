@@ -599,7 +599,13 @@ export default function App() {
 
   const requestSearch = (backwards: boolean) => setSearchSignal((current) => ({ nonce: current.nonce + 1, backwards }));
   // A rename started from a menu or the palette keeps the focus in its field.
-  const closeOverlayFocus = () => requestAnimationFrame(() => !renamingRef.current && getPane(activePane?.id)?.focus());
+  const closeOverlayFocus = () => requestAnimationFrame(() => {
+    if (renamingRef.current) return;
+    // The closing overlay may have opened another one (Find from a menu) that took focus.
+    const focused = document.activeElement;
+    if (focused && focused !== document.body && !focused.closest(".xterm")) return;
+    getPane(activePane?.id)?.focus();
+  });
   const showImage = preferences.backgroundMode === "image" && preferences.backgroundImage;
   const noShells = ready && nativeHost && !profiles.some((profile) => profile.available);
 

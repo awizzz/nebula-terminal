@@ -6,7 +6,7 @@ use std::{
     io::{Read, Write},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex,
+        mpsc, Arc, Mutex,
     },
     thread,
 };
@@ -64,17 +64,56 @@ impl Utf8StreamDecoder {
 }
 
 #[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase", tag = "event", content = "data")]
+#[serde(
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    tag = "event",
+    content = "data"
+)]
 pub enum PtyEvent {
     Output { session_id: String, chunk: String },
     Exit { session_id: String, code: u32 },
     Error { session_id: String, message: String },
 }
 
+/// Work for a session's I/O thread. One thread per session applies input and
+/// resizes in the order the UI sent them.
+enum Request {
+    Write(String),
+    Resize(PtySize),
+}
+
 struct SessionHandle {
-    master: Mutex<Box<dyn MasterPty + Send>>,
-    writer: Mutex<Box<dyn Write + Send>>,
+    requests: Mutex<mpsc::Sender<Request>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+}
+
+/// Owns the PTY's writer and master. It ends when the session is dropped, and the
+/// pseudo-console closes on this thread, never while a lock is held.
+fn run_io(
+    receiver: mpsc::Receiver<Request>,
+    mut writer: Box<dyn Write + Send>,
+    master: Box<dyn MasterPty + Send>,
+    channel: Channel<PtyEvent>,
+    session_id: String,
+) {
+    for request in receiver {
+        let result = match request {
+            Request::Write(data) => writer
+                .write_all(data.as_bytes())
+                .and_then(|_| writer.flush())
+                .map_err(|error| format!("PTY write failed: {error}")),
+            Request::Resize(size) => master
+                .resize(size)
+                .map_err(|error| format!("PTY resize failed: {error}")),
+        };
+        if let Err(message) = result {
+            let _ = channel.send(PtyEvent::Error {
+                session_id: session_id.clone(),
+                message,
+            });
+        }
+    }
 }
 
 struct PtyStateInner {
@@ -165,9 +204,13 @@ pub async fn start_session(
     let killer = child.clone_killer();
 
     let session_id = format!("s{}", state.inner.next_id.fetch_add(1, Ordering::Relaxed));
+    let (requests, receiver) = mpsc::channel();
+    let io_channel = on_event.clone();
+    let io_session_id = session_id.clone();
+    let master = pair.master;
+    thread::spawn(move || run_io(receiver, writer, master, io_channel, io_session_id));
     let handle = Arc::new(SessionHandle {
-        master: Mutex::new(pair.master),
-        writer: Mutex::new(writer),
+        requests: Mutex::new(requests),
         killer: Mutex::new(killer),
     });
 
@@ -240,65 +283,66 @@ pub async fn start_session(
             session_id: wait_session_id.clone(),
             code,
         });
-        if let Ok(mut sessions) = state_inner.sessions.lock() {
-            sessions.remove(&wait_session_id);
-        }
+        // Dropped after the lock is released: the last handle closes the pseudo-console.
+        let removed = state_inner
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| sessions.remove(&wait_session_id));
+        drop(removed);
     });
 
     Ok(session_id)
 }
 
-#[tauri::command]
-pub async fn write_session(
-    session_id: String,
-    data: String,
-    state: State<'_, PtyState>,
-) -> Result<(), String> {
-    let session = state
+fn session(state: &PtyState, session_id: &str) -> Result<Arc<SessionHandle>, String> {
+    state
         .inner
         .sessions
         .lock()
         .map_err(|_| lock_error("session"))?
-        .get(&session_id)
+        .get(session_id)
         .cloned()
-        .ok_or_else(|| format!("Session '{session_id}' does not exist."))?;
+        .ok_or_else(|| format!("Session '{session_id}' does not exist."))
+}
 
-    let mut writer = session.writer.lock().map_err(|_| lock_error("writer"))?;
-    writer
-        .write_all(data.as_bytes())
-        .and_then(|_| writer.flush())
-        .map_err(|error| format!("PTY write failed: {error}"))
+fn send(state: &PtyState, session_id: &str, request: Request) -> Result<(), String> {
+    session(state, session_id)?
+        .requests
+        .lock()
+        .map_err(|_| lock_error("request"))?
+        .send(request)
+        .map_err(|_| format!("Session '{session_id}' has ended."))
+}
+
+// Input and resizes are plain (not async) commands: Tauri runs those in the order
+// they arrive, and they only queue work for the session's I/O thread.
+#[tauri::command]
+pub fn write_session(
+    session_id: String,
+    data: String,
+    state: State<'_, PtyState>,
+) -> Result<(), String> {
+    send(&state, &session_id, Request::Write(data))
 }
 
 #[tauri::command]
-pub async fn resize_session(
+pub fn resize_session(
     session_id: String,
     cols: u16,
     rows: u16,
     state: State<'_, PtyState>,
 ) -> Result<(), String> {
-    let session = state
-        .inner
-        .sessions
-        .lock()
-        .map_err(|_| lock_error("session"))?
-        .get(&session_id)
-        .cloned()
-        .ok_or_else(|| format!("Session '{session_id}' does not exist."))?;
-
-    let result = session
-        .master
-        .lock()
-        .map_err(|_| lock_error("master"))?
-        .resize(PtySize {
+    send(
+        &state,
+        &session_id,
+        Request::Resize(PtySize {
             rows: rows.max(1),
             cols: cols.max(1),
             pixel_width: 0,
             pixel_height: 0,
-        })
-        .map_err(|error| format!("PTY resize failed: {error}"));
-
-    result
+        }),
+    )
 }
 
 #[tauri::command]
@@ -311,12 +355,11 @@ pub async fn close_session(session_id: String, state: State<'_, PtyState>) -> Re
         .remove(&session_id);
 
     if let Some(session) = session {
-        session
-            .killer
-            .lock()
-            .map_err(|_| lock_error("killer"))?
-            .kill()
-            .map_err(|error| format!("Unable to terminate PTY process: {error}"))?;
+        // portable-pty reports TerminateProcess the wrong way round on Windows, so the
+        // result says nothing useful; the wait thread reports the exit either way.
+        if let Ok(mut killer) = session.killer.lock() {
+            let _ = killer.kill();
+        }
     }
 
     Ok(())

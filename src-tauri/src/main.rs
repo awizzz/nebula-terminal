@@ -26,6 +26,23 @@ fn set_window_effect(window: WebviewWindow, mode: String, dark: bool) -> Result<
     Ok(())
 }
 
+/// The Windows build number. xterm.js matches ConPTY's line wrapping with it.
+#[tauri::command]
+fn windows_build() -> Option<u32> {
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
+        let key = RegKey::predef(HKEY_LOCAL_MACHINE)
+            .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion")
+            .ok()?;
+        let build: String = key.get_value("CurrentBuildNumber").ok()?;
+        build.trim().parse().ok()
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    None
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -50,6 +67,7 @@ fn main() {
             pty::resize_session,
             pty::close_session,
             set_window_effect,
+            windows_build,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");
