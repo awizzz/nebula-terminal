@@ -1,70 +1,19 @@
 //! Interactive mode: line editing with syntax colors, history suggestions,
 //! Tab completion, history expansion and the window title.
 
-use crate::commands;
+use crate::complete::{Known, NebulaCompleter};
 use crate::exec::Shell;
 use crate::prompt::NebulaPrompt;
 use crate::sys;
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, Completer, CompletionResult, DefaultHinter, Emacs,
-    FileBackedHistory, Highlighter, KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent,
-    ReedlineMenu, Signal, Span, StyledText, Suggestion, ValidationResult, Validator,
+    default_emacs_keybindings, ColumnarMenu, DefaultHinter, Emacs, FileBackedHistory, Highlighter,
+    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, StyledText,
+    ValidationResult, Validator,
 };
-use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
-
-/// Command names the highlighter and completer know about, refreshed after each command.
-#[derive(Clone, Default)]
-struct Known {
-    aliases: Arc<Mutex<BTreeSet<String>>>,
-}
-
-fn path_commands() -> &'static BTreeSet<String> {
-    static COMMANDS: OnceLock<BTreeSet<String>> = OnceLock::new();
-    COMMANDS.get_or_init(sys::path_commands)
-}
-
-impl Known {
-    fn update(&self, shell: &Shell) {
-        if let Ok(mut aliases) = self.aliases.lock() {
-            *aliases = shell.aliases.keys().cloned().collect();
-        }
-    }
-
-    fn is_command(&self, name: &str) -> bool {
-        if commands::is_builtin(name)
-            || commands::is_util(name)
-            || self.aliases.lock().is_ok_and(|a| a.contains(name))
-        {
-            return true;
-        }
-        if name.contains('/') || name.contains('\\') {
-            return sys::find_executable(name).is_some();
-        }
-        let lower = name.to_lowercase();
-        let bare = lower.strip_suffix(".exe").unwrap_or(&lower);
-        path_commands().iter().any(|candidate| {
-            if cfg!(windows) {
-                candidate.eq_ignore_ascii_case(bare)
-            } else {
-                candidate == name
-            }
-        })
-    }
-
-    fn command_names(&self) -> BTreeSet<String> {
-        let mut names: BTreeSet<String> = commands::all_names().map(str::to_owned).collect();
-        names.extend(path_commands().iter().cloned());
-        if let Ok(aliases) = self.aliases.lock() {
-            names.extend(aliases.iter().cloned());
-        }
-        names
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Highlighting
@@ -77,6 +26,7 @@ struct NebulaHighlighter {
 enum Tok {
     Space,
     Word { command: bool },
+    Keyword,
     Quote,
     Var,
     Op,
@@ -110,10 +60,10 @@ fn lex(line: &str) -> Vec<(Tok, String)> {
             expect_command = matches!(two.as_str(), "&&" | "||");
             continue;
         }
-        if matches!(c, '|' | ';' | '>' | '<' | '&') {
+        if matches!(c, '|' | ';' | '>' | '<' | '&' | '(' | ')') {
             out.push((Tok::Op, c.to_string()));
             i += 1;
-            expect_command = matches!(c, '|' | ';' | '&');
+            expect_command = matches!(c, '|' | ';' | '&' | '(');
             continue;
         }
         // A word, possibly with quotes and expansions inside.
@@ -122,7 +72,7 @@ fn lex(line: &str) -> Vec<(Tok, String)> {
         let mut word_text = String::new();
         while i < chars.len() {
             let c = chars[i];
-            if c.is_whitespace() || matches!(c, '|' | ';' | '>' | '<' | '&') {
+            if c.is_whitespace() || matches!(c, '|' | ';' | '>' | '<' | '&' | '(' | ')') {
                 break;
             }
             if c == '\'' || c == '"' {
@@ -196,6 +146,19 @@ fn lex(line: &str) -> Vec<(Tok, String)> {
             && word_text.split_once('=').is_some_and(|(name, _)| {
                 !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             });
+        let keyword = expect_command
+            && pieces.len() == 1
+            && matches!(pieces[0].0, Tok::Word { .. })
+            && crate::parse::KEYWORDS.contains(&word_text.as_str());
+        if keyword {
+            out.push((Tok::Keyword, word_text.clone()));
+            // After these, the next word is a command again (`then ls`, `do echo`).
+            expect_command = matches!(
+                word_text.as_str(),
+                "if" | "then" | "else" | "elif" | "do" | "while" | "until" | "{" | "!" | "time"
+            );
+            continue;
+        }
         if expect_command && !is_assignment {
             for piece in &mut pieces {
                 if let Tok::Word { command } = &mut piece.0 {
@@ -224,6 +187,7 @@ impl Highlighter for NebulaHighlighter {
                 Tok::Quote => Style::new().fg(Color::Yellow),
                 Tok::Var => Style::new().fg(Color::Magenta),
                 Tok::Op => Style::new().fg(Color::Cyan).bold(),
+                Tok::Keyword => Style::new().fg(Color::Purple).bold(),
                 Tok::Word { command: true } => {
                     // A command may be split by quotes; judge the whole word.
                     let mut word = text.clone();
@@ -266,136 +230,6 @@ impl Highlighter for NebulaHighlighter {
 }
 
 // ---------------------------------------------------------------------------
-// Completion
-
-struct NebulaCompleter {
-    known: Known,
-}
-
-fn escape(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if matches!(
-            c,
-            ' ' | '\'' | '"' | '$' | '&' | '|' | ';' | '(' | ')' | '<' | '>' | '#' | '`'
-        ) {
-            out.push('\\');
-        }
-        out.push(c);
-    }
-    out
-}
-
-fn starts_with(candidate: &str, prefix: &str) -> bool {
-    if cfg!(windows) {
-        candidate.to_lowercase().starts_with(&prefix.to_lowercase())
-    } else {
-        candidate.starts_with(prefix)
-    }
-}
-
-impl NebulaCompleter {
-    fn paths(&self, token: &str, span: Span, dirs_only: bool) -> Vec<Suggestion> {
-        let unescaped = token.replace("\\ ", " ");
-        let (dir_typed, prefix) = match unescaped.rfind(['/', '\\']) {
-            Some(index) => (&unescaped[..=index], &unescaped[index + 1..]),
-            None => ("", unescaped.as_str()),
-        };
-        let dir_path: PathBuf = if dir_typed.is_empty() {
-            PathBuf::from(".")
-        } else if let Some(rest) = dir_typed.strip_prefix("~") {
-            sys::home()
-                .unwrap_or_default()
-                .join(rest.trim_start_matches(['/', '\\']))
-        } else {
-            PathBuf::from(sys::translate_path(dir_typed))
-        };
-        let Ok(entries) = std::fs::read_dir(&dir_path) else {
-            return Vec::new();
-        };
-        let mut suggestions: Vec<Suggestion> = entries
-            .flatten()
-            .filter_map(|entry| {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if !starts_with(&name, prefix)
-                    || (name.starts_with('.') && !prefix.starts_with('.'))
-                {
-                    return None;
-                }
-                let is_dir = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());
-                if dirs_only && !is_dir {
-                    return None;
-                }
-                let value = format!(
-                    "{}{}{}",
-                    escape(dir_typed),
-                    escape(&name),
-                    if is_dir { "/" } else { "" }
-                );
-                Some(Suggestion {
-                    value,
-                    display_override: Some(format!("{name}{}", if is_dir { "/" } else { "" })),
-                    style: Some(if is_dir {
-                        Style::new().fg(Color::Blue).bold()
-                    } else {
-                        Style::new()
-                    }),
-                    span,
-                    append_whitespace: !is_dir,
-                    ..Suggestion::default()
-                })
-            })
-            .collect();
-        suggestions.sort_by_key(|s| s.value.to_lowercase());
-        suggestions
-    }
-}
-
-impl Completer for NebulaCompleter {
-    fn complete(&mut self, line: &str, pos: usize) -> CompletionResult {
-        let before = &line[..pos];
-        // Find the start of the token under the cursor (escaped spaces stay in the token).
-        let mut start = 0;
-        let bytes = before.as_bytes();
-        for (index, byte) in bytes.iter().enumerate() {
-            if (byte.is_ascii_whitespace() && (index == 0 || bytes[index - 1] != b'\\'))
-                || matches!(byte, b'|' | b';' | b'&' | b'>' | b'<')
-            {
-                start = index + 1;
-            }
-        }
-        let token = &before[start..];
-        let previous = before[..start].trim_end();
-        let command_position = previous.is_empty() || previous.ends_with(['|', ';', '&']);
-        let span = Span::new(start, pos);
-
-        let suggestions = if command_position
-            && !token.contains(['/', '\\'])
-            && !token.starts_with('.')
-            && !token.starts_with('~')
-        {
-            self.known
-                .command_names()
-                .into_iter()
-                .filter(|name| starts_with(name, token))
-                .take(200)
-                .map(|name| Suggestion {
-                    description: commands::describe(&name).map(str::to_owned),
-                    value: name,
-                    span,
-                    append_whitespace: true,
-                    ..Suggestion::default()
-                })
-                .collect()
-        } else {
-            let first_word = before.split_whitespace().next().unwrap_or("");
-            self.paths(token, span, matches!(first_word, "cd" | "pushd" | "rmdir"))
-        };
-        CompletionResult::fresh(suggestions)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Validation: keep reading lines while quotes or operators are left open.
 
 struct NebulaValidator;
@@ -424,22 +258,70 @@ fn data_dir() -> PathBuf {
     base.join(if cfg!(windows) { "Nebula" } else { "nebula" })
 }
 
-/// `!!` is the previous line, `!$` its last argument (outside single quotes).
+/// The last word of a command line as typed, quotes included (`"My Docs"`).
+fn last_word(line: &str) -> &str {
+    let mut start = 0;
+    let mut end = 0;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    let mut in_word = false;
+    for (index, c) in line.char_indices() {
+        let next = index + c.len_utf8();
+        if escaped {
+            escaped = false;
+            end = next;
+            continue;
+        }
+        match (quote, c) {
+            (Some(q), c) if c == q => {
+                quote = None;
+                end = next;
+            }
+            (Some(_), _) => end = next,
+            (None, c) if c.is_whitespace() || matches!(c, '|' | ';' | '&' | '<' | '>') => {
+                in_word = false;
+            }
+            (None, c) => {
+                if !in_word {
+                    start = index;
+                    in_word = true;
+                }
+                match c {
+                    '\\' => escaped = true,
+                    '\'' | '"' => quote = Some(c),
+                    _ => {}
+                }
+                end = next;
+            }
+        }
+    }
+    &line[start..end]
+}
+
+/// `!!` is the previous line, `!$` its last argument (not inside single quotes,
+/// and not after a backslash).
 pub fn expand_history(line: &str, previous: Option<&str>) -> Option<String> {
     let previous = previous?;
     if !line.contains('!') {
         return None;
     }
-    let last_arg = previous.split_whitespace().last().unwrap_or("");
+    let last_arg = last_word(previous);
     let mut out = String::new();
-    let mut in_single = false;
+    let mut quote: Option<char> = None;
     let mut changed = false;
     let mut chars = line.chars().peekable();
     while let Some(c) = chars.next() {
-        if c == '\'' {
-            in_single = !in_single;
+        if c == '\\' && quote != Some('\'') {
+            out.push(c);
+            out.extend(chars.next());
+            continue;
         }
-        if c == '!' && !in_single {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (None, '\'' | '"') => quote = Some(c),
+            _ => {}
+        }
+        if c == '!' && quote != Some('\'') {
             match chars.peek() {
                 Some('!') => {
                     chars.next();
@@ -467,7 +349,23 @@ fn set_title(title: &str) {
     let _ = out.flush();
 }
 
+/// Terminals that understand the FinalTerm shell-integration marks (OSC 133): Nebula
+/// Terminal uses them to notice long commands finishing in the background.
+fn shell_integration() -> bool {
+    std::env::var_os("NEBULA_TERMINAL").is_some()
+        || std::env::var_os("WT_SESSION").is_some()
+        || std::env::var("TERM_PROGRAM").is_ok_and(|program| program == "vscode")
+}
+
+fn mark(sequence: &str) {
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\x1b]133;{sequence}\x07");
+    let _ = out.flush();
+}
+
 pub fn interactive(shell: &mut Shell) -> i32 {
+    shell.interactive = true;
+    let integration = shell_integration();
     let data = data_dir();
     let _ = std::fs::create_dir_all(&data);
     let history_path = data.join("history.txt");
@@ -557,9 +455,15 @@ pub fn interactive(shell: &mut Shell) -> i32 {
                 shell.history.push(line.clone());
                 let name = line.split_whitespace().next().unwrap_or("").to_owned();
                 set_title(&name);
+                if integration {
+                    mark("C");
+                }
                 let started = Instant::now();
-                shell.run_line(&line);
+                let status = shell.run_line(&line);
                 last_duration = Some(started.elapsed());
+                if integration {
+                    mark(&format!("D;{status}"));
+                }
                 known.update(shell);
                 if name == "clear" {
                     first = true;
@@ -598,6 +502,32 @@ mod tests {
         );
         assert_eq!(expand_history("echo '!!'", Some("x")), None);
         assert_eq!(expand_history("echo hi!", Some("x")), None);
+        assert_eq!(
+            expand_history("cd !$", Some("mkdir \"My Docs\"")).as_deref(),
+            Some("cd \"My Docs\"")
+        );
+        assert_eq!(
+            expand_history("echo \"don't\" !!", Some("ls")).as_deref(),
+            Some("echo \"don't\" ls")
+        );
+        assert_eq!(expand_history(r"echo \!!", Some("ls")), None);
+    }
+
+    #[test]
+    fn highlights_keywords() {
+        let tokens = lex("if true; then echo if; fi");
+        let keywords: Vec<&str> = tokens
+            .iter()
+            .filter(|(t, _)| *t == Tok::Keyword)
+            .map(|(_, s)| s.as_str())
+            .collect();
+        assert_eq!(keywords, vec!["if", "then", "fi"]);
+        let commands: Vec<&str> = tokens
+            .iter()
+            .filter(|(t, _)| *t == Tok::Word { command: true })
+            .map(|(_, s)| s.as_str())
+            .collect();
+        assert_eq!(commands, vec!["true", "echo"]);
     }
 
     #[test]

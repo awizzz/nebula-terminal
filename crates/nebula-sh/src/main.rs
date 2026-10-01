@@ -8,6 +8,7 @@
 mod arith;
 mod builtins;
 mod commands;
+mod complete;
 mod coreutils;
 mod editor;
 mod exec;
