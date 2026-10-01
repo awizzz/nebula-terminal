@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `SHA256SUMS.txt` lists files under the names GitHub publishes them with (`Nebula.Terminal_…` instead of `Nebula Terminal_…`), which the in-app updater needs to verify a download
+
 ## 1.1.0
 
 Nebula runs real scripts now, panes split in any direction, and the app can notify you and update itself. From this version on, new releases install from inside the app.

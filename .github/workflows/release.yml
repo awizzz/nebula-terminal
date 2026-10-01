@@ -111,7 +111,9 @@ jobs:
           $bundles += Get-ChildItem "$target/bundle/nsis" -File -Filter '*.exe' -ErrorAction SilentlyContinue
           $bundles += Get-ChildItem "$target/bundle/msi" -File -Filter '*.msi' -ErrorAction SilentlyContinue
           if ($bundles.Count -eq 0) { throw 'Tauri did not produce an installer.' }
-          foreach ($bundle in $bundles) { Copy-Item $bundle.FullName release/ }
+          # GitHub replaces spaces in asset names with dots. Use the published names here,
+          # so SHA256SUMS.txt matches what people (and the in-app updater) download.
+          foreach ($bundle in $bundles) { Copy-Item $bundle.FullName (Join-Path release ($bundle.Name -replace ' ', '.')) }
 
           Get-ChildItem release -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()

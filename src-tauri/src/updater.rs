@@ -127,13 +127,21 @@ fn installer_asset(release: &Release, kind: InstallKind) -> Option<&Asset> {
     })
 }
 
-/// Finds `name` in a `sha256sum`-style list.
+/// GitHub publishes `Nebula Terminal_1.1.0.exe` as `Nebula.Terminal_1.1.0.exe`.
+fn published_name(name: &str) -> String {
+    name.replace(' ', ".")
+}
+
+/// Finds `name` in a `sha256sum`-style list (1.1.0 listed files under their names
+/// before GitHub renamed them).
 fn expected_hash(sums: &str, name: &str) -> Option<String> {
     sums.lines().find_map(|line| {
         let (hash, file) = line.trim().split_once(char::is_whitespace)?;
         let file = file.trim().trim_start_matches('*');
-        (file == name && hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()))
-            .then(|| hash.to_ascii_lowercase())
+        (published_name(file) == published_name(name)
+            && hash.len() == 64
+            && hash.chars().all(|c| c.is_ascii_hexdigit()))
+        .then(|| hash.to_ascii_lowercase())
     })
 }
 
@@ -324,6 +332,11 @@ mod tests {
             Some("b".repeat(64))
         );
         assert_eq!(expected_hash(&sums, "other.zip"), None);
+        let spaced = format!("{}  Nebula Terminal_1.1.0_x64-setup.exe\n", "c".repeat(64));
+        assert_eq!(
+            expected_hash(&spaced, "Nebula.Terminal_1.1.0_x64-setup.exe"),
+            Some("c".repeat(64))
+        );
         assert_eq!(expected_hash("short  file.exe", "file.exe"), None);
     }
 
