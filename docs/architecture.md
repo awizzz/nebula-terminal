@@ -26,13 +26,14 @@ scripts/             sidecar build, icon font subset, preview recording
 
 | File | Responsibility |
 | --- | --- |
-| `main.rs` | Builds the Tauri app, registers commands and the opener plugin, applies Mica. |
+| `main.rs` | Builds the Tauri app, registers commands and the opener and notification plugins, applies Mica, reports the Windows build number to xterm.js. |
 | `profiles.rs` | Lists everything a tab can open (built-in shells, WSL distributions, SSH hosts, custom profiles), resolves a profile id to an executable and arguments, expands `~` and `%VAR%` in the starting folder. |
 | `wsl.rs` | Installed WSL distributions, read from `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. If that key is missing, it asks `wsl.exe -l -q` (UTF-16 output) with a 3 second limit. Docker Desktop's and Rancher Desktop's internal distributions are skipped. |
 | `ssh.rs` | `Host` names from `~/.ssh/config` and the files it includes (one level deep, wildcards allowed in file names). Patterns with `*`, `?` or `!` are skipped. |
 | `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
-| `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. |
+| `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
+| `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. |
 
 The webview cannot start arbitrary programs. It sends a **profile id**, and Rust decides which executable that means:
 
@@ -57,19 +58,24 @@ The editor sends the arguments as one line. Rust splits it with the Windows rule
 
 | File | Responsibility |
 | --- | --- |
-| `main.rs` | Entry point: interactive mode, `-c "line"`, a script file, or `nebula-sh <command> [args]` to run one of its commands directly. |
-| `parse.rs` | Words, quotes, `$` expansions, pipelines, `&&`/`||`/`;` and redirections into a small syntax tree. |
-| `expand.rs` | `~`, variables, `$(…)`, word splitting and globs. |
-| `exec.rs` | Runs pipelines with real OS pipes, so stages stream concurrently; applies redirections; resolves aliases, builtins, Nebula commands and PATH programs. |
-| `builtins.rs` | Commands that change the shell itself: `cd`, `export`, `alias`, `history`, `source`… |
+| `main.rs` | Entry point: interactive mode, `-c "line"`, a script file with arguments, or `nebula-sh <command> [args]` to run one of its commands directly. The interpreter runs on a thread with a large stack, so deep function recursion is safe. |
+| `parse.rs` | A recursive-descent parser: words, quotes, `$` expansions, pipelines, lists, redirections and here-documents, and the compound commands (`if`, `for`, `while`, `until`, `case`, `{ }`, `( )`, `(( ))`, `[[ ]]`, functions). |
+| `expand.rs` | `~`, parameters and their `${…}` operators, `$(…)`, `$((…))`, `"$@"`, word splitting and globs. |
+| `arith.rs` | Shell arithmetic: 64-bit integers, C operators and precedence, assignments, `++`/`--`. |
+| `test.rs` | Conditional expressions for `test`, `[` and `[[ ]]`. |
+| `exec.rs` | Runs the syntax tree: pipelines with real OS pipes, so stages stream concurrently; redirections; control flow (`break`, `continue`, `return` unwind through a flag); functions with local variables; `set -e`/`-u`/`-x`/`pipefail`. Resolves aliases, functions, builtins, Nebula commands and PATH programs. |
+| `builtins.rs` | Commands that run inside the shell: `cd`, `export`, `alias`, `source`, `echo`, `test`, `read`, `local`, `set`, `eval`, `command`… |
+| `complete.rs` | Tab completion: commands, paths, options read from `--help`, Git subcommands and refs, variables, SSH hosts. |
 | `coreutils.rs` | The uutils coreutils commands, dispatched by name. |
 | `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `ps`, `kill`, `open`, `xargs`, `less`. |
-| `editor.rs` | reedline setup: highlighting, history hints, completion, multi-line input, history expansion, window title. |
+| `editor.rs` | reedline setup: highlighting, history hints, multi-line input, history expansion, window title, and the OSC 133 marks around each command. |
 | `prompt.rs` | Folder, Git status (with a 300 ms budget), duration and exit code. |
 | `suggest.rs` | "command not found" with a close match or the Linux equivalent of a Windows command. |
 | `sys.rs` | Paths (`/c/…`, `/dev/null`, `~`), PATH lookup with PATHEXT, terminal capabilities. |
 
 Every command except the builtins runs as its own process, `nebula-sh <name> …`, the same way coreutils' multi-call binary works. This keeps pipes and redirections uniform: a pipeline of Nebula commands and Windows programs is just a chain of processes.
+
+Shell variables are environment variables, so every child process sees them. Functions, aliases and blocks can't run concurrently inside one process, so when they appear in a pipeline (`myfunc | grep x`) or in `( … )`, Nebula writes the function and alias definitions, the options and the arguments to a temporary script and runs it in a child `nebula-sh --subshell`. `$(…)` runs in the shell itself, then puts back the directory, variables and functions it found, as a sub-shell would.
 
 The terminal finds the interpreter next to its own executable. `scripts/build-sidecar.mjs` builds it and stages it as a Tauri sidecar (`src-tauri/binaries/nebula-sh-<target>.exe`), which the installers then place beside `Nebula Terminal.exe`.
 
@@ -78,7 +84,8 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | File | Responsibility |
 | --- | --- |
 | `App.tsx` | Workspace state: tabs, panes, menus, overlays, global shortcuts, persistence. |
-| `components/TerminalPane.tsx` | One xterm.js instance bound to one PTY session: input, clipboard, paste guard, search, exit state. |
+| `components/TerminalPane.tsx` | One xterm.js instance bound to one PTY session: input, clipboard, paste guard, search, exit state, and the OSC 133 / 9 / 777 sequences behind notifications. |
+| `components/UpdateBanner.tsx` | The card that offers a new version. |
 | `components/Titlebar.tsx` | Tabs, new-tab button, caption buttons. |
 | `components/SettingsPanel.tsx` | Every setting, grouped by page, including the custom profile editor. |
 | `components/CommandPalette.tsx` | Fuzzy-searchable list of actions. |
@@ -90,6 +97,10 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
 | `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
+| `terminalInput.ts` | Quoting dropped paths for each shell, and telling pastes from typing. |
+| `notify.ts` | Windows notifications, and the text for a finished command. |
+| `updates.ts` | Update checks: when to check, which version was put off. |
+| `platform.ts` | The Windows build number, for xterm's ConPTY handling. |
 | `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…). |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
 

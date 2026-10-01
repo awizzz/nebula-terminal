@@ -2,7 +2,22 @@
 
 ## Unreleased
 
-### Added
+### Nebula
+
+- **scripts**: `if` / `elif` / `else`, `for` (lists and `for ((…))`), `while`, `until`, `case`, `{ … }`, `( … )`, `break` and `continue`
+- functions with `local` variables, `return`, `$1`…`$9`, `$#`, `"$@"` and `shift`
+- arithmetic with `$((…))`, `((…))` and `let`; `test`, `[` and `[[ … ]]` with patterns and `=~`
+- `${x:-default}`, `${#x}`, `${x%.txt}`, `${x/old/new}`, `${x:1:3}`, `${x^^}` and the other parameter forms; `$'…'` strings
+- here-documents (`<<`, `<<-`) and here-strings (`<<<`)
+- `read`, `echo`, `eval`, `command -v`, `declare`, `set -e`, `set -u`, `set -x` and `set -o pipefail`
+- `nebula-sh script.sh args` sets `$0` and the arguments, and `.sh` files run with Nebula
+- Tab completes the options of every Nebula command, Git subcommands and branches, `$VARIABLES` and SSH hosts; keywords and functions are highlighted
+- `kill` sends the signal you ask for (`kill -0` only checks), `find -ok` asks first, `xargs` gains `-r`, `-d`, `-L` and `-t`
+- `$(…)` runs like a sub-shell: a `cd` inside it no longer moves the shell, and its exit status is kept
+- Ctrl+C stops the whole command line, loops included
+- fixed: aliases in pipelines could hang; an alias calling the command of the same name failed; `grep` kept running after `| head`; `open` cut URLs at `&`; `cd C:\` and `\\server\share` needed quotes; `!$` broke quoted arguments; completing names with spaces or parentheses
+
+### Terminal
 
 - mixed split layouts: split any pane right or down, in any combination, and drag every divider to resize
 - up to eight panes per tab (was four)
@@ -13,6 +28,8 @@
 - custom profiles: any program with its own arguments, starting folder and color, added in Settings → Profiles. The arguments are split with the Windows rules and shown before you save
 - the new-tab menu and the default profile picker group shells, WSL distributions, SSH hosts and custom profiles once the list gets long; the menu scrolls when it no longer fits
 - "Connect to …" and "New … tab" commands in the palette for every profile, and a "Profile settings" command
+- a Windows notification when a long command finishes in the background, and a green or red dot on its tab; programs can send their own with OSC 9 and OSC 777
+- updates from inside the app: a daily check on GitHub, then the matching installer is downloaded, checked against `SHA256SUMS.txt` and run
 
 ### Changed
 
@@ -21,6 +38,19 @@
 - saved sessions use a new format; layouts saved by 1.0 are migrated on first launch
 - Settings → Shells is now Settings → Profiles and shows what each profile runs
 - tabs whose profile was removed keep running; on the next launch they open the default profile
+- a single pasted line no longer runs on its own (like Windows Terminal)
+
+### Fixed
+
+- Find or the palette opened from a menu could send what you typed to the shell
+- dropping a file with `$(…)` or backticks in its name could run a command in PowerShell or bash
+- the multi-line paste check could be skipped with a trailing newline
+- keys typed while a shell was starting were lost
+- input and resizes could reach the shell out of order
+- ConPTY reflow was done twice on Windows 10
+- OSC 8 links ignored the Ctrl+click rule, and Ctrl+C / Ctrl+V failed on Cyrillic and Greek layouts
+- importing a theme or a background could undo settings changed at the same time
+- shortcuts could be set to a key without a modifier, which then never reached the shell
 
 ## 1.0.0
 

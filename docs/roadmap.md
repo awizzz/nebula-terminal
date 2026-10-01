@@ -1,19 +1,16 @@
 # Roadmap
 
-Nebula Terminal 1.0 covers daily use: shells, tabs, panes, themes, settings and shortcuts. This is what comes next, in rough order. Nothing here is a promise or has a date.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, notifications and updates. This is what comes next, in rough order. Nothing here is a promise or has a date.
 
 ## Next
 
-- **Nebula scripting.** `if`, `for`, `while` and functions, so simple `.sh` scripts run without Git Bash.
-- **Smarter completion in Nebula.** Options of common commands, Git branches, environment variables.
-
-- **Custom profiles.** Add any executable with its own arguments, folder, icon and environment, plus SSH hosts and one profile per WSL distribution.
-- **Notifications** when a long command finishes in a tab you're not looking at.
-- **Updates from inside the app**, once release signing is in place.
+- **Signed releases** (Authenticode), so SmartScreen stops warning and updates can be checked against a signature, not just a checksum.
+- **Nebula**: arrays, background jobs and `trap`, which are what still sends some scripts to Git Bash.
+- **Completion for more programs**: npm scripts, cargo, docker and kubectl.
+- **Shell integration for PowerShell and bash**, so long-command notifications work there too.
 
 ## Later
 
-- Signed releases (Authenticode)
 - ARM64 builds
 - winget and Scoop packages
 - A quake-style drop-down window on a global hotkey

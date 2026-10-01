@@ -34,8 +34,10 @@ If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`,
 ```
 
 - **The real GNU behaviour.** The core commands come from [uutils coreutils](https://github.com/uutils/coreutils), a faithful MIT-licensed rewrite of GNU coreutils. `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open` are written for Nebula.
-- **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
-- **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept), and Tab completes commands and paths.
+- **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
+- **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, `$((…))`, `[[ … ]]`, `read`, `${name%.txt}` and the other `${…}` forms, `set -e`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
+- **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
+- **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, `$VARIABLES` and your SSH hosts.
 - **`ls` and `tree` with icons and colors** on screen. When the output goes to a file or another command, it stays plain.
 - **Helpful errors.** Typing `gti` suggests `git`, and `dir`, `cls` or `findstr` point to `ls`, `clear` and `grep`.
 
@@ -48,7 +50,20 @@ export EDITOR=code
 
 `nebula-sh.exe` also works on its own in Windows Terminal or any other terminal. Set `NEBULA_ICONS=1` there if your font includes Nerd Font icons.
 
-Not supported yet: `if`/`for`/`while` scripting, functions and background jobs (`&`). For scripts, use PowerShell, Git Bash or WSL.
+A short script, to give an idea:
+
+```sh
+#!/usr/bin/env nebula
+set -e
+for file in *.log; do
+  size=$(wc -c < "$file")
+  if (( size > 1000000 )); then
+    echo "${file%.log} is $(( size / 1024 )) KB"
+  fi
+done
+```
+
+Not supported: arrays, background jobs (`&`) and `trap`. For scripts that need them, use Git Bash or WSL.
 
 ## What you get
 
@@ -58,7 +73,9 @@ Not supported yet: `if`/`for`/`while` scripting, functions and background jobs (
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **Nine themes**, including light ones. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts. Every change applies immediately.
-- **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell.
+- **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
+- **Knows when you're done.** When a long command finishes in a tab you're not looking at, you get a Windows notification and a green or red dot on the tab.
+- **Updates itself.** When a new version is out, the app offers to install it and restarts. You can also check from Settings → About.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
 - **Picks up where you left off.** Your tabs, their names and colors, and your splits are restored on launch. The shells themselves start fresh.
 
