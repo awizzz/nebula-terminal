@@ -1,22 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { ClipboardPaste, RotateCcw, ShieldAlert, X } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
-import { resolveTheme } from "../preferences";
+import { openExternal } from "../external";
+import { registerPane } from "../paneRegistry";
+import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
 
 interface TerminalPaneProps {
+  paneId: string;
   profile: TerminalProfile;
   preferences: AppearancePreferences;
   focused: boolean;
+  visible: boolean;
   searchRequest?: { query: string; nonce: number; backwards?: boolean };
   onFocus: () => void;
   onFontSizeDelta: (delta: number) => void;
   onTitleChange: (title: string) => void;
+  onActivity: () => void;
+  onSearchResult: (result: { index: number; count: number }) => void;
+  onContextMenu: (x: number, y: number) => void;
+  onClose: () => void;
 }
 
 type ConnectionState = "starting" | "ready" | "closed" | "preview";
@@ -25,18 +32,39 @@ function quoteDroppedPath(path: string): string {
   return `"${path.replaceAll('"', '\\"')}"`;
 }
 
-function isMultiline(text: string): boolean {
-  return text.replaceAll("\r\n", "\n").split(/[\r\n]/).filter(Boolean).length > 1;
+function lineCount(text: string): number {
+  return text.replace(/\r\n/g, "\n").replace(/[\r\n]+$/, "").split(/[\r\n]/).length;
+}
+
+const PREVIEW_PROMPT = "\x1b[34mPS\x1b[0m C:\\Users\\you> ";
+
+function writePreview(terminal: Terminal, profile: TerminalProfile) {
+  terminal.writeln(`\x1b[2m${profile.name} · interface preview\x1b[0m`);
+  terminal.writeln("\x1b[2mShells only run inside the desktop app. Try Ctrl+Shift+P.\x1b[0m");
+  terminal.writeln("");
+  terminal.write(`${PREVIEW_PROMPT}git status\r\n`);
+  terminal.writeln("On branch \x1b[1mmain\x1b[0m");
+  terminal.writeln("Changes not staged for commit:");
+  terminal.writeln("  \x1b[31mmodified:   src/App.tsx\x1b[0m");
+  terminal.writeln("  \x1b[31mmodified:   src/styles.css\x1b[0m");
+  terminal.writeln("");
+  terminal.write(PREVIEW_PROMPT);
 }
 
 export default function TerminalPane({
+  paneId,
   profile,
   preferences,
   focused,
+  visible,
   searchRequest,
   onFocus,
   onFontSizeDelta,
   onTitleChange,
+  onActivity,
+  onSearchResult,
+  onContextMenu,
+  onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -44,43 +72,27 @@ export default function TerminalPane({
   const searchRef = useRef<SearchAddon | null>(null);
   const sessionRef = useRef<string | null>(null);
   const focusedRef = useRef(focused);
+  const visibleRef = useRef(visible);
   const preferencesRef = useRef(preferences);
-  const onFontSizeDeltaRef = useRef(onFontSizeDelta);
-  const onTitleChangeRef = useRef(onTitleChange);
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu });
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [restartNonce, setRestartNonce] = useState(0);
 
   focusedRef.current = focused;
+  visibleRef.current = visible;
   preferencesRef.current = preferences;
-  onFontSizeDeltaRef.current = onFontSizeDelta;
-  onTitleChangeRef.current = onTitleChange;
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu };
 
-  const preset = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
-  const theme = useMemo(() => ({
-    background: preset.background,
-    foreground: preset.foreground,
-    cursor: preferences.accent,
-    cursorAccent: preset.background,
-    selectionBackground: `${preferences.accent}42`,
-    black: preset.black,
-    red: preset.red,
-    green: preset.green,
-    yellow: preset.yellow,
-    blue: preset.blue,
-    magenta: preset.magenta,
-    cyan: preset.cyan,
-    white: preset.white,
-    brightBlack: "#687277",
-    brightRed: preset.red,
-    brightGreen: preset.green,
-    brightYellow: preset.yellow,
-    brightBlue: preset.blue,
-    brightMagenta: preset.magenta,
-    brightCyan: preset.cyan,
-    brightWhite: preset.foreground,
-  }), [preferences.accent, preset]);
+  const theme = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
+  const translucent = preferences.terminalOpacity < 1;
+  // A translucent terminal lets the workspace paint the background; an opaque one keeps
+  // xterm's own background so glyphs get subpixel antialiasing.
+  const colors = useMemo(() => {
+    const base = xtermTheme(theme, preferences.accent);
+    return translucent ? { ...base, background: "#00000000" } : base;
+  }, [preferences.accent, theme, translucent]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -88,21 +100,28 @@ export default function TerminalPane({
     let disposed = false;
 
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
+      allowProposedApi: true,
+      allowTransparency: preferencesRef.current.terminalOpacity < 1,
       cursorBlink: preferencesRef.current.cursorBlink,
       cursorStyle: preferencesRef.current.cursorStyle,
+      cursorInactiveStyle: "outline",
       fontFamily: preferencesRef.current.fontFamily,
       fontSize: preferencesRef.current.fontSize,
       lineHeight: preferencesRef.current.lineHeight,
       scrollback: preferencesRef.current.scrollback,
-      theme,
+      smoothScrollDuration: preferencesRef.current.animationLevel === "full" ? 80 : 0,
+      drawBoldTextInBrightColors: false,
+      minimumContrastRatio: 1,
+      theme: colors,
     });
     const fit = new FitAddon();
     const search = new SearchAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(search);
-    terminal.loadAddon(new WebLinksAddon());
+    // Links open with Ctrl+click so a plain click can still start a selection.
+    terminal.loadAddon(new WebLinksAddon((event, uri) => {
+      if (event.ctrlKey || !isTauri()) openExternal(uri);
+    }));
     terminal.open(host);
 
     try {
@@ -110,7 +129,7 @@ export default function TerminalPane({
       webgl.onContextLoss(() => webgl.dispose());
       terminal.loadAddon(webgl);
     } catch {
-      // xterm keeps its canvas renderer when WebGL is unavailable.
+      // xterm keeps its DOM renderer when WebGL is unavailable.
     }
 
     terminalRef.current = terminal;
@@ -120,7 +139,7 @@ export default function TerminalPane({
     setExitCode(null);
 
     const resize = () => {
-      if (disposed) return;
+      if (disposed || host.clientWidth === 0 || host.clientHeight === 0) return;
       try {
         fit.fit();
       } catch {
@@ -132,48 +151,61 @@ export default function TerminalPane({
     observer.observe(host);
     const resizeDisposable = terminal.onResize(({ cols, rows }) => {
       const sessionId = sessionRef.current;
-      if (isTauri() && sessionId) {
-        void invoke("resize_session", { sessionId, cols, rows }).catch(() => undefined);
-      }
+      if (isTauri() && sessionId) void invoke("resize_session", { sessionId, cols, rows }).catch(() => undefined);
     });
     const titleDisposable = terminal.onTitleChange((title) => {
       const clean = title.trim().slice(0, 120);
-      if (clean) onTitleChangeRef.current(clean);
+      if (clean) callbacksRef.current.onTitleChange(clean);
+    });
+    const searchDisposable = search.onDidChangeResults(({ resultIndex, resultCount }) => {
+      callbacksRef.current.onSearchResult({ index: resultIndex, count: resultCount });
     });
 
     const writeRaw = (data: string) => {
       const sessionId = sessionRef.current;
-      if (isTauri() && sessionId) {
-        void invoke("write_session", { sessionId, data }).catch((error) => {
-          if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
-        });
+      if (isTauri()) {
+        if (sessionId) {
+          void invoke("write_session", { sessionId, data }).catch((error) => {
+            if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
+          });
+        }
         return;
       }
-      if (!isTauri()) {
-        if (data === "\r") terminal.write("\r\n\x1b[38;2;242;169;59m❯\x1b[0m ");
-        else if (data === "\u007f") terminal.write("\b \b");
-        else terminal.write(data);
-      }
+      if (data === "\r") terminal.write(`\r\n${PREVIEW_PROMPT}`);
+      else if (data === "\u007f") terminal.write("\b \b");
+      else if (!data.startsWith("\x1b") && data >= " ") terminal.write(data.replace(/\r?\n/g, `\r\n${PREVIEW_PROMPT}`));
     };
 
     const writeInput = (data: string) => {
-      if (preferencesRef.current.confirmMultilinePaste && isMultiline(data)) {
+      if (preferencesRef.current.confirmMultilinePaste && lineCount(data) > 1) {
         setPendingPaste(data);
         return;
       }
       writeRaw(data);
     };
 
+    const paste = () => {
+      void navigator.clipboard?.readText().then((text) => {
+        if (text) terminal.paste(text);
+      }).catch(() => undefined);
+    };
+    const copy = () => {
+      if (!terminal.hasSelection()) return;
+      void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
+    };
+
     if (isTauri()) {
       const channel = new Channel<PtyEvent>();
       channel.onmessage = (message) => {
         if (disposed) return;
-        if (message.event === "output" && message.data.chunk) terminal.write(message.data.chunk);
-        if (message.event === "exit") {
+        if (message.event === "output" && message.data.chunk) {
+          terminal.write(message.data.chunk);
+          if (!visibleRef.current) callbacksRef.current.onActivity();
+        } else if (message.event === "exit") {
           setExitCode(message.data.code ?? null);
           setConnectionState("closed");
-        }
-        if (message.event === "error" && message.data.message) {
+          sessionRef.current = null;
+        } else if (message.event === "error" && message.data.message) {
           terminal.writeln(`\r\n\x1b[31m${message.data.message}\x1b[0m`);
         }
       };
@@ -191,7 +223,7 @@ export default function TerminalPane({
           return;
         }
         sessionRef.current = sessionId;
-        setConnectionState("ready");
+        setConnectionState((state) => state === "closed" ? state : "ready");
         void invoke("resize_session", { sessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
       }).catch((error) => {
         if (disposed) return;
@@ -200,26 +232,32 @@ export default function TerminalPane({
       });
     } else {
       setConnectionState("preview");
-      terminal.writeln("\x1b[38;2;242;169;59mNebula Terminal\x1b[0m  \x1b[38;2;111;154;148msolar-noir workspace\x1b[0m");
-      terminal.writeln("\x1b[38;2;126;137;140mA native PTY opens automatically in the desktop app.\x1b[0m\r\n");
-      terminal.writeln("\x1b[38;2;126;137;140mTry the command palette with Ctrl+Shift+P.\x1b[0m\r\n");
-      terminal.write("\x1b[38;2;242;169;59m❯\x1b[0m ");
+      writePreview(terminal, profile);
     }
 
+    // terminal.paste() routes through onData with bracketed-paste markers when the shell asks for them.
     const inputDisposable = terminal.onData(writeInput);
     const selectionDisposable = terminal.onSelectionChange(() => {
-      if (!preferencesRef.current.copyOnSelect || !terminal.hasSelection()) return;
-      void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
+      if (preferencesRef.current.copyOnSelect) copy();
     });
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "c" && terminal.hasSelection()) {
-        void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
+      const key = event.key.toLowerCase();
+      // Windows conventions: Ctrl+C copies when text is selected and interrupts otherwise; Ctrl+V pastes.
+      if (event.ctrlKey && !event.altKey && key === "c" && terminal.hasSelection()) {
+        copy();
+        if (!event.shiftKey) terminal.clearSelection();
         return false;
       }
-      if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "v") {
-        void navigator.clipboard?.readText().then(writeInput).catch(() => undefined);
+      if (event.ctrlKey && !event.altKey && key === "v") {
+        event.preventDefault();
+        paste();
+        return false;
+      }
+      if (event.shiftKey && !event.ctrlKey && event.key === "Insert") {
+        event.preventDefault();
+        paste();
         return false;
       }
       return true;
@@ -228,27 +266,45 @@ export default function TerminalPane({
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
-      onFontSizeDeltaRef.current(event.deltaY < 0 ? 1 : -1);
+      callbacksRef.current.onFontSizeDelta(event.deltaY < 0 ? 1 : -1);
     };
     host.addEventListener("wheel", handleWheel, { passive: false });
+
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      callbacksRef.current.onContextMenu(event.clientX, event.clientY);
+    };
+    host.addEventListener("contextmenu", handleContextMenu);
 
     const insertDropped = (event: Event) => {
       if (!focusedRef.current) return;
       const paths = (event as CustomEvent<string[]>).detail;
       if (!Array.isArray(paths)) return;
       const text = paths.map(quoteDroppedPath).join(" ");
-      if (text) writeInput(text);
+      if (text) writeRaw(text);
     };
     window.addEventListener("nebula:insert-paths", insertDropped);
 
+    const unregister = registerPane(paneId, {
+      copy,
+      paste,
+      selectAll: () => terminal.selectAll(),
+      clear: () => terminal.clear(),
+      hasSelection: () => terminal.hasSelection(),
+      focus: () => terminal.focus(),
+    });
+
     return () => {
       disposed = true;
+      unregister();
       observer.disconnect();
       resizeDisposable.dispose();
       titleDisposable.dispose();
+      searchDisposable.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();
       host.removeEventListener("wheel", handleWheel);
+      host.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("nebula:insert-paths", insertDropped);
       const sessionId = sessionRef.current;
       sessionRef.current = null;
@@ -258,7 +314,8 @@ export default function TerminalPane({
       fitRef.current = null;
       searchRef.current = null;
     };
-  }, [profile.id, restartNonce]);
+    // The session restarts only when the profile changes or the user asks for it.
+  }, [paneId, profile.id, restartNonce]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -269,23 +326,66 @@ export default function TerminalPane({
     terminal.options.cursorStyle = preferences.cursorStyle;
     terminal.options.cursorBlink = preferences.cursorBlink;
     terminal.options.scrollback = preferences.scrollback;
-    terminal.options.theme = theme;
-    requestAnimationFrame(() => fitRef.current?.fit());
-  }, [preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback, theme]);
+    terminal.options.smoothScrollDuration = preferences.animationLevel === "full" ? 80 : 0;
+    terminal.options.allowTransparency = translucent;
+    terminal.options.theme = colors;
+    requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit();
+      } catch {
+        // Hidden panes are fitted again when they become visible.
+      }
+    });
+  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback]);
+
+  useEffect(() => {
+    if (!visible) return;
+    requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit();
+      } catch {
+        // Ignore a pane that unmounted before the frame.
+      }
+    });
+  }, [visible]);
 
   useEffect(() => {
     if (focused) terminalRef.current?.focus();
   }, [focused]);
 
   useEffect(() => {
+    const search = searchRef.current;
+    if (!search) return;
     if (!searchRequest?.query) {
-      searchRef.current?.clearDecorations();
+      search.clearDecorations();
       return;
     }
-    const options = { incremental: true, decorations: { matchBackground: "#6b5528", activeMatchBackground: "#f2a93b", matchOverviewRuler: "#f2a93b", activeMatchColorOverviewRuler: "#fff2d6" } };
-    if (searchRequest.backwards) searchRef.current?.findPrevious(searchRequest.query, options);
-    else searchRef.current?.findNext(searchRequest.query, options);
-  }, [searchRequest?.backwards, searchRequest?.nonce, searchRequest?.query]);
+    const accent = preferences.accent;
+    const options = {
+      incremental: !searchRequest.backwards,
+      decorations: {
+        matchBackground: `${accent}55`,
+        matchBorder: `${accent}00`,
+        matchOverviewRuler: accent,
+        activeMatchBackground: accent,
+        activeMatchBorder: accent,
+        activeMatchColorOverviewRuler: accent,
+      },
+    };
+    if (searchRequest.backwards) search.findPrevious(searchRequest.query, options);
+    else search.findNext(searchRequest.query, options);
+  }, [preferences.accent, searchRequest?.backwards, searchRequest?.nonce, searchRequest?.query]);
+
+  useEffect(() => {
+    if (connectionState !== "closed" || !focused) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.key === "Enter") { event.preventDefault(); setRestartNonce((value) => value + 1); }
+      else if (event.key === "Escape") { event.preventDefault(); onClose(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [connectionState, focused, onClose]);
 
   const commitPaste = () => {
     const data = pendingPaste;
@@ -293,35 +393,43 @@ export default function TerminalPane({
     if (!data) return;
     const sessionId = sessionRef.current;
     if (isTauri() && sessionId) void invoke("write_session", { sessionId, data }).catch(() => undefined);
-    else terminalRef.current?.write(data);
+    else if (!isTauri()) terminalRef.current?.write(data.replace(/\r?\n/g, `\r\n${PREVIEW_PROMPT}`));
     requestAnimationFrame(() => terminalRef.current?.focus());
   };
 
+  // xterm sends pasted newlines as \r and may wrap them in bracketed-paste markers.
+  const pastePreview = pendingPaste?.replace(/\x1b\[20[01]~/g, "").replace(/\r\n?/g, "\n") ?? "";
+  const pasteLines = pendingPaste ? lineCount(pastePreview) : 0;
+
   return (
     <section
-      className={`terminal-pane ${focused ? "terminal-pane--focused" : ""}`}
-      style={{
-        padding: preferences.terminalPadding,
-        backgroundColor: `color-mix(in srgb, ${preset.background} ${Math.round(preferences.terminalOpacity * 100)}%, transparent)`,
-      }}
+      className={`terminal ${focused ? "is-focused" : ""}`}
+      style={{ padding: preferences.terminalPadding }}
       data-state={connectionState}
       aria-label={`${profile.name} terminal`}
       onMouseDown={onFocus}
     >
-      <div ref={hostRef} className="terminal-host" />
-      {connectionState === "starting" && <div className="terminal-state terminal-state--starting"><span />Opening {profile.name}</div>}
+      <div ref={hostRef} className="terminal__host" />
+      {connectionState === "starting" && <div className="terminal__progress" role="progressbar" aria-label={`Starting ${profile.name}`} />}
       {connectionState === "closed" && (
-        <div className="terminal-state terminal-state--closed">
-          <span>{exitCode === null ? "Session ended" : `Process exited with code ${exitCode}`}</span>
-          <button type="button" onClick={() => setRestartNonce((value) => value + 1)}><RotateCcw size={13} />Restart</button>
+        <div className="terminal__exit" role="status">
+          <span className={`terminal__exit-dot ${exitCode === 0 ? "is-ok" : ""}`} />
+          <span>{exitCode === null ? `${profile.name} could not start` : `${profile.name} exited with code ${exitCode}`}</span>
+          <button type="button" onClick={() => setRestartNonce((value) => value + 1)}>Restart <kbd>Enter</kbd></button>
+          <button type="button" onClick={onClose}>Close <kbd>Esc</kbd></button>
         </div>
       )}
       {pendingPaste && (
-        <div className="paste-guard" role="dialog" aria-modal="true" aria-label="Confirm multiline paste" onMouseDown={(event) => event.stopPropagation()}>
-          <button className="paste-guard__close" type="button" onClick={() => setPendingPaste(null)} aria-label="Cancel paste"><X size={15} /></button>
-          <span className="paste-guard__icon"><ShieldAlert size={20} /></span>
-          <div><strong>Paste {pendingPaste.replaceAll("\r\n", "\n").split("\n").length} lines?</strong><p>Review the commands before they run in this session.</p></div>
-          <div className="paste-guard__actions"><button type="button" onClick={() => setPendingPaste(null)}>Cancel</button><button className="primary-button" type="button" onClick={commitPaste}><ClipboardPaste size={14} />Paste</button></div>
+        <div className="dialog-layer" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby={`paste-${paneId}`}>
+            <h2 id={`paste-${paneId}`}>Paste {pasteLines} lines?</h2>
+            <p>Each line may run as a separate command as soon as it reaches the shell.</p>
+            <pre className="dialog__preview">{pastePreview.length > 600 ? `${pastePreview.slice(0, 600)}…` : pastePreview}</pre>
+            <div className="dialog__actions">
+              <button className="button" type="button" onClick={() => { setPendingPaste(null); terminalRef.current?.focus(); }}>Cancel</button>
+              <button className="button button--primary" type="button" autoFocus onClick={commitPaste}>Paste</button>
+            </div>
+          </div>
         </div>
       )}
     </section>

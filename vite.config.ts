@@ -13,5 +13,7 @@ export default defineConfig({
   build: {
     target: "es2022",
     sourcemap: false,
+    // xterm.js and its WebGL renderer are one large chunk by design; this is a desktop app.
+    chunkSizeWarningLimit: 1000,
   },
 });

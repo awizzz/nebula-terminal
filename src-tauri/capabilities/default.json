@@ -1,14 +1,27 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Window controls required by Nebula Terminal's custom titlebar.",
-  "windows": ["main"],
+  "description": "Window controls for the custom titlebar and opening web links in the default browser.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:event:default",
     "core:window:default",
     "core:window:allow-close",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
-    "core:window:allow-start-dragging"
+    "core:window:allow-start-dragging",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "http://*"
+        }
+      ]
+    }
   ]
 }
