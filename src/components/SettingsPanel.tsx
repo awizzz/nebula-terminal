@@ -109,13 +109,13 @@ function Slider({ value, min, max, step, onChange, format, label }: { value: num
 }
 
 function ThemePreview({ theme }: { theme: TerminalTheme }) {
-  const [, red, green, yellow, blue, , cyan] = theme.ansi;
+  const [, red, green, yellow, blue, magenta] = theme.ansi;
   return (
     <span className="theme-card__preview" style={{ background: theme.background, color: theme.foreground }} aria-hidden="true">
-      <span><b style={{ color: blue }}>PS</b> ~\app&gt; <span style={{ color: yellow }}>git</span> status</span>
-      <span>On branch <b style={{ color: cyan }}>main</b></span>
-      <span style={{ color: green }}>+ new  src/theme.ts</span>
-      <span style={{ color: red }}>- old  src/legacy.ts</span>
+      <span><b style={{ color: blue }}>~/app</b> on <b style={{ color: magenta }}>main</b> <span style={{ color: yellow }}>!1</span></span>
+      <span><b style={{ color: green }}>❯ git</b> status --short</span>
+      <span><span style={{ color: red }}> M</span> src/theme.ts</span>
+      <span><span style={{ color: red }}>??</span> notes.txt</span>
     </span>
   );
 }
