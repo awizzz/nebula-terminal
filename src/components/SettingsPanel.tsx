@@ -1,11 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Brush, Command, MonitorCog, RotateCcw, SlidersHorizontal, TerminalSquare, X } from "lucide-react";
-import { exportAppearance, importAppearance, themePresets } from "../preferences";
-import nebulaMark from "../assets/nebula-mark.png";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Info, Keyboard, Monitor, Palette, RotateCcw, SquareTerminal, ToggleRight, X } from "lucide-react";
+import { version } from "../../package.json";
+import appIcon from "../assets/icon.svg";
+import { openExternal } from "../external";
+import { shortcutFromEvent } from "../keys";
+import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
+import { accentSwatches, themes, type TerminalTheme } from "../themes";
+import Keys from "./Keys";
+import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, KeybindingPreferences, TerminalProfile } from "../types";
 
 interface SettingsPanelProps {
   open: boolean;
+  initialPage?: SettingsPage;
   profiles: TerminalProfile[];
   preferences: AppearancePreferences;
   onChange: (next: AppearancePreferences) => void;
@@ -14,33 +21,133 @@ interface SettingsPanelProps {
   onClearSession: () => void;
 }
 
-type SettingsPage = "appearance" | "terminal" | "profiles" | "keybindings" | "advanced";
+export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
 
-const pages: Array<{ id: SettingsPage; label: string; description: string }> = [
-  { id: "appearance", label: "Appearance", description: "Color, light and motion" },
-  { id: "terminal", label: "Terminal", description: "Type and cursor" },
-  { id: "profiles", label: "Profiles", description: "Shells on this computer" },
-  { id: "keybindings", label: "Shortcuts", description: "Keyboard commands" },
-  { id: "advanced", label: "Workspace", description: "Memory and safeguards" },
+const pages: Array<{ id: SettingsPage; label: string; icon: typeof Palette }> = [
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "terminal", label: "Terminal", icon: SquareTerminal },
+  { id: "profiles", label: "Shells", icon: Monitor },
+  { id: "keyboard", label: "Keyboard", icon: Keyboard },
+  { id: "behavior", label: "Behavior", icon: ToggleRight },
+  { id: "about", label: "About", icon: Info },
 ];
 
-const pageIcons = { appearance: Brush, terminal: TerminalSquare, profiles: MonitorCog, keybindings: Command, advanced: SlidersHorizontal };
+const monospaceFonts = ["Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Lucida Console"];
+const REPOSITORY = "https://github.com/awizzz/nebula-shell";
 
-function SectionTitle({ title, description }: { title: string; description: string }) {
-  return <div className="settings-heading"><h3>{title}</h3><p>{description}</p></div>;
+function Row({ label, description, children, stacked = false }: { label: string; description?: string; children: ReactNode; stacked?: boolean }) {
+  return (
+    <div className={`row ${stacked ? "row--stacked" : ""}`}>
+      <div className="row__text">
+        <span className="row__label">{label}</span>
+        {description && <span className="row__description">{description}</span>}
+      </div>
+      <div className="row__control">{children}</div>
+    </div>
+  );
 }
 
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+function Group({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <button className={`toggle ${checked ? "toggle--on" : ""}`} type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}>
-      <span />
+    <section className="group">
+      {title && <h3 className="group__title">{title}</h3>}
+      <div className="group__rows">{children}</div>
+    </section>
+  );
+}
+
+function Switch({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+  return (
+    <button className="switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}>
+      <span className="switch__thumb" />
     </button>
   );
 }
 
-export default function SettingsPanel({ open, profiles, preferences, onChange, onClose, onReset, onClearSession }: SettingsPanelProps) {
+function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: Array<{ value: T; label: ReactNode }>; onChange: (value: T) => void; label: string }) {
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  return (
+    <div className="segmented" role="radiogroup" aria-label={label} style={{ "--count": options.length, "--index": index } as React.CSSProperties}>
+      <span className="segmented__thumb" aria-hidden="true" />
+      {options.map((option) => (
+        <button key={option.value} type="button" role="radio" aria-checked={option.value === value} onClick={() => onChange(option.value)}>{option.label}</button>
+      ))}
+    </div>
+  );
+}
+
+function Slider({ value, min, max, step, onChange, format, label }: { value: number; min: number; max: number; step: number; onChange: (value: number) => void; format: (value: number) => string; label: string }) {
+  const progress = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="slider">
+      <input type="range" min={min} max={max} step={step} value={value} aria-label={label} style={{ "--progress": `${progress}%` } as React.CSSProperties} onChange={(event) => onChange(Number(event.target.value))} />
+      <output>{format(value)}</output>
+    </div>
+  );
+}
+
+function ThemePreview({ theme }: { theme: TerminalTheme }) {
+  const [, red, green, yellow, blue, , cyan] = theme.ansi;
+  return (
+    <span className="theme-card__preview" style={{ background: theme.background, color: theme.foreground }} aria-hidden="true">
+      <span><b style={{ color: blue }}>PS</b> ~\app&gt; <span style={{ color: yellow }}>git</span> status</span>
+      <span>On branch <b style={{ color: cyan }}>main</b></span>
+      <span style={{ color: green }}>+ new  src/theme.ts</span>
+      <span style={{ color: red }}>- old  src/legacy.ts</span>
+    </span>
+  );
+}
+
+function ShortcutRecorder({ action, value, conflict, onChange }: { action: string; value: string; conflict?: string; onChange: (value: string) => void }) {
+  const [recording, setRecording] = useState(false);
+  const ref = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!recording) return;
+    const capture = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") { setRecording(false); return; }
+      if ((event.key === "Backspace" || event.key === "Delete") && !event.ctrlKey && !event.altKey) {
+        onChange("");
+        setRecording(false);
+        return;
+      }
+      const shortcut = shortcutFromEvent(event);
+      if (!shortcut) return;
+      onChange(shortcut);
+      setRecording(false);
+    };
+    const stop = () => setRecording(false);
+    window.addEventListener("keydown", capture, true);
+    window.addEventListener("blur", stop);
+    return () => {
+      window.removeEventListener("keydown", capture, true);
+      window.removeEventListener("blur", stop);
+    };
+  }, [onChange, recording]);
+
+  return (
+    <div className="shortcut">
+      {conflict && !recording && <span className="shortcut__conflict">Also used by {conflict}</span>}
+      <button
+        ref={ref}
+        type="button"
+        data-shortcut-recorder
+        className={`shortcut__field ${recording ? "is-recording" : ""} ${conflict ? "has-conflict" : ""}`}
+        aria-label={`${action}: ${value || "not set"}. Press to change.`}
+        onClick={() => setRecording((current) => !current)}
+      >
+        {recording ? <span className="shortcut__hint">Press a shortcut…</span> : value ? <Keys shortcut={value} /> : <span className="shortcut__hint">Not set</span>}
+      </button>
+    </div>
+  );
+}
+
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
-  const [importError, setImportError] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const themeInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -48,152 +155,283 @@ export default function SettingsPanel({ open, profiles, preferences, onChange, o
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) onClose();
     };
     window.addEventListener("keydown", closeOnEscape);
-    requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>(".settings-close")?.focus());
+    requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>(".settings__nav [aria-current='page']")?.focus());
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose, open]);
+
+  useEffect(() => {
+    if (open && initialPage) setPage(initialPage);
+  }, [initialPage, open]);
+
+  useEffect(() => {
+    setMessage(null);
+    setConfirmReset(false);
+  }, [page]);
 
   if (!open) return null;
 
   const patch = <K extends keyof AppearancePreferences>(key: K, value: AppearancePreferences[K]) => onChange({ ...preferences, [key]: value });
-  const patchBinding = (key: keyof KeybindingPreferences, value: string) => onChange({
-    ...preferences,
-    keybindings: { ...preferences.keybindings, [key]: value },
-  });
+  const patchBinding = (key: keyof KeybindingPreferences, value: string) => onChange({ ...preferences, keybindings: { ...preferences.keybindings, [key]: value } });
+  const pageIndex = pages.findIndex((item) => item.id === page);
+  const available = profiles.filter((profile) => profile.available);
 
   const importTheme = async (file?: File) => {
     if (!file) return;
     try {
-      setImportError(null);
       onChange(await importAppearance(file, preferences));
+      setMessage({ tone: "info", text: `Imported ${file.name}` });
     } catch (error) {
-      setImportError(String(error));
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
     }
   };
 
   const readBackground = (file?: File) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setImportError("Choose an image file.");
-      return;
-    }
-    if (file.size > 5_000_000) {
-      setImportError("Choose an image smaller than 5 MB.");
-      return;
-    }
-    setImportError(null);
+    if (!file.type.startsWith("image/")) return setMessage({ tone: "error", text: "Choose an image file." });
+    if (file.size > 5_000_000) return setMessage({ tone: "error", text: "Choose an image smaller than 5 MB." });
+    setMessage(null);
     const reader = new FileReader();
     reader.onload = () => onChange({ ...preferences, backgroundMode: "image", backgroundImage: String(reader.result ?? "") });
-    reader.onerror = () => setImportError("This image could not be read.");
+    reader.onerror = () => setMessage({ tone: "error", text: "This image could not be read." });
     reader.readAsDataURL(file);
   };
 
+  const conflictFor = (key: keyof KeybindingPreferences) => {
+    const value = preferences.keybindings[key].toLowerCase();
+    if (!value) return undefined;
+    const other = (Object.keys(preferences.keybindings) as Array<keyof KeybindingPreferences>)
+      .find((candidate) => candidate !== key && preferences.keybindings[candidate].toLowerCase() === value);
+    return other ? keybindingLabels[other] : undefined;
+  };
+
   return (
-    <aside ref={panelRef} className="settings-panel settings-panel--wide" aria-label="Settings" role="dialog" aria-modal="true">
-      <div className="settings-sidebar">
-        <div className="settings-brand"><img src={nebulaMark} alt="" /><div><strong>Nebula Terminal</strong><small>Version 0.2.0</small></div></div>
-        <nav>
-          {pages.map((item) => {
-            const Icon = pageIcons[item.id];
-            return (
-            <button key={item.id} className={page === item.id ? "selected" : ""} type="button" onClick={() => setPage(item.id)}>
-              <Icon size={15} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.description}</small></span>
-            </button>
-          );})}
+    <div className="overlay overlay--settings" role="presentation" onMouseDown={onClose}>
+      <section ref={panelRef} className="settings" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(event) => event.stopPropagation()}>
+        <nav className="settings__nav" aria-label="Settings sections" style={{ "--index": pageIndex } as React.CSSProperties}>
+          <h2>Settings</h2>
+          <div className="settings__nav-items">
+            <span className="settings__indicator" aria-hidden="true" />
+            {pages.map(({ id, label, icon: Icon }) => (
+              <button key={id} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
+                <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
         </nav>
-        <div className="settings-sidebar-footer"><button type="button" onClick={onReset}><RotateCcw size={13} />Reset settings</button></div>
-      </div>
 
-      <div className="settings-content">
-        <div className="settings-header">
-          <div><span className="eyebrow">Settings</span><h2>{pages.find((item) => item.id === page)?.label}</h2></div>
-          <button className="icon-button settings-close" type="button" onClick={onClose} aria-label="Close settings"><X size={17} /></button>
-        </div>
+        <div className="settings__main">
+          <header className="settings__header">
+            <h1>{pages[pageIndex]?.label}</h1>
+            <button className="icon-button" type="button" onClick={onClose} aria-label="Close settings" title="Close (Esc)"><X size={16} /></button>
+          </header>
 
-        <div className="settings-scroll">
-          {page === "appearance" && <>
-            <section className="settings-section">
-              <SectionTitle title="Light signatures" description="Each palette keeps the same Nebula identity with a different temperature." />
-              <div className="theme-grid">
-                {themePresets.map((theme) => (
-                  <button key={theme.id} type="button" className={`theme-card ${preferences.themeId === theme.id ? "selected" : ""}`} onClick={() => onChange({ ...preferences, themeId: theme.id, accent: theme.accent })}>
-                    <span className="theme-preview" style={{ background: theme.background }}>
-                      <i style={{ background: theme.red }} /><i style={{ background: theme.green }} /><i style={{ background: theme.yellow }} /><i style={{ background: theme.blue }} /><i style={{ background: theme.magenta }} />
-                    </span>
-                    <strong>{theme.name}</strong>
-                  </button>
-                ))}
-              </div>
-            </section>
+          <div className="settings__scroll">
+            <div className="settings__page" key={page}>
+              {page === "appearance" && <>
+                <Group title="Theme">
+                  <div className="theme-grid" role="radiogroup" aria-label="Theme">
+                    {themes.map((theme) => {
+                      const selected = preferences.themeId === theme.id;
+                      return (
+                        <button key={theme.id} type="button" role="radio" aria-checked={selected} className="theme-card" onClick={() => onChange({ ...preferences, themeId: theme.id, accent: theme.accent })}>
+                          <ThemePreview theme={theme} />
+                          <span className="theme-card__name">{theme.name}{selected && <Check size={14} strokeWidth={2.2} />}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Group>
 
-            <section className="settings-section">
-              <SectionTitle title="Window" description="Shape the frame around the terminal without weakening text contrast." />
-              <div className="setting-row">
-                <div><strong>Background</strong><span>Mica falls back gracefully on unsupported systems.</span></div>
-                <div className="segmented" role="group" aria-label="Background mode">
-                  {(["mica", "solid", "image"] as const).map((mode) => <button key={mode} className={preferences.backgroundMode === mode ? "selected" : ""} type="button" onClick={() => patch("backgroundMode", mode)}>{mode}</button>)}
+                <Group title="Window">
+                  <Row label="Accent color" description="Cursor, selection, focus and active controls.">
+                    <div className="swatches" role="radiogroup" aria-label="Accent color">
+                      {accentSwatches.map((color) => (
+                        <button key={color} type="button" role="radio" aria-checked={preferences.accent.toLowerCase() === color} aria-label={color} className="swatch" style={{ background: color }} onClick={() => patch("accent", color)} />
+                      ))}
+                      <label className="swatch swatch--custom" title="Custom color">
+                        <input type="color" value={preferences.accent} onChange={(event) => patch("accent", event.target.value)} aria-label="Custom accent color" />
+                      </label>
+                    </div>
+                  </Row>
+                  <Row label="Background" description="Mica lets your desktop color show through on Windows 11.">
+                    <Segmented label="Background" value={preferences.backgroundMode} onChange={(value) => value === "image" && !preferences.backgroundImage ? imageInputRef.current?.click() : patch("backgroundMode", value)} options={[{ value: "mica", label: "Mica" }, { value: "solid", label: "Solid" }, { value: "image", label: "Image" }]} />
+                  </Row>
+                  {preferences.backgroundMode === "image" && preferences.backgroundImage && <>
+                    <Row label="Background image">
+                      <div className="button-row">
+                        <button className="button" type="button" onClick={() => imageInputRef.current?.click()}>Change…</button>
+                        <button className="button" type="button" onClick={() => onChange({ ...preferences, backgroundImage: undefined, backgroundMode: "mica" })}>Remove</button>
+                      </div>
+                    </Row>
+                    <Row label="Image visibility">
+                      <Slider label="Image visibility" value={preferences.backgroundImageOpacity} min={0.05} max={0.8} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => patch("backgroundImageOpacity", value)} />
+                    </Row>
+                  </>}
+                  <Row label="Tabs">
+                    <Segmented label="Tab size" value={preferences.tabDensity} onChange={(value) => patch("tabDensity", value)} options={[{ value: "comfortable", label: "Normal" }, { value: "compact", label: "Compact" }]} />
+                  </Row>
+                  <Row label="Animations" description="Reduced keeps fades and removes movement.">
+                    <Segmented label="Animations" value={preferences.animationLevel} onChange={(value) => patch("animationLevel", value)} options={[{ value: "full", label: "Full" }, { value: "reduced", label: "Reduced" }, { value: "off", label: "Off" }]} />
+                  </Row>
+                  <input ref={imageInputRef} hidden type="file" accept="image/*" onChange={(event) => { readBackground(event.target.files?.[0]); event.target.value = ""; }} />
+                </Group>
+
+                <Group title="Share your look">
+                  <Row label="Theme file" description="Colors, fonts and window style. Never includes paths or shortcuts.">
+                    <div className="button-row">
+                      <button className="button" type="button" onClick={() => themeInputRef.current?.click()}>Import…</button>
+                      <button className="button" type="button" onClick={() => exportAppearance(preferences)}>Export</button>
+                    </div>
+                  </Row>
+                  <input ref={themeInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { void importTheme(event.target.files?.[0]); event.target.value = ""; }} />
+                </Group>
+              </>}
+
+              {page === "terminal" && <>
+                <Group title="Text">
+                  <Row label="Font" description="Any installed monospace font. Separate fallbacks with commas." stacked>
+                    <input className="field" list="font-families" value={preferences.fontFamily} spellCheck={false} onChange={(event) => patch("fontFamily", event.target.value)} onBlur={(event) => !event.target.value.trim() && patch("fontFamily", defaultFontFamily)} />
+                    <datalist id="font-families">{monospaceFonts.map((font) => <option key={font} value={font} />)}</datalist>
+                  </Row>
+                  <Row label="Size">
+                    <div className="stepper">
+                      <button type="button" aria-label="Smaller" onClick={() => patch("fontSize", Math.max(8, preferences.fontSize - 1))}>−</button>
+                      <output>{preferences.fontSize} pt</output>
+                      <button type="button" aria-label="Larger" onClick={() => patch("fontSize", Math.min(32, preferences.fontSize + 1))}>+</button>
+                    </div>
+                  </Row>
+                  <Row label="Line height">
+                    <Slider label="Line height" value={preferences.lineHeight} min={1} max={1.8} step={0.05} format={(value) => value.toFixed(2)} onChange={(value) => patch("lineHeight", value)} />
+                  </Row>
+                </Group>
+
+                <Group title="Cursor">
+                  <Row label="Shape">
+                    <Segmented label="Cursor shape" value={preferences.cursorStyle} onChange={(value) => patch("cursorStyle", value)} options={[
+                      { value: "bar", label: <><i className="caret caret--bar" />Bar</> },
+                      { value: "block", label: <><i className="caret caret--block" />Block</> },
+                      { value: "underline", label: <><i className="caret caret--underline" />Underline</> },
+                    ]} />
+                  </Row>
+                  <Row label="Blink">
+                    <Switch label="Blinking cursor" checked={preferences.cursorBlink} onChange={(value) => patch("cursorBlink", value)} />
+                  </Row>
+                </Group>
+
+                <Group title="Layout">
+                  <Row label="Padding">
+                    <Slider label="Padding" value={preferences.terminalPadding} min={0} max={32} step={1} format={(value) => `${value} px`} onChange={(value) => patch("terminalPadding", value)} />
+                  </Row>
+                  <Row label="Background opacity" description="Below 100% the window background shows through.">
+                    <Slider label="Background opacity" value={preferences.terminalOpacity} min={0.6} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => patch("terminalOpacity", value)} />
+                  </Row>
+                  <Row label="Scrollback" description="Lines kept per pane.">
+                    <select className="field field--select" value={preferences.scrollback} onChange={(event) => patch("scrollback", Number(event.target.value))}>
+                      {[1_000, 5_000, 10_000, 20_000, 50_000, 100_000].map((lines) => <option key={lines} value={lines}>{lines.toLocaleString("en-US")}</option>)}
+                    </select>
+                  </Row>
+                </Group>
+              </>}
+
+              {page === "profiles" && <>
+                <Group>
+                  <Row label="Default shell" description="Opened by the + button and at startup.">
+                    <select className="field field--select" value={available.some((profile) => profile.id === preferences.defaultProfileId) ? preferences.defaultProfileId : ""} onChange={(event) => patch("defaultProfileId", event.target.value)}>
+                      <option value="">Automatic{available[0] ? ` (${available[0].name})` : ""}</option>
+                      {available.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                    </select>
+                  </Row>
+                  <Row label="Starting folder" description="Leave empty for your user folder. Accepts ~ and %VARIABLES%." stacked>
+                    <input className="field" value={preferences.workingDirectory} spellCheck={false} placeholder="%USERPROFILE%\Projects" onChange={(event) => patch("workingDirectory", event.target.value)} />
+                  </Row>
+                </Group>
+                <Group title="Detected on this PC">
+                  {profiles.map((profile) => (
+                    <div key={profile.id} className={`shell-row ${profile.available ? "" : "is-missing"}`}>
+                      <ProfileIcon kind={profile.kind} size={20} />
+                      <div className="row__text">
+                        <span className="row__label">{profile.name}</span>
+                        <span className="row__description" title={profile.executable}>{profile.available ? profile.executable : "Not installed"}</span>
+                      </div>
+                      {profile.available && <span className="badge"><Check size={12} strokeWidth={2.4} />Ready</span>}
+                    </div>
+                  ))}
+                </Group>
+              </>}
+
+              {page === "keyboard" && <>
+                <Group title="Shortcuts">
+                  {(Object.keys(defaultKeybindings) as Array<keyof KeybindingPreferences>).map((key) => (
+                    <Row key={key} label={keybindingLabels[key]}>
+                      <ShortcutRecorder action={keybindingLabels[key]} value={preferences.keybindings[key]} conflict={conflictFor(key)} onChange={(value) => patchBinding(key, value)} />
+                    </Row>
+                  ))}
+                </Group>
+                <Group title="Always available">
+                  <Row label="Copy selection"><Keys shortcut="Ctrl+C" /></Row>
+                  <Row label="Paste"><Keys shortcut="Ctrl+V" /></Row>
+                  <Row label="Move between panes"><Keys shortcut="Alt+Arrow" /></Row>
+                  <Row label="Go to tab 1–9"><Keys shortcut="Ctrl+Alt+1…9" /></Row>
+                  <Row label="Zoom"><Keys shortcut="Ctrl+Wheel" /></Row>
+                </Group>
+                <div className="settings__footer-actions">
+                  <button className="button" type="button" onClick={() => patch("keybindings", { ...defaultKeybindings })}><RotateCcw size={14} />Restore default shortcuts</button>
                 </div>
-              </div>
-              <label className="setting-row setting-row--stacked">
-                <div><strong>Accent</strong><span>Focus, active tabs, cursor and selection.</span></div>
-                <div className="accent-control"><input type="color" value={preferences.accent} onChange={(event) => patch("accent", event.target.value)} /><code>{preferences.accent.toUpperCase()}</code></div>
-              </label>
-              <div className="setting-row">
-                <div><strong>Background image</strong><span>Stored locally on this device.</span></div>
-                <div className="button-row"><button className="secondary-button" type="button" onClick={() => imageInputRef.current?.click()}>Choose image</button>{preferences.backgroundImage && <button className="ghost-button" type="button" onClick={() => onChange({ ...preferences, backgroundImage: undefined, backgroundMode: "solid" })}>Remove</button>}</div>
-                <input ref={imageInputRef} hidden type="file" accept="image/*" onChange={(event) => readBackground(event.target.files?.[0])} />
-              </div>
-              {preferences.backgroundMode === "image" && <label className="setting-row"><div><strong>Image opacity</strong><span>{Math.round(preferences.backgroundImageOpacity * 100)}%</span></div><input type="range" min="0.08" max="0.8" step="0.01" value={preferences.backgroundImageOpacity} onChange={(event) => patch("backgroundImageOpacity", Number(event.target.value))} /></label>}
-              <label className="setting-row"><div><strong>Atmosphere</strong><span>{Math.round(preferences.atmosphere * 100)}% · glow around the workspace</span></div><input type="range" min="0" max="1" step="0.01" value={preferences.atmosphere} onChange={(event) => patch("atmosphere", Number(event.target.value))} /></label>
-              <div className="setting-row"><div><strong>Animations</strong><span>Reduce motion without changing the layout.</span></div><select value={preferences.animationLevel} onChange={(event) => patch("animationLevel", event.target.value as AppearancePreferences["animationLevel"])}><option value="full">Full</option><option value="reduced">Reduced</option><option value="off">Off</option></select></div>
-              <div className="setting-row"><div><strong>Tab density</strong><span>Compact gives more room to terminal sessions.</span></div><select value={preferences.tabDensity} onChange={(event) => patch("tabDensity", event.target.value as AppearancePreferences["tabDensity"])}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
-            </section>
+              </>}
 
-            <section className="settings-section">
-              <SectionTitle title="Theme files" description="Move your look between computers without touching config files." />
-              <div className="button-row"><button className="secondary-button" type="button" onClick={() => exportAppearance(preferences)}>Export theme</button><button className="secondary-button" type="button" onClick={() => themeInputRef.current?.click()}>Import theme</button></div>
-              <input ref={themeInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => void importTheme(event.target.files?.[0])} />
-              {importError && <p className="settings-error">{importError}</p>}
-            </section>
-          </>}
+              {page === "behavior" && <>
+                <Group title="Clipboard">
+                  <Row label="Copy on select" description="Selecting text copies it right away.">
+                    <Switch label="Copy on select" checked={preferences.copyOnSelect} onChange={(value) => patch("copyOnSelect", value)} />
+                  </Row>
+                  <Row label="Confirm multi-line paste" description="Review pasted text that would run several commands.">
+                    <Switch label="Confirm multi-line paste" checked={preferences.confirmMultilinePaste} onChange={(value) => patch("confirmMultilinePaste", value)} />
+                  </Row>
+                </Group>
+                <Group title="Tabs">
+                  <Row label="Reopen tabs on launch" description="Restores tabs and splits. Shells start fresh.">
+                    <Switch label="Reopen tabs on launch" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} />
+                  </Row>
+                  <Row label="Confirm closing several tabs">
+                    <Switch label="Confirm closing several tabs" checked={preferences.confirmCloseMultipleTabs} onChange={(value) => patch("confirmCloseMultipleTabs", value)} />
+                  </Row>
+                  <Row label="Saved tab layout">
+                    <button className="button" type="button" onClick={() => { onClearSession(); setMessage({ tone: "info", text: "Saved layout cleared." }); }}>Clear</button>
+                  </Row>
+                </Group>
+              </>}
 
-          {page === "terminal" && <section className="settings-section">
-            <SectionTitle title="Typography" description="Changes are applied live to every open pane." />
-            <label className="setting-row setting-row--stacked"><div><strong>Font family</strong><span>Use any installed monospace family.</span></div><input className="text-field" value={preferences.fontFamily} onChange={(event) => patch("fontFamily", event.target.value)} /></label>
-            <label className="setting-row"><div><strong>Font size</strong><span>{preferences.fontSize}px</span></div><input type="range" min="9" max="28" value={preferences.fontSize} onChange={(event) => patch("fontSize", Number(event.target.value))} /></label>
-            <label className="setting-row"><div><strong>Line height</strong><span>{preferences.lineHeight.toFixed(2)}</span></div><input type="range" min="1" max="1.8" step="0.05" value={preferences.lineHeight} onChange={(event) => patch("lineHeight", Number(event.target.value))} /></label>
-            <label className="setting-row"><div><strong>Padding</strong><span>{preferences.terminalPadding}px</span></div><input type="range" min="4" max="32" value={preferences.terminalPadding} onChange={(event) => patch("terminalPadding", Number(event.target.value))} /></label>
-            <label className="setting-row"><div><strong>Opacity</strong><span>{Math.round(preferences.terminalOpacity * 100)}%</span></div><input type="range" min="0.65" max="1" step="0.01" value={preferences.terminalOpacity} onChange={(event) => patch("terminalOpacity", Number(event.target.value))} /></label>
-            <div className="setting-row"><div><strong>Cursor style</strong><span>Choose the terminal caret.</span></div><select value={preferences.cursorStyle} onChange={(event) => patch("cursorStyle", event.target.value as AppearancePreferences["cursorStyle"])}><option value="bar">Bar</option><option value="block">Block</option><option value="underline">Underline</option></select></div>
-            <div className="setting-row"><div><strong>Blinking cursor</strong><span>Disable for a calmer terminal.</span></div><Toggle label="Blinking cursor" checked={preferences.cursorBlink} onChange={(value) => patch("cursorBlink", value)} /></div>
-            <div className="setting-row"><div><strong>Copy on select</strong><span>Automatically place selected terminal text on the clipboard.</span></div><Toggle label="Copy on select" checked={preferences.copyOnSelect} onChange={(value) => patch("copyOnSelect", value)} /></div>
-            <label className="setting-row"><div><strong>Scrollback</strong><span>{preferences.scrollback.toLocaleString()} lines kept in memory</span></div><input type="range" min="1000" max="100000" step="1000" value={preferences.scrollback} onChange={(event) => patch("scrollback", Number(event.target.value))} /></label>
-          </section>}
+              {page === "about" && <>
+                <div className="about">
+                  <img src={appIcon} alt="" width={64} height={64} />
+                  <div>
+                    <h2>Nebula Terminal</h2>
+                    <p>Version {version}</p>
+                  </div>
+                </div>
+                <Group>
+                  <Row label="Source code"><button className="button" type="button" onClick={() => openExternal(REPOSITORY)}>Open on GitHub</button></Row>
+                  <Row label="Found a bug?"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/issues/new/choose`)}>Report a problem</button></Row>
+                  <Row label="License"><span className="row__value">MIT</span></Row>
+                </Group>
+                <Group title="Reset">
+                  <Row label="Reset all settings" description="Theme, fonts, shells and shortcuts go back to their defaults.">
+                    {confirmReset
+                      ? <div className="button-row"><button className="button" type="button" onClick={() => setConfirmReset(false)}>Cancel</button><button className="button button--danger" type="button" onClick={() => { onReset(); setConfirmReset(false); }}>Reset</button></div>
+                      : <button className="button" type="button" onClick={() => setConfirmReset(true)}>Reset…</button>}
+                  </Row>
+                </Group>
+              </>}
 
-          {page === "profiles" && <section className="settings-section">
-            <SectionTitle title="Shell profiles" description="Shells detected on this computer." />
-            <div className="setting-row"><div><strong>Default profile</strong><span>Used by Ctrl+Shift+T and startup when no session is restored.</span></div><select value={preferences.defaultProfileId} onChange={(event) => patch("defaultProfileId", event.target.value)}><option value="">Automatic</option>{profiles.filter((profile) => profile.available).map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></div>
-            <label className="setting-row setting-row--stacked"><div><strong>Starting directory</strong><span>Leave empty to use the directory where Nebula Terminal was opened.</span></div><input className="text-field" value={preferences.workingDirectory} placeholder="C:\\Users\\you\\Projects" onChange={(event) => patch("workingDirectory", event.target.value)} /></label>
-            <div className="profile-list">{profiles.map((profile) => <div key={profile.id} className={`profile-row ${profile.available ? "" : "profile-row--disabled"}`}><span className="profile-color" style={{ background: profile.accent }} /><div><strong>{profile.name}</strong><span>{profile.available ? profile.executable ?? "Built in" : "Not detected"}</span></div><span className="profile-state">{profile.available ? "Ready" : "Unavailable"}</span></div>)}</div>
-          </section>}
-
-          {page === "keybindings" && <section className="settings-section">
-            <SectionTitle title="Keyboard shortcuts" description="Edit shortcut strings using Ctrl, Shift, Alt and a final key, for example Ctrl+Shift+T." />
-            {Object.entries(preferences.keybindings).map(([key, value]) => <label className="setting-row" key={key}><div><strong>{key.replace(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}</strong><span>Applied immediately.</span></div><input className="shortcut-field" value={value} onChange={(event) => patchBinding(key as keyof KeybindingPreferences, event.target.value)} /></label>)}
-            <button className="ghost-button" type="button" onClick={() => patch("keybindings", { ...preferences.keybindings, ...{ newTab: "Ctrl+Shift+T", closeTab: "Ctrl+Shift+W", commandPalette: "Ctrl+Shift+P", settings: "Ctrl+,", find: "Ctrl+F", splitVertical: "Ctrl+Shift+D", splitHorizontal: "Ctrl+Shift+E", closePane: "Ctrl+Shift+Q" } })}>Reset shortcuts</button>
-          </section>}
-
-          {page === "advanced" && <section className="settings-section">
-            <SectionTitle title="Workspace behavior" description="Choose what Nebula remembers and where it asks before acting." />
-            <div className="setting-row"><div><strong>Restore workspace layout</strong><span>Reopen tabs, profiles and splits. Commands start in fresh processes.</span></div><Toggle label="Restore workspace layout" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} /></div>
-            <div className="setting-row"><div><strong>Check multiline paste</strong><span>Ask before several command lines are sent to a session.</span></div><Toggle label="Check multiline paste" checked={preferences.confirmMultilinePaste} onChange={(value) => patch("confirmMultilinePaste", value)} /></div>
-            <div className="setting-row"><div><strong>Confirm multi-tab close</strong><span>Ask before closing a workspace with several tabs.</span></div><Toggle label="Confirm multi-tab close" checked={preferences.confirmCloseMultipleTabs} onChange={(value) => patch("confirmCloseMultipleTabs", value)} /></div>
-            <div className="setting-row"><div><strong>Saved workspace</strong><span>Clear tabs and split layout stored on this device.</span></div><button className="secondary-button" type="button" onClick={onClearSession}>Clear saved session</button></div>
-          </section>}
+              {message && <p className={`settings__message settings__message--${message.tone}`} role="status">{message.text}</p>}
+            </div>
+          </div>
         </div>
-      </div>
-    </aside>
+      </section>
+    </div>
   );
 }

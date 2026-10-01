@@ -24,6 +24,7 @@ fn set_window_effect(window: WebviewWindow, mode: String, dark: bool) -> Result<
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
         .invoke_handler(tauri::generate_handler![
             profiles::detect_profiles,

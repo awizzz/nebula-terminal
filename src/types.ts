@@ -18,12 +18,17 @@ export type SplitDirection = "horizontal" | "vertical";
 export interface KeybindingPreferences {
   newTab: string;
   closeTab: string;
-  commandPalette: string;
-  settings: string;
-  find: string;
+  nextTab: string;
+  previousTab: string;
   splitVertical: string;
   splitHorizontal: string;
   closePane: string;
+  find: string;
+  commandPalette: string;
+  settings: string;
+  zoomIn: string;
+  zoomOut: string;
+  zoomReset: string;
 }
 
 export interface AppearancePreferences {
@@ -48,7 +53,6 @@ export interface AppearancePreferences {
   confirmMultilinePaste: boolean;
   confirmCloseMultipleTabs: boolean;
   scrollback: number;
-  atmosphere: number;
   keybindings: KeybindingPreferences;
 }
 
