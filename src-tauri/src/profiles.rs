@@ -1,9 +1,12 @@
+use crate::{cmdline, custom, ssh, wsl};
 use serde::Serialize;
 use std::{
     env,
     ffi::OsString,
     path::{Path, PathBuf},
+    thread,
 };
+use tauri::State;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +16,8 @@ pub struct TerminalProfile {
     pub kind: String,
     pub available: bool,
     pub executable: Option<String>,
+    /// The program and its arguments, for display only.
+    pub command_line: Option<String>,
     pub accent: String,
 }
 
@@ -20,7 +25,14 @@ pub struct TerminalProfile {
 pub struct ResolvedProfile {
     pub executable: PathBuf,
     pub args: Vec<String>,
+    /// The profile's own starting folder, which wins over the global one.
+    pub cwd: Option<String>,
 }
+
+const WSL_PREFIX: &str = "wsl:";
+const SSH_PREFIX: &str = "ssh:";
+const WSL_ACCENT: &str = "#e0a040";
+const SSH_ACCENT: &str = "#4f9d8f";
 
 /// Built-in profiles in order of preference. The first available one is the
 /// default for a fresh install.
@@ -68,7 +80,7 @@ fn find_in_path(name: &str, path: Option<OsString>, extensions: &[String]) -> Op
     })
 }
 
-fn find_executable(name: &str) -> Option<PathBuf> {
+pub fn find_executable(name: &str) -> Option<PathBuf> {
     find_in_path(name, env::var_os("PATH"), &path_extensions())
 }
 
@@ -137,31 +149,193 @@ fn locate(id: &str) -> Option<ResolvedProfile> {
     executable.map(|executable| ResolvedProfile {
         executable,
         args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+        cwd: None,
     })
 }
 
-#[tauri::command]
-pub async fn detect_profiles() -> Vec<TerminalProfile> {
-    PROFILES
-        .iter()
-        .map(|(id, name, accent)| {
-            let resolved = locate(id);
-            TerminalProfile {
-                id: (*id).into(),
-                name: (*name).into(),
-                kind: (*id).into(),
-                available: resolved.is_some(),
-                executable: resolved
-                    .map(|profile| profile.executable.to_string_lossy().into_owned()),
-                accent: (*accent).into(),
-            }
-        })
-        .collect()
+fn wsl_args(distro: &str) -> Vec<String> {
+    ["-d", distro, "--cd", "~"].map(str::to_owned).to_vec()
 }
 
-/// Resolves a profile id sent by the UI. With a custom starting folder, WSL starts
-/// there (as /mnt/...) instead of the Linux home directory.
-pub fn resolve_profile(profile_id: &str, custom_cwd: bool) -> Result<ResolvedProfile, String> {
+fn profile(
+    id: String,
+    name: String,
+    kind: &str,
+    accent: &str,
+    resolved: Option<ResolvedProfile>,
+) -> TerminalProfile {
+    TerminalProfile {
+        id,
+        name,
+        kind: kind.into(),
+        available: resolved.is_some(),
+        executable: resolved
+            .as_ref()
+            .map(|profile| profile.executable.to_string_lossy().into_owned()),
+        command_line: resolved.map(|profile| {
+            let program = cmdline::quote(&profile.executable.to_string_lossy());
+            if profile.args.is_empty() {
+                program
+            } else {
+                format!("{program} {}", cmdline::join(&profile.args))
+            }
+        }),
+        accent: accent.into(),
+    }
+}
+
+/// Everything that can be opened, in menu order: built-in shells, one entry per WSL
+/// distribution, one per SSH host, then the user's own profiles.
+fn detect_all(custom_path: Option<PathBuf>) -> Vec<TerminalProfile> {
+    let wsl_exe = find_executable("wsl.exe");
+    // The registry answers at once, but its fallback may wait on wsl.exe; overlap it
+    // with the file system lookups below.
+    let distros = thread::spawn({
+        let wsl_exe = wsl_exe.clone();
+        move || {
+            wsl_exe
+                .as_deref()
+                .map(wsl::distributions)
+                .unwrap_or_default()
+        }
+    });
+
+    let mut profiles: Vec<TerminalProfile> = PROFILES
+        .iter()
+        .map(|(id, name, accent)| profile((*id).into(), (*name).into(), id, accent, locate(id)))
+        .collect();
+
+    let ssh_exe = find_executable("ssh.exe");
+    let hosts = match (&ssh_exe, home_directory()) {
+        (Some(_), Some(home)) => ssh::user_hosts(&home),
+        _ => Vec::new(),
+    };
+    let custom = custom_path
+        .as_deref()
+        .map(custom::load_from)
+        .unwrap_or_default();
+
+    let distros = distros.join().unwrap_or_default();
+    if let Some(wsl_exe) = &wsl_exe {
+        for distro in distros {
+            let resolved = ResolvedProfile {
+                executable: wsl_exe.clone(),
+                args: wsl_args(&distro),
+                cwd: None,
+            };
+            profiles.push(profile(
+                format!("{WSL_PREFIX}{distro}"),
+                distro,
+                "wsl",
+                WSL_ACCENT,
+                Some(resolved),
+            ));
+        }
+    }
+    if let Some(ssh_exe) = &ssh_exe {
+        for host in hosts {
+            let resolved = ResolvedProfile {
+                executable: ssh_exe.clone(),
+                args: vec![host.clone()],
+                cwd: None,
+            };
+            profiles.push(profile(
+                format!("{SSH_PREFIX}{host}"),
+                host,
+                "ssh",
+                SSH_ACCENT,
+                Some(resolved),
+            ));
+        }
+    }
+    for entry in custom {
+        let resolved =
+            custom::resolve_executable(&entry.executable).map(|executable| ResolvedProfile {
+                executable,
+                args: entry.args.clone(),
+                cwd: entry.cwd.clone(),
+            });
+        profiles.push(profile(
+            entry.id,
+            entry.name,
+            "custom",
+            &entry.accent,
+            resolved,
+        ));
+    }
+    profiles
+}
+
+/// Runs on a blocking thread: detection reads the registry and the disk and may start
+/// `wsl.exe`, none of which should hold up the UI or the async runtime.
+#[tauri::command]
+pub async fn detect_profiles(
+    custom: State<'_, custom::CustomProfiles>,
+) -> Result<Vec<TerminalProfile>, String> {
+    let path = custom.path().map(Path::to_path_buf);
+    tauri::async_runtime::spawn_blocking(move || detect_all(path))
+        .await
+        .map_err(|error| format!("Profile detection failed: {error}"))
+}
+
+fn resolve_wsl(distro: &str, custom_cwd: bool) -> Result<ResolvedProfile, String> {
+    let unavailable = || format!("The WSL distribution '{distro}' is not installed.");
+    if !wsl::is_valid_name(distro) {
+        return Err(unavailable());
+    }
+    let executable = find_executable("wsl.exe").ok_or_else(unavailable)?;
+    let distro = wsl::distributions(&executable)
+        .into_iter()
+        .find(|name| name.eq_ignore_ascii_case(distro))
+        .ok_or_else(unavailable)?;
+    let mut args = wsl_args(&distro);
+    if custom_cwd {
+        args.truncate(2);
+    }
+    Ok(ResolvedProfile {
+        executable,
+        args,
+        cwd: None,
+    })
+}
+
+fn resolve_ssh(host: &str) -> Result<ResolvedProfile, String> {
+    let unknown = || format!("The SSH host '{host}' is not in your ssh config.");
+    if !ssh::is_valid_alias(host) {
+        return Err(unknown());
+    }
+    let executable = find_executable("ssh.exe")
+        .ok_or_else(|| "OpenSSH (ssh.exe) is not installed.".to_owned())?;
+    let home = home_directory().ok_or_else(unknown)?;
+    let host = ssh::user_hosts(&home)
+        .into_iter()
+        .find(|name| name.eq_ignore_ascii_case(host))
+        .ok_or_else(unknown)?;
+    Ok(ResolvedProfile {
+        executable,
+        args: vec![host],
+        cwd: None,
+    })
+}
+
+/// Resolves a profile id sent by the UI. WSL distributions and SSH hosts must still be
+/// installed or configured, and custom profiles must be saved: the UI never decides
+/// what runs. With a custom starting folder, WSL starts there (as /mnt/...) instead of
+/// the Linux home directory.
+pub fn resolve_profile(
+    profile_id: &str,
+    custom_cwd: bool,
+    custom: &custom::CustomProfiles,
+) -> Result<ResolvedProfile, String> {
+    if let Some(distro) = profile_id.strip_prefix(WSL_PREFIX) {
+        return resolve_wsl(distro, custom_cwd);
+    }
+    if let Some(host) = profile_id.strip_prefix(SSH_PREFIX) {
+        return resolve_ssh(host);
+    }
+    if custom::is_valid_id(profile_id) {
+        return custom.resolve(profile_id);
+    }
     if !PROFILES.iter().any(|(id, _, _)| *id == profile_id) {
         return Err(format!("Unknown profile '{profile_id}'."));
     }
@@ -269,10 +443,81 @@ mod tests {
 
     #[test]
     fn rejects_unknown_profiles() {
-        assert!(resolve_profile("cmd.exe", false)
+        let custom = custom::CustomProfiles::new(None);
+        assert!(resolve_profile("cmd.exe", false, &custom)
             .unwrap_err()
             .contains("Unknown"));
-        assert!(resolve_profile("anything.exe", true).is_err());
+        assert!(resolve_profile("anything.exe", true, &custom).is_err());
+        assert!(resolve_profile("custom:not-an-id", false, &custom).is_err());
+        assert!(resolve_profile(
+            "custom:0f8fad5b-d9cb-469f-a165-70867728950e",
+            false,
+            &custom
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn rejects_distributions_and_hosts_that_could_be_options() {
+        let custom = custom::CustomProfiles::new(None);
+        assert!(resolve_profile("wsl:--exec", false, &custom).is_err());
+        assert!(resolve_profile("ssh:-oProxyCommand=calc", false, &custom).is_err());
+    }
+
+    #[test]
+    fn wsl_distributions_start_in_the_linux_home() {
+        assert_eq!(wsl_args("Debian"), vec!["-d", "Debian", "--cd", "~"]);
+    }
+
+    #[test]
+    fn describes_the_command_line() {
+        let resolved = ResolvedProfile {
+            executable: PathBuf::from("C:/Program Files/Tool/tool.exe"),
+            args: vec!["-x".into(), "two words".into()],
+            cwd: None,
+        };
+        let entry = profile(
+            "custom:x".into(),
+            "Tool".into(),
+            "custom",
+            "#123456",
+            Some(resolved),
+        );
+        assert!(entry.available);
+        assert_eq!(
+            entry.command_line.as_deref(),
+            Some(r#""C:/Program Files/Tool/tool.exe" -x "two words""#)
+        );
+        let missing = profile("x".into(), "X".into(), "custom", "#123456", None);
+        assert!(!missing.available && missing.command_line.is_none());
+    }
+
+    #[test]
+    fn detection_lists_built_ins_first_and_custom_profiles_last() {
+        let directory = scratch("detect");
+        let path = directory.join("custom-profiles.json");
+        let id = "custom:0f8fad5b-d9cb-469f-a165-70867728950e";
+        fs::write(
+            &path,
+            format!(
+                r##"{{"version":1,"profiles":[{{"id":"{id}","name":"Gone","executable":"nebula-surely-missing-tool","accent":"#123456"}}]}}"##
+            ),
+        )
+        .unwrap();
+
+        let detected = detect_all(Some(path));
+        let ids: Vec<_> = detected
+            .iter()
+            .take(PROFILES.len())
+            .map(|profile| profile.id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            ["nebula", "pwsh", "powershell", "cmd", "gitbash", "wsl"]
+        );
+        let last = detected.last().unwrap();
+        assert_eq!((last.id.as_str(), last.kind.as_str()), (id, "custom"));
+        assert!(!last.available);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use crate::profiles;
+use crate::{custom::CustomProfiles, profiles};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -110,9 +110,12 @@ pub async fn start_session(
     cwd: Option<String>,
     on_event: Channel<PtyEvent>,
     state: State<'_, PtyState>,
+    custom_profiles: State<'_, CustomProfiles>,
 ) -> Result<String, String> {
     let custom_cwd = cwd.as_deref().is_some_and(|value| !value.trim().is_empty());
-    let profile = profiles::resolve_profile(&profile_id, custom_cwd)?;
+    let profile = profiles::resolve_profile(&profile_id, custom_cwd, &custom_profiles)?;
+    // A profile's own starting folder wins over the one from Settings.
+    let cwd = profile.cwd.clone().or(cwd);
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {

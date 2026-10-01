@@ -3118,10 +3118,13 @@ version = "1.0.0"
 dependencies = [
  "portable-pty",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "uuid",
  "window-vibrancy",
+ "winreg 0.55.0",
 ]
 
 [[package]]
