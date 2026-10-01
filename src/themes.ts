@@ -1,3 +1,5 @@
+import type { TabColor } from "./types";
+
 export interface TerminalTheme {
   id: string;
   name: string;
@@ -130,3 +132,23 @@ export function xtermTheme(theme: TerminalTheme, accent: string) {
 
 /** Accent colors offered as one-click swatches in Settings. */
 export const accentSwatches = ["#e8a33d", "#e5734a", "#e05d6f", "#c879d8", "#8b8cf0", "#4c8df6", "#2fa8c9", "#3fb27f", "#9aa3ab"];
+
+/** Tab colors. Mid-tone on purpose: they have to read on dark and light themes alike. */
+export const tabColors: Array<{ id: TabColor; name: string; value: string }> = [
+  { id: "red", name: "Red", value: "#e5534b" },
+  { id: "orange", name: "Orange", value: "#e5793a" },
+  { id: "yellow", name: "Yellow", value: "#d4a72c" },
+  { id: "green", name: "Green", value: "#3fa66b" },
+  { id: "teal", name: "Teal", value: "#2a9fa6" },
+  { id: "blue", name: "Blue", value: "#4c8df6" },
+  { id: "purple", name: "Purple", value: "#8f74e6" },
+  { id: "pink", name: "Pink", value: "#d466a5" },
+];
+
+export function tabColorValue(id: TabColor | undefined): string | undefined {
+  return tabColors.find((color) => color.id === id)?.value;
+}
+
+export function isTabColor(value: unknown): value is TabColor {
+  return tabColors.some((color) => color.id === value);
+}

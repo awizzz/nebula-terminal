@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- mixed split layouts: split any pane right or down, in any combination, and drag every divider to resize
+- up to eight panes per tab (was four)
+- rename a tab by double-clicking it, from its right-click menu or from the command palette; an empty name brings back the shell's title
+- tab colors: eight colors that work on dark and light themes, shown as a thin bar on the tab
+
+### Changed
+
+- `Alt+Arrow` moves to the nearest pane in that direction, across nested splits
+- a pane too small to split shows a notice instead of producing an unusable pane
+- saved sessions use a new format; layouts saved by 1.0 are migrated on first launch
+
 ## 1.0.0
 
 Nebula Terminal is now the whole project. The old standalone Nebula Shell (last release `v0.5.0`) is replaced by **Nebula**, a new interpreter that ships inside the terminal.

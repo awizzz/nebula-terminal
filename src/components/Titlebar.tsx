@@ -1,8 +1,9 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronDown, Plus, Search, Settings2, X } from "lucide-react";
 import ProfileIcon from "./ProfileIcon";
+import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
 
 interface TitlebarProps {
@@ -10,6 +11,8 @@ interface TitlebarProps {
   activeTabId: string;
   activity: ReadonlySet<string>;
   closing: ReadonlySet<string>;
+  /** The tab whose name is being edited in place. */
+  renamingId: string | null;
   newTabShortcut: string;
   paletteShortcut: string;
   settingsShortcut: string;
@@ -19,8 +22,59 @@ interface TitlebarProps {
   onNewTab: () => void;
   onOpenProfileMenu: (x: number, y: number) => void;
   onTabContextMenu: (tabId: string, x: number, y: number) => void;
+  onRenameStart: (tabId: string) => void;
+  /** An empty name gives the tab back its automatic title. */
+  onRename: (tabId: string, name: string) => void;
+  onRenameEnd: () => void;
   onOpenPalette: () => void;
   onOpenSettings: () => void;
+}
+
+function tabTitle(tab: TerminalTab): string {
+  return tab.customTitle ?? tab.title;
+}
+
+/** Inline editor for a tab name: Enter or clicking away keeps it, Escape cancels. */
+function TabRename({ tab, onCommit, onCancel }: { tab: TerminalTab; onCommit: (name: string) => void; onCancel: () => void }) {
+  const initial = tabTitle(tab);
+  const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const doneRef = useRef(false);
+
+  useLayoutEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const finish = (commit: boolean) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    // Confirming the unchanged name must not freeze the shell's title.
+    if (commit && value !== initial) onCommit(value);
+    else onCancel();
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      className="tab__rename"
+      value={value}
+      maxLength={120}
+      spellCheck={false}
+      placeholder={tab.title}
+      aria-label="Tab name"
+      onChange={(event) => setValue(event.target.value)}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") { event.preventDefault(); finish(true); }
+        else if (event.key === "Escape") { event.preventDefault(); finish(false); }
+      }}
+      onBlur={() => finish(true)}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onContextMenu={(event) => event.stopPropagation()}
+    />
+  );
 }
 
 function WindowIcon({ type }: { type: "min" | "max" | "close" }) {
@@ -34,6 +88,7 @@ export default function Titlebar({
   activeTabId,
   activity,
   closing,
+  renamingId,
   newTabShortcut,
   paletteShortcut,
   settingsShortcut,
@@ -43,6 +98,9 @@ export default function Titlebar({
   onNewTab,
   onOpenProfileMenu,
   onTabContextMenu,
+  onRenameStart,
+  onRename,
+  onRenameEnd,
   onOpenPalette,
   onOpenSettings,
 }: TitlebarProps) {
@@ -53,7 +111,7 @@ export default function Titlebar({
 
   // Pointer-driven reordering: WebView2 keeps HTML5 drag-and-drop for native file drops.
   const startDrag = (event: ReactPointerEvent, tabId: string) => {
-    if (event.button !== 0 || (event.target as HTMLElement).closest(".tab__close")) return;
+    if (event.button !== 0 || (event.target as HTMLElement).closest(".tab__close, .tab__rename")) return;
     const startX = event.clientX;
     let dragging = false;
     const move = (moveEvent: PointerEvent) => {
@@ -99,6 +157,19 @@ export default function Titlebar({
           const pane = tab.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab.panes[0];
           const active = tab.id === activeTabId;
           const nextActive = tabs[index + 1]?.id === activeTabId;
+          const title = tabTitle(tab);
+          const color = tabColorValue(tab.color);
+          const renaming = tab.id === renamingId && !closing.has(tab.id);
+          const details = (
+            <>
+              {pane && <ProfileIcon kind={pane.profile.kind} size={15} />}
+              {renaming
+                ? <TabRename tab={tab} onCommit={(name) => { onRename(tab.id, name); onRenameEnd(); }} onCancel={onRenameEnd} />
+                : <span className="tab__title">{title}</span>}
+              {tab.panes.length > 1 && <span className="tab__panes" aria-label={`${tab.panes.length} panes`}>{tab.panes.length}</span>}
+              {activity.has(tab.id) && !active && <span className="tab__activity" aria-label="New output" />}
+            </>
+          );
           return (
             <div
               key={tab.id}
@@ -109,7 +180,9 @@ export default function Titlebar({
                 nextActive && "is-before-active",
                 closing.has(tab.id) && "is-closing",
                 draggingId === tab.id && "is-dragging",
+                color && "has-color",
               ].filter(Boolean).join(" ")}
+              style={color ? { "--tab-color": color } as CSSProperties : undefined}
               onPointerDown={(event) => startDrag(event, tab.id)}
               onAuxClick={(event) => {
                 if (event.button === 1) {
@@ -122,20 +195,23 @@ export default function Titlebar({
                 onTabContextMenu(tab.id, event.clientX, event.clientY);
               }}
             >
-              <button
-                className="tab__button"
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={tab.title}
-                onClick={() => !suppressClickRef.current && onSelectTab(tab.id)}
-              >
-                {pane && <ProfileIcon kind={pane.profile.kind} size={15} />}
-                <span className="tab__title">{tab.title}</span>
-                {tab.panes.length > 1 && <span className="tab__panes" aria-label={`${tab.panes.length} panes`}>{tab.panes.length}</span>}
-                {activity.has(tab.id) && !active && <span className="tab__activity" aria-label="New output" />}
-              </button>
-              <button className="tab__close" type="button" tabIndex={-1} onClick={() => onCloseTab(tab.id)} aria-label={`Close ${tab.title}`}>
+              {color && <span className="tab__color" aria-hidden="true" />}
+              {renaming ? (
+                <div className="tab__button is-renaming">{details}</div>
+              ) : (
+                <button
+                  className="tab__button"
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  title={title}
+                  onClick={() => !suppressClickRef.current && onSelectTab(tab.id)}
+                  onDoubleClick={() => onRenameStart(tab.id)}
+                >
+                  {details}
+                </button>
+              )}
+              <button className="tab__close" type="button" tabIndex={-1} onClick={() => onCloseTab(tab.id)} aria-label={`Close ${title}`}>
                 <X size={13} strokeWidth={1.8} />
               </button>
             </div>

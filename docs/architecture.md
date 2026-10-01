@@ -64,7 +64,8 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `components/Menu.tsx` | Context menus and dropdowns. |
 | `themes.ts` | Terminal color schemes. The UI chrome is derived from them in CSS. |
 | `preferences.ts` | Defaults, validation and migration of saved settings; theme import and export. |
-| `session.ts` | Saves and restores the tab and split layout. |
+| `layout.ts` | The split layout of a tab as a tree: split, close, resize, find the pane next to another one, and validate a saved tree. |
+| `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
 | `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…). |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
@@ -72,6 +73,12 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 The icon glyphs that `ls`, `tree` and the prompt print come from `assets/fonts/nebula-symbols.woff2`, a subset of the Nerd Fonts symbols built by `scripts/subset-icons.py`. It's added as a fallback after the user's terminal font and loaded before the first terminal renders.
 
 Terminal output never goes through React state. It is written straight into xterm, so a busy shell doesn't re-render the UI.
+
+### Split layouts
+
+Each tab keeps its panes twice: as a flat list of pane models, in the order they were opened, and as a layout tree (`layout.ts`) whose leaves are pane ids and whose splits hold a direction and the share of each child. `App.tsx` turns the tree into rectangles and renders every pane of a tab as a sibling in that flat list, absolutely positioned, with the dividers drawn on top. Because a pane's place in the React tree never depends on the shape of the layout, splitting, closing or resizing never remounts a terminal, and its shell keeps running.
+
+Splitting a pane in the direction of its parent adds a sibling instead of nesting, and closing a pane collapses any split left with one child, so the tree stays as flat as the layout allows.
 
 ### Styling
 

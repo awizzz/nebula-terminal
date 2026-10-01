@@ -1,7 +1,7 @@
-import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Palette, PanelTopClose, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar from "./components/Titlebar";
 import TerminalPane from "./components/TerminalPane";
 import SearchBar from "./components/SearchBar";
@@ -10,18 +10,23 @@ import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import { clearSession, loadSession, saveSession } from "./session";
 import { pickProfile, previewProfiles } from "./profiles";
-import { resolveTheme, themes } from "./themes";
+import { resolveTheme, tabColors, themes } from "./themes";
+import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, SplitDirection, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
 
-const MAX_PANES = 4;
 const TAB_CLOSE_MS = 150;
+/** Smallest pane a split or a divider drag may produce, in pixels. */
+const MIN_PANE_WIDTH = 120;
+const MIN_PANE_HEIGHT = 72;
+
+const arrowDirections: Record<string, FocusDirection> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
 
 type OpenMenu =
   | { kind: "profiles"; x: number; y: number }
@@ -36,7 +41,30 @@ function makePane(profile: TerminalProfile): TerminalPaneModel {
 
 function makeTab(profile: TerminalProfile): TerminalTab {
   const pane = makePane(profile);
-  return { id: crypto.randomUUID(), title: profile.name, panes: [pane], activePaneId: pane.id, splitDirection: "vertical", paneSizes: [1] };
+  return { id: crypto.randomUUID(), title: profile.name, panes: [pane], layout: paneLeaf(pane.id), activePaneId: pane.id };
+}
+
+function paneElement(paneId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`.pane[data-pane-id="${paneId}"]`);
+}
+
+/** One pixel before a pane that doesn't start at the tab's edge belongs to the divider there. */
+const edge = (start: number) => (start > 1e-6 ? 1 : 0);
+
+function paneStyle(rect: Rect | undefined): CSSProperties {
+  if (!rect) return { display: "none" };
+  return {
+    left: `calc(${rect.x * 100}% + ${edge(rect.x)}px)`,
+    top: `calc(${rect.y * 100}% + ${edge(rect.y)}px)`,
+    width: `calc(${rect.width * 100}% - ${edge(rect.x)}px)`,
+    height: `calc(${rect.height * 100}% - ${edge(rect.y)}px)`,
+  };
+}
+
+function dividerStyle({ rect, direction }: Divider): CSSProperties {
+  return direction === "vertical"
+    ? { left: `${rect.x * 100}%`, top: `calc(${rect.y * 100}% + ${edge(rect.y)}px)`, width: 1, height: `calc(${rect.height * 100}% - ${edge(rect.y)}px)` }
+    : { top: `${rect.y * 100}%`, left: `calc(${rect.x * 100}% + ${edge(rect.x)}px)`, height: 1, width: `calc(${rect.width * 100}% - ${edge(rect.x)}px)` };
 }
 
 function remapTabs(tabs: TerminalTab[], profiles: TerminalProfile[]): TerminalTab[] {
@@ -45,7 +73,6 @@ function remapTabs(tabs: TerminalTab[], profiles: TerminalProfile[]): TerminalTa
   if (!fallback) return tabs;
   return tabs.map((tab) => ({
     ...tab,
-    paneSizes: tab.paneSizes.length === tab.panes.length ? tab.paneSizes : tab.panes.map(() => 1),
     panes: tab.panes.map((pane) => ({ ...pane, profile: available.get(pane.profile.id) ?? fallback })),
   }));
 }
@@ -88,6 +115,8 @@ export default function App() {
   const [activity, setActivity] = useState<ReadonlySet<string>>(() => new Set());
   const [closing, setClosing] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState<string | null>(null);
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const [resizingDivider, setResizingDivider] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const hydratedRef = useRef(false);
   const closingWindowRef = useRef(false);
@@ -103,6 +132,10 @@ export default function App() {
   const activePane = activeTab?.panes.find((pane) => pane.id === activeTab.activePaneId) ?? activeTab?.panes[0];
   const theme = resolveTheme(preferences.themeId);
   const overlayOpen = settingsOpen || paletteOpen || confirmation !== null;
+  // A tab closed mid-rename takes its editor with it, so only a live tab counts.
+  const renaming = renamingTabId !== null && tabs.some((tab) => tab.id === renamingTabId && !closing.has(tab.id));
+  const renamingRef = useRef(renaming);
+  renamingRef.current = renaming;
 
   const hydrateWorkspace = useCallback((detected: TerminalProfile[]) => {
     setProfiles(detected);
@@ -301,15 +334,19 @@ export default function App() {
       setNotice(`A tab holds up to ${MAX_PANES} panes`);
       return;
     }
+    const box = paneElement(activeTab.activePaneId)?.getBoundingClientRect();
+    const room = direction === "vertical" ? box?.width : box?.height;
+    const minimum = direction === "vertical" ? MIN_PANE_WIDTH : MIN_PANE_HEIGHT;
+    if (room && room < minimum * 2 + 1) {
+      setNotice("Not enough room to split this pane");
+      return;
+    }
     const profile = resolveProfile(profileId ?? activePane?.profile.id);
     if (!profile) return;
     const pane = makePane(profile);
     setTabs((current) => current.map((tab) => {
       if (tab.id !== activeTab.id) return tab;
-      const sizes = tab.paneSizes.length === tab.panes.length ? tab.paneSizes : tab.panes.map(() => 1);
-      // Panes in a tab share one direction; the first split decides it.
-      const splitDirection = tab.panes.length > 1 ? tab.splitDirection : direction;
-      return { ...tab, panes: [...tab.panes, pane], paneSizes: [...sizes, 1], activePaneId: pane.id, splitDirection };
+      return { ...tab, panes: [...tab.panes, pane], layout: splitPane(tab.layout, tab.activePaneId, pane.id, direction), activePaneId: pane.id };
     }));
   }, [activePane?.profile.id, activeTab, resolveProfile]);
 
@@ -321,13 +358,12 @@ export default function App() {
       return;
     }
     setTabs((current) => current.map((tab) => {
-      if (tab.id !== tabId) return tab;
-      const index = tab.panes.findIndex((pane) => pane.id === paneId);
-      if (index < 0) return tab;
+      if (tab.id !== tabId || !tab.panes.some((pane) => pane.id === paneId)) return tab;
+      const { layout, focusId } = removePane(tab.layout, paneId);
+      if (!layout) return tab;
       const panes = tab.panes.filter((pane) => pane.id !== paneId);
-      const sizes = (tab.paneSizes.length === tab.panes.length ? tab.paneSizes : tab.panes.map(() => 1)).filter((_, paneIndex) => paneIndex !== index);
-      const activePaneId = tab.activePaneId === paneId ? (panes[Math.min(index, panes.length - 1)] ?? panes[0]!).id : tab.activePaneId;
-      return { ...tab, panes, paneSizes: sizes, activePaneId };
+      const activePaneId = tab.activePaneId === paneId ? focusId ?? paneIds(layout)[0]! : tab.activePaneId;
+      return { ...tab, panes, layout, activePaneId };
     }));
   }, [closeTab]);
 
@@ -336,51 +372,71 @@ export default function App() {
   }, [activeTab, closePane]);
 
   const focusNeighborPane = useCallback((key: string) => {
-    if (!activeTab || activeTab.panes.length < 2) return false;
-    const forward = activeTab.splitDirection === "vertical" ? "ArrowRight" : "ArrowDown";
-    const backward = activeTab.splitDirection === "vertical" ? "ArrowLeft" : "ArrowUp";
-    if (key !== forward && key !== backward) return false;
-    const index = activeTab.panes.findIndex((pane) => pane.id === activeTab.activePaneId);
-    const next = activeTab.panes[index + (key === forward ? 1 : -1)];
-    if (next) setActivePane(activeTab.id, next.id);
+    const direction = arrowDirections[key];
+    if (!activeTab || activeTab.panes.length < 2 || !direction) return false;
+    const rects = new Map<string, Rect>();
+    for (const pane of activeTab.panes) {
+      const box = paneElement(pane.id)?.getBoundingClientRect();
+      if (box) rects.set(pane.id, { x: box.left, y: box.top, width: box.width, height: box.height });
+    }
+    const next = findNeighbor(rects, activeTab.activePaneId, direction);
+    if (next) setActivePane(activeTab.id, next);
     return true;
   }, [activeTab, setActivePane]);
 
   const duplicateTab = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
     const pane = tab?.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab?.panes[0];
-    if (pane) openNewTab(pane.profile.id);
-  }, [openNewTab]);
+    if (!tab || !pane) return;
+    const profile = resolveProfile(pane.profile.id);
+    if (!profile) return;
+    const next = { ...makeTab(profile), color: tab.color };
+    setTabs((current) => [...current, next]);
+    setActiveTabId(next.id);
+  }, [resolveProfile]);
 
-  const beginPaneResize = (event: ReactPointerEvent<HTMLDivElement>, tabId: string, index: number, direction: SplitDirection) => {
+  const renameTab = useCallback((tabId: string, name: string) => {
+    const customTitle = name.trim().slice(0, 120) || undefined;
+    setTabs((current) => current.map((tab) => tab.id === tabId ? { ...tab, customTitle } : tab));
+  }, []);
+
+  const setTabColor = useCallback((tabId: string, color: TabColor | undefined) => {
+    setTabs((current) => current.map((tab) => tab.id === tabId ? { ...tab, color } : tab));
+  }, []);
+
+  const beginPaneResize = (event: ReactPointerEvent<HTMLDivElement>, tabId: string, divider: Divider) => {
+    if (event.button !== 0) return;
     event.preventDefault();
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    const split = tab && nodeAt(tab.layout, divider.path);
     const container = event.currentTarget.parentElement;
-    if (!tab || !container) return;
-    const sizes = tab.paneSizes.length === tab.panes.length ? [...tab.paneSizes] : tab.panes.map(() => 1);
-    const total = sizes.reduce((sum, size) => sum + size, 0);
-    const pair = sizes[index]! + sizes[index + 1]!;
-    const start = direction === "vertical" ? event.clientX : event.clientY;
-    const pixels = direction === "vertical" ? container.clientWidth : container.clientHeight;
-    const minimum = Math.max(0.08 * total, 0.12);
+    if (!container || split?.type !== "split") return;
+    const { direction, index, path } = divider;
+    const across = direction === "vertical";
+    const pixels = Math.max(1, across ? divider.splitRect.width * container.clientWidth : divider.splitRect.height * container.clientHeight);
+    const paneMinimum = across ? MIN_PANE_WIDTH : MIN_PANE_HEIGHT;
+    const minFirst = minimumExtent(split.children[index]!, direction, paneMinimum) / pixels;
+    const minSecond = minimumExtent(split.children[index + 1]!, direction, paneMinimum) / pixels;
+    const start = across ? event.clientX : event.clientY;
+    const key = `${path.join(".")}:${index}`;
+    setResizingDivider(key);
     document.documentElement.classList.add("is-resizing", `is-resizing--${direction}`);
 
     const move = (moveEvent: PointerEvent) => {
-      const current = direction === "vertical" ? moveEvent.clientX : moveEvent.clientY;
-      const delta = ((current - start) / Math.max(1, pixels)) * total;
-      const first = Math.min(pair - minimum, Math.max(minimum, sizes[index]! + delta));
-      const nextSizes = [...sizes];
-      nextSizes[index] = first;
-      nextSizes[index + 1] = pair - first;
-      setTabs((currentTabs) => currentTabs.map((candidate) => candidate.id === tabId ? { ...candidate, paneSizes: nextSizes } : candidate));
+      const delta = ((across ? moveEvent.clientX : moveEvent.clientY) - start) / pixels;
+      const sizes = resizePair(split.sizes, index, delta, minFirst, minSecond);
+      setTabs((currentTabs) => currentTabs.map((candidate) => candidate.id === tabId ? { ...candidate, layout: setSplitSizes(candidate.layout, path, sizes) } : candidate));
     };
     const finish = () => {
       document.documentElement.classList.remove("is-resizing", `is-resizing--${direction}`);
+      setResizingDivider(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
     };
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   };
 
   const adjustFontSize = useCallback((delta: number) => {
@@ -405,6 +461,7 @@ export default function App() {
       ...profiles.filter((profile) => profile.available).map((profile): PaletteCommand => ({
         id: `new-${profile.id}`, group: "Tabs", label: `New ${profile.name} tab`, icon: <ProfileIcon kind={profile.kind} size={15} />, keywords: profile.kind, run: () => openNewTab(profile.id),
       })),
+      { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
       { id: "next-tab", group: "Tabs", label: "Next tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.nextTab, run: () => cycleTab(1) },
       { id: "previous-tab", group: "Tabs", label: "Previous tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.previousTab, run: () => cycleTab(-1) },
@@ -413,6 +470,11 @@ export default function App() {
       { id: "split-right", group: "Panes", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, run: () => splitActive("vertical") },
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
+      ...[undefined, ...tabColors].map((color): PaletteCommand => ({
+        id: `tab-color-${color?.id ?? "none"}`, group: "Tab color", label: `Tab color: ${color?.name ?? "None"}`, keywords: "colour",
+        icon: <span className={`palette__swatch ${color ? "" : "palette__swatch--none"}`} style={color ? { background: color.value } : undefined} />,
+        run: () => activeTab && setTabColor(activeTab.id, color?.id),
+      })),
       { id: "find", group: "Terminal", label: "Find", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "copy", group: "Terminal", label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", run: () => getPane(activePane?.id)?.copy() },
       { id: "paste", group: "Terminal", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => getPane(activePane?.id)?.paste() },
@@ -431,7 +493,7 @@ export default function App() {
       { id: "appearance", group: "App", label: "Appearance settings", icon: <Palette size={15} />, keywords: "theme font", run: () => openSettings("appearance") },
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, duplicateTab, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, splitActive]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, duplicateTab, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -502,9 +564,23 @@ export default function App() {
     }
     if (open.kind === "tab") {
       const index = tabs.findIndex((tab) => tab.id === open.tabId);
+      const color = tabs[index]?.color;
       return [
+        { id: "rename", label: "Rename tab", icon: <Pencil size={15} />, run: () => setRenamingTabId(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
+        "separator",
+        { heading: "Color" },
+        {
+          label: "Tab color",
+          swatches: [undefined, ...tabColors].map((option) => ({
+            id: `color-${option?.id ?? "none"}`,
+            label: option?.name ?? "No color",
+            color: option?.value,
+            checked: color === option?.id,
+            run: () => setTabColor(open.tabId, option?.id),
+          })),
+        },
         "separator",
         { id: "close-right", label: "Close tabs to the right", disabled: index === tabs.length - 1, run: () => removeTabs(tabs.slice(index + 1).map((tab) => tab.id)) },
         { id: "close-others", label: "Close other tabs", disabled: tabs.length < 2, run: () => removeTabs(tabs.filter((tab) => tab.id !== open.tabId).map((tab) => tab.id)) },
@@ -528,7 +604,8 @@ export default function App() {
   };
 
   const requestSearch = (backwards: boolean) => setSearchSignal((current) => ({ nonce: current.nonce + 1, backwards }));
-  const closeOverlayFocus = () => requestAnimationFrame(() => getPane(activePane?.id)?.focus());
+  // A rename started from a menu or the palette keeps the focus in its field.
+  const closeOverlayFocus = () => requestAnimationFrame(() => !renamingRef.current && getPane(activePane?.id)?.focus());
   const showImage = preferences.backgroundMode === "image" && preferences.backgroundImage;
   const noShells = ready && nativeHost && !profiles.some((profile) => profile.available);
 
@@ -540,6 +617,7 @@ export default function App() {
         activeTabId={activeTabId}
         activity={activity}
         closing={closing}
+        renamingId={renaming ? renamingTabId : null}
         newTabShortcut={keys.newTab}
         paletteShortcut={keys.commandPalette}
         settingsShortcut={keys.settings}
@@ -549,6 +627,9 @@ export default function App() {
         onNewTab={() => openNewTab()}
         onOpenProfileMenu={(x, y) => setMenu({ kind: "profiles", x, y })}
         onTabContextMenu={(tabId, x, y) => setMenu({ kind: "tab", tabId, x, y })}
+        onRenameStart={setRenamingTabId}
+        onRename={renameTab}
+        onRenameEnd={() => setRenamingTabId(null)}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => openSettings()}
       />
@@ -556,40 +637,47 @@ export default function App() {
       <div className="workspace">
         {tabs.map((tab) => {
           const visible = tab.id === activeTabId;
+          const { panes: rects, dividers } = computeLayout(tab.layout);
           return (
             <div key={tab.id} className={`workspace__tab ${visible ? "is-visible" : ""}`} aria-hidden={!visible}>
-              <div className={`panes panes--${tab.splitDirection} ${tab.panes.length > 1 ? "is-split" : ""}`}>
-                {tab.panes.map((pane, index) => {
-                  const focused = visible && pane.id === tab.activePaneId && !overlayOpen && !searchOpen && !menu;
+              {/* Panes stay in one flat, keyed list whatever the tree looks like, so React never
+                  remounts a terminal (and restarts its shell) when the layout changes shape. */}
+              <div className={`panes ${tab.panes.length > 1 ? "is-split" : ""}`}>
+                {tab.panes.map((pane) => {
+                  const focused = visible && pane.id === tab.activePaneId && !overlayOpen && !searchOpen && !menu && !renaming;
                   return (
-                    <Fragment key={pane.id}>
-                      <div className={`pane ${pane.id === tab.activePaneId ? "is-active" : ""}`} style={{ flexGrow: tab.paneSizes[index] ?? 1, flexBasis: 0 }}>
-                        <TerminalPane
-                          paneId={pane.id}
-                          profile={pane.profile}
-                          preferences={preferences}
-                          focused={focused}
-                          visible={visible}
-                          searchRequest={visible && pane.id === tab.activePaneId && searchOpen ? { query: searchQuery, nonce: searchSignal.nonce, backwards: searchSignal.backwards } : undefined}
-                          onFocus={() => setActivePane(tab.id, pane.id)}
-                          onFontSizeDelta={adjustFontSize}
-                          onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
-                          onActivity={() => markActivity(tab.id)}
-                          onSearchResult={setSearchResult}
-                          onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
-                          onClose={() => closePane(tab.id, pane.id)}
-                        />
-                      </div>
-                      {index < tab.panes.length - 1 && (
-                        <div
-                          className="pane-divider"
-                          role="separator"
-                          aria-orientation={tab.splitDirection === "vertical" ? "vertical" : "horizontal"}
-                          aria-label="Resize panes"
-                          onPointerDown={(event) => beginPaneResize(event, tab.id, index, tab.splitDirection)}
-                        />
-                      )}
-                    </Fragment>
+                    <div key={pane.id} className={`pane ${pane.id === tab.activePaneId ? "is-active" : ""}`} data-pane-id={pane.id} style={paneStyle(rects.get(pane.id))}>
+                      <TerminalPane
+                        paneId={pane.id}
+                        profile={pane.profile}
+                        preferences={preferences}
+                        focused={focused}
+                        visible={visible}
+                        searchRequest={visible && pane.id === tab.activePaneId && searchOpen ? { query: searchQuery, nonce: searchSignal.nonce, backwards: searchSignal.backwards } : undefined}
+                        onFocus={() => setActivePane(tab.id, pane.id)}
+                        onFontSizeDelta={adjustFontSize}
+                        onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
+                        onActivity={() => markActivity(tab.id)}
+                        onSearchResult={setSearchResult}
+                        onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
+                        onClose={() => closePane(tab.id, pane.id)}
+                      />
+                    </div>
+                  );
+                })}
+                {/* Outer dividers come last so they win where hit areas meet at a T junction. */}
+                {dividers.sort((a, b) => b.path.length - a.path.length).map((divider) => {
+                  const key = `${divider.path.join(".")}:${divider.index}`;
+                  return (
+                    <div
+                      key={key}
+                      className={`pane-divider pane-divider--${divider.direction} ${visible && resizingDivider === key ? "is-dragging" : ""}`}
+                      style={dividerStyle(divider)}
+                      role="separator"
+                      aria-orientation={divider.direction === "vertical" ? "vertical" : "horizontal"}
+                      aria-label="Resize panes"
+                      onPointerDown={(event) => beginPaneResize(event, tab.id, divider)}
+                    />
                   );
                 })}
               </div>
@@ -615,7 +703,7 @@ export default function App() {
         />
       </div>
 
-      {menu && <Menu {...menu} label={menu.kind === "profiles" ? "Open a shell" : menu.kind === "tab" ? "Tab" : "Terminal"} width={menu.kind === "profiles" ? 280 : 250} entries={menuEntries(menu)} onClose={() => { setMenu(null); closeOverlayFocus(); }} />}
+      {menu && <Menu {...menu} label={menu.kind === "profiles" ? "Open a shell" : menu.kind === "tab" ? "Tab" : "Terminal"} width={menu.kind === "terminal" ? 250 : menu.kind === "tab" ? 260 : 280} entries={menuEntries(menu)} onClose={() => { setMenu(null); closeOverlayFocus(); }} />}
 
       <Suspense fallback={null}>
         <SettingsPanel

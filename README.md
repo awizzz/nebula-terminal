@@ -53,13 +53,13 @@ Not supported yet: `if`/`for`/`while` scripting, functions and background jobs (
 ## What you get
 
 - **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL. Nebula is the default, and you can pick another in Settings.
-- **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Split a tab into up to four panes and resize them by dragging.
+- **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **Nine themes**, including light ones. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file.** Fonts, cursor, padding, scrollback, shells, starting folder and shortcuts. Every change applies immediately.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
-- **Picks up where you left off.** Your tabs and splits are restored on launch. The shells themselves start fresh.
+- **Picks up where you left off.** Your tabs, their names and colors, and your splits are restored on launch. The shells themselves start fresh.
 
 ## Keyboard shortcuts
 
@@ -70,7 +70,7 @@ Not supported yet: `if`/`for`/`while` scripting, functions and background jobs (
 | Next / previous tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Go to tab 1–9 | `Ctrl+Alt+1` … `Ctrl+Alt+9` |
 | Split right / down | `Ctrl+Shift+D` / `Ctrl+Shift+E` |
-| Move between panes | `Alt+Arrow` |
+| Move to the pane left, right, above or below | `Alt+Arrow` |
 | Close pane | `Ctrl+Shift+Q` |
 | Find | `Ctrl+Shift+F` |
 | Command palette | `Ctrl+Shift+P` |

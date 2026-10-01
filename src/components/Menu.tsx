@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Keys from "./Keys";
 
 export interface MenuItem {
@@ -9,10 +9,19 @@ export interface MenuItem {
   detail?: string;
   disabled?: boolean;
   danger?: boolean;
+  /** Swatches only: the color shown, none for a "no color" swatch. */
+  color?: string;
+  checked?: boolean;
   run: () => void;
 }
 
-export type MenuEntry = MenuItem | "separator" | { heading: string };
+/** A row of color swatches; each one is an item for keyboard navigation. */
+export interface MenuSwatchRow {
+  label: string;
+  swatches: MenuItem[];
+}
+
+export type MenuEntry = MenuItem | "separator" | { heading: string } | MenuSwatchRow;
 
 interface MenuProps {
   /** Viewport point the menu opens from. */
@@ -25,12 +34,14 @@ interface MenuProps {
 }
 
 const isItem = (entry: MenuEntry): entry is MenuItem => typeof entry === "object" && "run" in entry;
+const isSwatchRow = (entry: MenuEntry): entry is MenuSwatchRow => typeof entry === "object" && "swatches" in entry;
 
 /** A floating menu with keyboard navigation that stays inside the window. */
 export default function Menu({ x, y, entries, label, width = 260, onClose }: MenuProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState({ left: x, top: y, originX: "left", originY: "top" });
-  const items = entries.filter(isItem);
+  const items = entries.flatMap((entry) => isItem(entry) ? [entry] : isSwatchRow(entry) ? entry.swatches : []);
+  const swatches = entries.flatMap((entry) => isSwatchRow(entry) ? entry.swatches : []);
   const [active, setActive] = useState(() => items.findIndex((item) => !item.disabled));
 
   useLayoutEffect(() => {
@@ -90,6 +101,7 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
       onKeyDown={(event) => {
         if (event.key === "ArrowDown") { event.preventDefault(); move(1); }
         else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
+        else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && swatches.includes(items[active]!)) { event.preventDefault(); move(event.key === "ArrowLeft" ? -1 : 1); }
         else if (event.key === "Home") { event.preventDefault(); setActive(items.findIndex((item) => !item.disabled)); }
         else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(items[active]); }
         else if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); onClose(); }
@@ -98,6 +110,29 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
     >
       {entries.map((entry, index) => {
         if (entry === "separator") return <div key={`separator-${index}`} className="menu__separator" role="separator" />;
+        if (isSwatchRow(entry)) {
+          return (
+            <div key={`swatches-${entry.label}`} className="menu__swatches" role="group" aria-label={entry.label}>
+              {entry.swatches.map((swatch) => {
+                const itemIndex = items.indexOf(swatch);
+                return (
+                  <button
+                    key={swatch.id}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={swatch.checked ?? false}
+                    aria-label={swatch.label}
+                    title={swatch.label}
+                    className={`menu__swatch ${swatch.color ? "" : "menu__swatch--none"} ${itemIndex === active ? "is-active" : ""}`}
+                    style={swatch.color ? { "--swatch": swatch.color } as CSSProperties : undefined}
+                    onMouseEnter={() => setActive(itemIndex)}
+                    onClick={() => run(swatch)}
+                  />
+                );
+              })}
+            </div>
+          );
+        }
         if (!isItem(entry)) return <div key={`heading-${entry.heading}`} className="menu__heading">{entry.heading}</div>;
         const itemIndex = items.indexOf(entry);
         return (
