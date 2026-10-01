@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = ["src-tauri", "crates/nebula-sh"]
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "s"
+strip = true

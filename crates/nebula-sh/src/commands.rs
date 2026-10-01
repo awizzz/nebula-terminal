@@ -1,0 +1,113 @@
+//! Catalog of the commands Nebula provides itself.
+
+use crate::coreutils;
+
+/// Run inside the shell process because they change or read its state.
+pub const BUILTINS: &[&str] = &[
+    "alias", "cd", "clear", "dirs", "exit", "export", "help", "history", "popd", "pushd", "source",
+    ".", "type", "unalias", "unset", "which",
+];
+
+/// Commands implemented by Nebula on top of coreutils.
+pub const EXTRAS: &[&str] = &[
+    "find", "grep", "kill", "killall", "less", "ls", "open", "pkill", "ps", "tree", "xargs",
+    "xdg-open",
+];
+
+pub fn is_builtin(name: &str) -> bool {
+    BUILTINS.contains(&name)
+}
+
+/// Commands run by re-executing `nebula-sh <name>`.
+pub fn is_util(name: &str) -> bool {
+    EXTRAS.contains(&name) || coreutils::NAMES.contains(&name)
+}
+
+pub fn all_names() -> impl Iterator<Item = &'static str> {
+    BUILTINS
+        .iter()
+        .chain(EXTRAS)
+        .chain(coreutils::NAMES)
+        .copied()
+}
+
+pub fn describe(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "alias" => "define or list aliases",
+        "cd" => "change directory",
+        "clear" => "clear the screen",
+        "dirs" | "pushd" | "popd" => "directory stack",
+        "exit" => "close this shell",
+        "export" => "set environment variables",
+        "help" => "list Nebula commands",
+        "history" => "show command history",
+        "source" | "." => "run commands from a file",
+        "type" | "which" => "show what a command is",
+        "unalias" => "remove an alias",
+        "unset" => "remove a variable",
+        "cat" => "print files",
+        "cp" => "copy files",
+        "mv" => "move or rename",
+        "rm" => "remove files",
+        "mkdir" => "create directories",
+        "rmdir" => "remove empty directories",
+        "touch" => "create files or update times",
+        "ls" => "list directory contents",
+        "tree" => "show a directory tree",
+        "find" => "search for files",
+        "grep" => "search text with patterns",
+        "head" => "first lines of a file",
+        "tail" => "last lines of a file",
+        "less" | "more" => "page through text",
+        "wc" => "count lines, words, bytes",
+        "sort" => "sort lines",
+        "uniq" => "remove repeated lines",
+        "cut" => "select columns",
+        "tr" => "translate characters",
+        "tee" => "copy input to files",
+        "echo" => "print text",
+        "printf" => "formatted print",
+        "pwd" => "print current directory",
+        "env" | "printenv" => "show environment",
+        "date" => "print the date",
+        "du" => "disk usage",
+        "df" => "free disk space",
+        "ln" => "create links",
+        "realpath" => "absolute path",
+        "basename" | "dirname" => "split paths",
+        "ps" => "list processes",
+        "kill" | "killall" | "pkill" => "stop processes",
+        "open" | "xdg-open" => "open with the default app",
+        "xargs" => "build commands from input",
+        "sleep" => "wait for a while",
+        "seq" => "print number sequences",
+        "whoami" => "current user",
+        "hostname" => "computer name",
+        "uname" => "system information",
+        "sha256sum" | "sha1sum" | "sha512sum" | "md5sum" | "cksum" => "checksums",
+        "base64" => "encode or decode base64",
+        "diff" => "compare files",
+        _ => return None,
+    })
+}
+
+/// Linux equivalents for Windows commands people type out of habit.
+pub fn windows_equivalent(name: &str) -> Option<&'static str> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "dir" => "ls",
+        "cls" => "clear",
+        "type" => "cat",
+        "del" | "erase" => "rm",
+        "copy" | "xcopy" | "robocopy" => "cp",
+        "move" | "ren" | "rename" => "mv",
+        "md" => "mkdir",
+        "rd" => "rmdir",
+        "findstr" => "grep",
+        "where" => "which",
+        "tasklist" => "ps",
+        "taskkill" => "kill",
+        "start" => "open",
+        "set" => "export",
+        _ => return None,
+    })
+}

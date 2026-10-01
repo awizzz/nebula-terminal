@@ -7,3 +7,7 @@ src-tauri/gen/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Built by scripts/build-sidecar.mjs
+src-tauri/binaries/
+target/

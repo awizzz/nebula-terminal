@@ -16,9 +16,3 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2.11.5", features = [] }
 tauri-plugin-opener = "2.5.5"
 window-vibrancy = "0.8.0"
-
-[profile.release]
-codegen-units = 1
-lto = "thin"
-opt-level = "s"
-strip = true
