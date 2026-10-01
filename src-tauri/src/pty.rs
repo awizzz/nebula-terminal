@@ -125,7 +125,7 @@ pub fn start_session(
     let mut command = CommandBuilder::new(&profile.executable);
     command.args(&profile.args);
     if let Some(requested) = cwd.filter(|value| !value.trim().is_empty()) {
-        let directory = std::path::PathBuf::from(requested.trim());
+        let directory = profiles::expand_directory(&requested);
         if !directory.is_dir() {
             return Err(format!(
                 "Starting directory '{}' does not exist or is not a directory.",
@@ -133,11 +133,15 @@ pub fn start_session(
             ));
         }
         command.cwd(directory);
+    } else if let Some(home) = profiles::home_directory() {
+        command.cwd(home);
     } else if let Ok(current) = std::env::current_dir() {
         command.cwd(current);
     }
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
+    command.env("TERM_PROGRAM", "NebulaTerminal");
+    command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     command.env("NEBULA_TERMINAL", "1");
 
     let mut child = pair

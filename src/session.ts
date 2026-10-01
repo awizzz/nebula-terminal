@@ -1,3 +1,4 @@
+import { pickProfile } from "./profiles";
 import type { SessionSnapshot, TerminalProfile, TerminalTab } from "./types";
 
 const STORAGE_KEY = "nebula-terminal.session.v2";
@@ -30,7 +31,7 @@ export function loadSession(profiles: TerminalProfile[]): { tabs: TerminalTab[];
     if (![1, 2].includes(snapshot.version) || !Array.isArray(snapshot.tabs) || snapshot.tabs.length === 0) return null;
 
     const available = new Map(profiles.filter((profile) => profile.available).map((profile) => [profile.id, profile]));
-    const fallback = available.get("nebula") ?? available.values().next().value;
+    const fallback = pickProfile(profiles);
     if (!fallback) return null;
 
     const tabs = snapshot.tabs.slice(0, 20).map((saved) => {

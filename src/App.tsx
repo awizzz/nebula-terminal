@@ -8,19 +8,12 @@ import NewTabMenu from "./components/NewTabMenu";
 import SearchBar from "./components/SearchBar";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import { clearSession, loadSession, saveSession } from "./session";
+import { pickProfile, previewProfiles } from "./profiles";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { AppearancePreferences, SplitDirection, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
-
-const previewProfiles: TerminalProfile[] = [
-  { id: "nebula", name: "Nebula", kind: "nebula", available: true, accent: "#f2a93b" },
-  { id: "cmd", name: "Command Prompt", kind: "cmd", available: true, executable: "cmd.exe", accent: "#70b391" },
-  { id: "powershell", name: "Windows PowerShell", kind: "powershell", available: true, executable: "powershell.exe", accent: "#6e9fbd" },
-  { id: "pwsh", name: "PowerShell 7", kind: "pwsh", available: false, accent: "#8f9fbd" },
-  { id: "wsl", name: "WSL", kind: "wsl", available: false, accent: "#59a99c" },
-];
 
 function makePane(profile: TerminalProfile): TerminalPaneModel {
   return { id: crypto.randomUUID(), profile };
@@ -50,7 +43,7 @@ function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
 
 function remapTabs(tabs: TerminalTab[], profiles: TerminalProfile[]): TerminalTab[] {
   const available = new Map(profiles.filter((profile) => profile.available).map((profile) => [profile.id, profile]));
-  const fallback = available.get("nebula") ?? available.values().next().value;
+  const fallback = pickProfile(profiles);
   if (!fallback) return tabs;
   return tabs.map((tab) => ({
     ...tab,
@@ -95,9 +88,7 @@ export default function App() {
           return;
         }
       }
-      const first = detected.find((profile) => profile.id === preferencesRef.current.defaultProfileId && profile.available)
-        ?? detected.find((profile) => profile.id === "nebula" && profile.available)
-        ?? detected.find((profile) => profile.available);
+      const first = pickProfile(detected, preferencesRef.current.defaultProfileId);
       if (first) {
         const tab = makeTab(first);
         setTabs([tab]);
@@ -165,9 +156,7 @@ export default function App() {
 
   const resolveProfile = useCallback((profileId?: string) => {
     const requested = profileId ?? preferences.defaultProfileId;
-    return profiles.find((profile) => profile.id === requested && profile.available)
-      ?? profiles.find((profile) => profile.id === "nebula" && profile.available)
-      ?? profiles.find((profile) => profile.available);
+    return pickProfile(profiles, requested);
   }, [preferences.defaultProfileId, profiles]);
 
   const openNewTab = useCallback((profileId?: string) => {
@@ -345,7 +334,7 @@ export default function App() {
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      <NewTabMenu open={profileMenuOpen} profiles={profiles} onPick={openNewTab} onClose={() => setProfileMenuOpen(false)} />
+      <NewTabMenu open={profileMenuOpen} defaultProfileId={resolveProfile()?.id} profiles={profiles} onPick={openNewTab} onClose={() => setProfileMenuOpen(false)} />
 
       <div className="workspace">
         <div className="terminal-stack">

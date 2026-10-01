@@ -3,12 +3,13 @@ import type { TerminalProfile } from "../types";
 
 interface NewTabMenuProps {
   open: boolean;
+  defaultProfileId?: string;
   profiles: TerminalProfile[];
   onPick: (profileId: string) => void;
   onClose: () => void;
 }
 
-export default function NewTabMenu({ open, profiles, onPick, onClose }: NewTabMenuProps) {
+export default function NewTabMenu({ open, defaultProfileId, profiles, onPick, onClose }: NewTabMenuProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const firstEnabledRef = useRef<HTMLButtonElement | null>(null);
 
@@ -51,7 +52,7 @@ export default function NewTabMenu({ open, profiles, onPick, onClose }: NewTabMe
             <strong>{profile.name}</strong>
             <small>{profile.available ? profile.executable ?? "Built in" : "Not detected"}</small>
           </span>
-          {profile.id === "nebula" && <span className="new-tab-menu__badge">Default</span>}
+          {profile.id === defaultProfileId && <span className="new-tab-menu__badge">Default</span>}
         </button>
       ))}
     </div>
