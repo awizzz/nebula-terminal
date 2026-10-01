@@ -2,50 +2,22 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest released version unless stated otherwise.
+Fixes go into the latest release.
 
 ## Reporting a vulnerability
 
-Do not publish credentials, private keys, tokens or exploit details in a public issue.
+Please don't post exploit details, credentials or tokens in a public issue. Use GitHub's private vulnerability reporting for this repository (Security → Report a vulnerability). If that isn't available, open a short issue asking for a private contact without any details.
 
-If GitHub private vulnerability reporting is enabled for this repository, use it. Otherwise, open a minimal public issue requesting a private contact method without including reproduction details that would expose users.
+Include the Nebula Terminal version, the Windows version, how to reproduce the problem and what an attacker could do with it.
 
-Include the affected Nebula version, Windows version, reproduction conditions and expected impact.
+## What Nebula Terminal stores
 
-## Local data
+Settings and the tab layout live in the WebView2 profile of the app on your machine. Nothing is sent anywhere. Command history belongs to your shell (PowerShell's PSReadLine, bash's `.bash_history`…), not to Nebula Terminal.
 
-Nebula stores configuration and optional command history under `%APPDATA%\Nebula` by default.
+## Design choices that matter for security
 
-Command history can contain sensitive command-line arguments. Persistent history can be disabled with:
-
-```text
-history off
-```
-
-With the default configuration, commands beginning with a space are excluded from persistent history:
-
-```text
- secret-tool --token ...
-```
-
-This is not a substitute for secure secret handling. Prefer environment variables, stdin or the appropriate Windows credential mechanism instead of placing credentials directly in command-line arguments.
-
-The history file can be removed from Nebula with:
-
-```text
-history clear
-```
-
-## Configuration and release integrity
-
-Nebula validates configuration values before saving or loading them. Configuration changes are written through a temporary file and replaced atomically.
-
-Published releases include a SHA-256 checksum and a GitHub Artifact Attestation for the final executable. A recent GitHub CLI can verify that provenance with:
-
-```powershell
-gh attestation verify .\Nebula.exe --repo awizzz/custom-shell
-```
-
-When the optional signing provider is configured, the release workflow also verifies the Authenticode signature before publishing the executable.
-
-The dependency graph is committed in `Cargo.lock`, normal CI builds use `--locked`, dependency changes are audited before merge, and a scheduled workflow runs `cargo audit` against the RustSec advisory database.
+- The interface cannot start arbitrary programs. It asks for a profile by id and the Rust side decides which executable that is.
+- Links in terminal output open in your browser only on `Ctrl+Click`, and only for `http` and `https`.
+- Pasting several lines asks for confirmation by default, so a copied snippet can't silently run several commands.
+- Imported theme files are validated and can only change visual settings.
+- Dependencies are locked (`package-lock.json`, `Cargo.lock`) and audited weekly by the Security audit workflow.

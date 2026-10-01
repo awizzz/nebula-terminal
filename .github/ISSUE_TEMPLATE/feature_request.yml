@@ -1,24 +1,22 @@
 name: Feature request
-description: Suggest an improvement to Nebula
+description: Suggest an improvement to Nebula Terminal
 title: "[Feature] "
 labels: []
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem
-      description: What limitation or workflow should this solve?
+      label: What are you trying to do?
+      description: Describe the situation or workflow, not only the solution.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed behavior
-      description: Describe the expected user-facing behavior.
+      label: What would help
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives
-      description: Optional alternatives or workarounds already tried.
+      label: Workarounds you've tried

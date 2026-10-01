@@ -1,17 +1,18 @@
 name: Bug report
-description: Report a reproducible problem in Nebula
+description: Something in Nebula Terminal doesn't work as expected
 title: "[Bug] "
 labels: []
 body:
   - type: markdown
     attributes:
       value: |
-        Remove credentials, private paths and other sensitive data before posting logs.
+        Please remove usernames, tokens and private paths before posting output or screenshots.
   - type: input
     id: version
     attributes:
-      label: Nebula version
-      placeholder: 0.3.0
+      label: Nebula Terminal version
+      description: Settings → About
+      placeholder: 1.0.0
     validations:
       required: true
   - type: input
@@ -21,40 +22,39 @@ body:
       placeholder: Windows 11 24H2
     validations:
       required: true
-  - type: input
-    id: terminal
-    attributes:
-      label: Terminal host
-      placeholder: Windows Terminal
-    validations:
-      required: true
   - type: dropdown
-    id: backend
+    id: shell
     attributes:
-      label: Backend
+      label: Shell
       options:
-        - cmd
-        - powershell
-        - pwsh
-        - other
+        - PowerShell 7
+        - Windows PowerShell
+        - Command Prompt
+        - Git Bash
+        - WSL
+        - Not shell-specific
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: Keep the example as small as possible.
+      placeholder: |
+        1. Open a new PowerShell tab
+        2. Split right
+        3. …
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: What you expected
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: Actual behavior
+      label: What happened instead
+      description: Screenshots help a lot for display problems.
     validations:
       required: true
