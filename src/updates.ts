@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { version } from "../package.json";
 
 export type InstallKind = "installer" | "msi" | "manual";
 
@@ -19,9 +20,9 @@ const CHECK_INTERVAL = 20 * 60 * 60 * 1000;
 function previewUpdate(): UpdateInfo | null {
   if (!location.hash.includes("update")) return null;
   return {
-    version: "1.1.0",
-    current: "1.0.0",
-    notes: "Scripting in Nebula, mixed split layouts, custom profiles and notifications for long commands.",
+    version: "1.2.0",
+    current: version,
+    notes: "A made-up release for the browser preview.",
     url: "https://github.com/awizzz/nebula-shell/releases/latest",
     install: "installer",
   };

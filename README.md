@@ -19,7 +19,7 @@ Download the latest installer from [Releases](https://github.com/awizzz/nebula-s
 Releases are not code-signed yet, so Windows SmartScreen may warn you the first time. Check the file against `SHA256SUMS.txt` from the same release before you continue:
 
 ```powershell
-Get-FileHash '.\Nebula.Terminal_1.0.0_x64-setup.exe' -Algorithm SHA256
+Get-FileHash '.\Nebula.Terminal_1.1.0_x64-setup.exe' -Algorithm SHA256
 ```
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.

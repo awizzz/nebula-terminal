@@ -266,10 +266,13 @@ mod tests {
     #[test]
     fn reads_the_list_from_the_command() {
         let wsl = script("list", r"printf 'Ubuntu\r\nDebian\r\n'");
-        assert_eq!(
-            from_command(&wsl, Duration::from_secs(5)),
-            vec!["Ubuntu".to_owned(), "Debian".to_owned()]
-        );
+        // A script written a moment ago can fail to start with ETXTBSY while other
+        // tests fork; try a few times.
+        let names = (0..5)
+            .map(|_| from_command(&wsl, Duration::from_secs(5)))
+            .find(|names| !names.is_empty())
+            .unwrap_or_default();
+        assert_eq!(names, vec!["Ubuntu".to_owned(), "Debian".to_owned()]);
         let failing = script("fail", "echo 'not installed'; exit 1");
         assert!(from_command(&failing, Duration::from_secs(5)).is_empty());
     }

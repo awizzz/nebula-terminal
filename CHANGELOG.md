@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.0
+
+Nebula runs real scripts now, panes split in any direction, and the app can notify you and update itself. From this version on, new releases install from inside the app.
 
 ### Nebula
 
