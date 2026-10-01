@@ -112,7 +112,7 @@ fn locate(id: &str) -> Option<ResolvedProfile> {
 }
 
 #[tauri::command]
-pub fn detect_profiles() -> Vec<TerminalProfile> {
+pub async fn detect_profiles() -> Vec<TerminalProfile> {
     PROFILES
         .iter()
         .map(|(id, name, accent)| {
@@ -130,12 +130,18 @@ pub fn detect_profiles() -> Vec<TerminalProfile> {
         .collect()
 }
 
-pub fn resolve_profile(profile_id: &str) -> Result<ResolvedProfile, String> {
+/// Resolves a profile id sent by the UI. With a custom starting folder, WSL starts
+/// there (as /mnt/...) instead of the Linux home directory.
+pub fn resolve_profile(profile_id: &str, custom_cwd: bool) -> Result<ResolvedProfile, String> {
     if !PROFILES.iter().any(|(id, _, _)| *id == profile_id) {
         return Err(format!("Unknown profile '{profile_id}'."));
     }
-    locate(profile_id)
-        .ok_or_else(|| format!("Profile '{profile_id}' is not available on this system."))
+    let mut profile = locate(profile_id)
+        .ok_or_else(|| format!("Profile '{profile_id}' is not available on this system."))?;
+    if profile_id == "wsl" && custom_cwd {
+        profile.args.clear();
+    }
+    Ok(profile)
 }
 
 pub fn home_directory() -> Option<PathBuf> {
@@ -221,8 +227,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_profiles() {
-        assert!(resolve_profile("nebula").unwrap_err().contains("Unknown"));
-        assert!(resolve_profile("anything.exe").is_err());
+        assert!(resolve_profile("nebula", false)
+            .unwrap_err()
+            .contains("Unknown"));
+        assert!(resolve_profile("anything.exe", true).is_err());
     }
 
     #[test]

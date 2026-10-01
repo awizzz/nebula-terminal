@@ -35,6 +35,28 @@ const pages: Array<{ id: SettingsPage; label: string; icon: typeof Palette }> = 
 const monospaceFonts = ["Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Lucida Console"];
 const REPOSITORY = "https://github.com/awizzz/nebula-shell";
 
+/**
+ * Re-encodes a background image so it fits comfortably in local storage next to the
+ * other settings: at most 2560 px on the long side, WebP, under ~3 MB as a data URL.
+ */
+async function shrinkImage(file: File): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  let scale = Math.min(1, 2560 / Math.max(bitmap.width, bitmap.height));
+  for (let quality = 0.86; ; quality -= 0.12) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const url = canvas.toDataURL("image/webp", quality);
+    if (url.length <= 3_000_000 || quality < 0.4) {
+      bitmap.close();
+      if (url.length > 3_000_000) throw new Error("Image too large");
+      return url;
+    }
+    scale *= 0.8;
+  }
+}
+
 function Row({ label, description, children, stacked = false }: { label: string; description?: string; children: ReactNode; stacked?: boolean }) {
   return (
     <div className={`row ${stacked ? "row--stacked" : ""}`}>
@@ -188,15 +210,16 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
     }
   };
 
-  const readBackground = (file?: File) => {
+  const readBackground = async (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) return setMessage({ tone: "error", text: "Choose an image file." });
-    if (file.size > 5_000_000) return setMessage({ tone: "error", text: "Choose an image smaller than 5 MB." });
-    setMessage(null);
-    const reader = new FileReader();
-    reader.onload = () => onChange({ ...preferences, backgroundMode: "image", backgroundImage: String(reader.result ?? "") });
-    reader.onerror = () => setMessage({ tone: "error", text: "This image could not be read." });
-    reader.readAsDataURL(file);
+    if (file.size > 40_000_000) return setMessage({ tone: "error", text: "Choose an image smaller than 40 MB." });
+    try {
+      onChange({ ...preferences, backgroundMode: "image", backgroundImage: await shrinkImage(file) });
+      setMessage(null);
+    } catch {
+      setMessage({ tone: "error", text: "This image could not be read." });
+    }
   };
 
   const conflictFor = (key: keyof KeybindingPreferences) => {
@@ -277,7 +300,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Animations" description="Reduced keeps fades and removes movement.">
                     <Segmented label="Animations" value={preferences.animationLevel} onChange={(value) => patch("animationLevel", value)} options={[{ value: "full", label: "Full" }, { value: "reduced", label: "Reduced" }, { value: "off", label: "Off" }]} />
                   </Row>
-                  <input ref={imageInputRef} hidden type="file" accept="image/*" onChange={(event) => { readBackground(event.target.files?.[0]); event.target.value = ""; }} />
+                  <input ref={imageInputRef} hidden type="file" accept="image/*" onChange={(event) => { void readBackground(event.target.files?.[0]); event.target.value = ""; }} />
                 </Group>
 
                 <Group title="Share your look">
@@ -328,6 +351,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                   <Row label="Background opacity" description="Below 100% the window background shows through.">
                     <Slider label="Background opacity" value={preferences.terminalOpacity} min={0.6} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => patch("terminalOpacity", value)} />
+                  </Row>
+                  <Row label="GPU acceleration" description="Turn off if text looks blurry, misplaced or flickers.">
+                    <Switch label="GPU acceleration" checked={preferences.gpuAcceleration} onChange={(value) => patch("gpuAcceleration", value)} />
                   </Row>
                   <Row label="Scrollback" description="Lines kept per pane.">
                     <select className="field field--select" value={preferences.scrollback} onChange={(event) => patch("scrollback", Number(event.target.value))}>

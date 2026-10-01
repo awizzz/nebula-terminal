@@ -20,11 +20,29 @@ export function shortcutFromEvent(event: KeyboardEvent): string | null {
   return parts.join("+");
 }
 
+/**
+ * Physical keys whose meaning should survive keyboard layouts: digits on AZERTY need Shift,
+ * "=" needs Shift on QWERTZ, and the numpad reports its own codes. Letters are deliberately
+ * not mapped, so Ctrl+Shift+A on AZERTY never fires a Ctrl+Shift+Q binding.
+ */
+function codeAliases(code: string | undefined): string[] {
+  if (!code) return [];
+  const digit = /^(?:Digit|Numpad)([0-9])$/.exec(code);
+  if (digit) return [digit[1]!];
+  if (code === "NumpadAdd") return ["plus", "="];
+  if (code === "NumpadSubtract") return ["-"];
+  return [];
+}
+
 export function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean {
   if (!shortcut) return false;
   const parts = shortcut.split("+").map((part) => part.trim().toLowerCase()).filter(Boolean);
   const key = parts.at(-1) ?? "";
-  return keyName(event.key).toLowerCase() === key
+  const names = new Set([keyName(event.key).toLowerCase(), ...codeAliases(event.code)]);
+  // "Ctrl+=" and "Ctrl+Plus" both mean zoom in, whichever of the two keys the layout has.
+  if (names.has("=")) names.add("plus");
+  if (names.has("plus")) names.add("=");
+  return names.has(key)
     && event.ctrlKey === parts.includes("ctrl")
     && event.shiftKey === parts.includes("shift")
     && event.altKey === parts.includes("alt")

@@ -56,6 +56,7 @@ export const defaultPreferences: AppearancePreferences = {
   confirmMultilinePaste: true,
   confirmCloseMultipleTabs: true,
   scrollback: 10_000,
+  gpuAcceleration: true,
   keybindings: defaultKeybindings,
 };
 
@@ -108,7 +109,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     terminalPadding: numberIn(value.terminalPadding, defaultPreferences.terminalPadding, 0, 40),
     terminalOpacity: numberIn(value.terminalOpacity, defaultPreferences.terminalOpacity, 0.6, 1),
     backgroundMode: oneOf(value.backgroundMode, ["mica", "solid", "image"], defaultPreferences.backgroundMode),
-    backgroundImage: typeof value.backgroundImage === "string" && value.backgroundImage.startsWith("data:image/") && value.backgroundImage.length <= 7_000_000 ? value.backgroundImage : undefined,
+    backgroundImage: typeof value.backgroundImage === "string" && value.backgroundImage.startsWith("data:image/") && value.backgroundImage.length <= 3_500_000 ? value.backgroundImage : undefined,
     backgroundImageOpacity: numberIn(value.backgroundImageOpacity, defaultPreferences.backgroundImageOpacity, 0.05, 0.85),
     animationLevel: oneOf(value.animationLevel, ["full", "reduced", "off"], defaultPreferences.animationLevel),
     tabDensity: oneOf(value.tabDensity, ["comfortable", "compact"], defaultPreferences.tabDensity),
@@ -119,12 +120,13 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     confirmMultilinePaste: booleanFrom(value.confirmMultilinePaste, defaultPreferences.confirmMultilinePaste),
     confirmCloseMultipleTabs: booleanFrom(value.confirmCloseMultipleTabs, defaultPreferences.confirmCloseMultipleTabs),
     scrollback: Math.round(numberIn(value.scrollback, defaultPreferences.scrollback, 1_000, 100_000)),
+    gpuAcceleration: booleanFrom(value.gpuAcceleration, defaultPreferences.gpuAcceleration),
     keybindings,
   };
 }
 
 /** Preferences written by 0.x builds: drop the Nebula Shell profile and move Find off Ctrl+F, which shells use. */
-function migrateLegacy(value: unknown): unknown {
+export function migrateLegacy(value: unknown): unknown {
   if (!isRecord(value)) return value;
   const bindings = isRecord(value.keybindings) ? { ...value.keybindings } : {};
   if (bindings.find === "Ctrl+F") bindings.find = defaultKeybindings.find;

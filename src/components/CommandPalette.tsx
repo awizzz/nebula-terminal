@@ -19,14 +19,14 @@ interface CommandPaletteProps {
   onClose: () => void;
 }
 
-interface Match {
+export interface Match {
   command: PaletteCommand;
   score: number;
   positions: number[];
 }
 
 /** Subsequence match on the label (then keywords) that favors word starts and consecutive letters. */
-function match(command: PaletteCommand, query: string): Match | null {
+export function matchCommand(command: PaletteCommand, query: string): Match | null {
   if (!query) return { command, score: 0, positions: [] };
   const label = command.label.toLowerCase();
   const positions: number[] = [];
@@ -70,7 +70,7 @@ export default function CommandPalette({ open, commands, onClose }: CommandPalet
 
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const matches = commands.map((command) => match(command, normalized)).filter((item): item is Match => item !== null);
+    const matches = commands.map((command) => matchCommand(command, normalized)).filter((item): item is Match => item !== null);
     return normalized ? matches.sort((a, b) => b.score - a.score) : matches;
   }, [commands, query]);
 

@@ -38,15 +38,23 @@ function lineCount(text: string): number {
 
 const PREVIEW_PROMPT = "\x1b[34mPS\x1b[0m C:\\Users\\you> ";
 
+/** Browser-only stand-in for a shell. `#screenshot` drops the notice for documentation images. */
 function writePreview(terminal: Terminal, profile: TerminalProfile) {
-  terminal.writeln(`\x1b[2m${profile.name} · interface preview\x1b[0m`);
-  terminal.writeln("\x1b[2mShells only run inside the desktop app. Try Ctrl+Shift+P.\x1b[0m");
+  if (location.hash !== "#screenshot") {
+    terminal.writeln(`\x1b[2m${profile.name} · browser preview. Shells only run inside the desktop app.\x1b[0m`);
+    terminal.writeln("");
+  }
+  terminal.write(`${PREVIEW_PROMPT}git status --short\r\n`);
+  terminal.writeln(" \x1b[31mM\x1b[0m src/App.tsx");
+  terminal.writeln(" \x1b[31mM\x1b[0m src/styles.css");
+  terminal.writeln("\x1b[32m??\x1b[0m src/themes.ts");
   terminal.writeln("");
-  terminal.write(`${PREVIEW_PROMPT}git status\r\n`);
-  terminal.writeln("On branch \x1b[1mmain\x1b[0m");
-  terminal.writeln("Changes not staged for commit:");
-  terminal.writeln("  \x1b[31mmodified:   src/App.tsx\x1b[0m");
-  terminal.writeln("  \x1b[31mmodified:   src/styles.css\x1b[0m");
+  terminal.write(`${PREVIEW_PROMPT}npm test\r\n`);
+  terminal.writeln("");
+  terminal.writeln(" \x1b[32m✓\x1b[0m src/keys.test.ts \x1b[2m(8 tests)\x1b[0m");
+  terminal.writeln(" \x1b[32m✓\x1b[0m src/preferences.test.ts \x1b[2m(8 tests)\x1b[0m");
+  terminal.writeln("");
+  terminal.writeln(" \x1b[1mTests\x1b[0m  \x1b[1;32m16 passed\x1b[0m \x1b[2m(16)\x1b[0m");
   terminal.writeln("");
   terminal.write(PREVIEW_PROMPT);
 }
@@ -111,6 +119,8 @@ export default function TerminalPane({
       scrollback: preferencesRef.current.scrollback,
       smoothScrollDuration: preferencesRef.current.animationLevel === "full" ? 80 : 0,
       drawBoldTextInBrightColors: false,
+      // ConPTY reflows wrapped lines itself; xterm must not do it a second time.
+      windowsPty: isTauri() && navigator.userAgent.includes("Windows") ? { backend: "conpty" } : undefined,
       minimumContrastRatio: 1,
       theme: colors,
     });
@@ -123,14 +133,8 @@ export default function TerminalPane({
       if (event.ctrlKey || !isTauri()) openExternal(uri);
     }));
     terminal.open(host);
-
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      terminal.loadAddon(webgl);
-    } catch {
-      // xterm keeps its DOM renderer when WebGL is unavailable.
-    }
+    // A restart or profile change replaces the focused textarea; take focus back.
+    if (focusedRef.current) terminal.focus();
 
     terminalRef.current = terminal;
     fitRef.current = fit;
@@ -337,6 +341,27 @@ export default function TerminalPane({
       }
     });
   }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback]);
+
+  // GPU rendering can be switched off live; xterm falls back to its DOM renderer.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !preferences.gpuAcceleration) return;
+    let webgl: WebglAddon | undefined;
+    try {
+      webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl?.dispose());
+      terminal.loadAddon(webgl);
+    } catch {
+      webgl = undefined;
+    }
+    return () => {
+      try {
+        webgl?.dispose();
+      } catch {
+        // The terminal may already be disposed.
+      }
+    };
+  }, [paneId, profile.id, restartNonce, preferences.gpuAcceleration]);
 
   useEffect(() => {
     if (!visible) return;
