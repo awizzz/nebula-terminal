@@ -5,6 +5,7 @@ mod custom;
 mod profiles;
 mod pty;
 mod ssh;
+mod updater;
 mod wsl;
 
 use tauri::{Manager, WebviewWindow};
@@ -69,6 +70,8 @@ fn main() {
             pty::close_session,
             set_window_effect,
             windows_build,
+            updater::check_for_update,
+            updater::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");

@@ -675,6 +675,53 @@ kbd { font: inherit; }
 .button--danger:hover { background: color-mix(in srgb, var(--danger) 88%, #fff); }
 .button-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* A new version is out: a small card in the bottom-right corner. */
+.update {
+  position: fixed;
+  z-index: 130;
+  right: 16px;
+  bottom: 16px;
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  box-shadow: var(--shadow-popover);
+  animation: update-in var(--dur-3) var(--ease-out);
+}
+.update__icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.update__header { display: flex; gap: 12px; min-width: 0; }
+.update__title { margin: 3px 24px 2px 0; color: var(--text); font-size: 13px; font-weight: 600; }
+.update__text { margin: 0; color: var(--text-2); font-size: 12px; line-height: 1.45; }
+.update__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.update__spacer { flex: 1; }
+.update__close { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; }
+.button--link { height: 28px; gap: 3px; padding: 0 2px; border-color: transparent; background: none; color: var(--accent); font-weight: 500; }
+.button--link:active { background: none; color: var(--accent); }
+.button--link:hover { background: none; text-decoration: underline; }
+.button:disabled { cursor: default; opacity: 0.7; transform: none; }
+/* Installing: a light sweep across the button while the download runs. */
+.button.is-busy { position: relative; overflow: hidden; opacity: 1; }
+.button.is-busy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--on-accent) 28%, transparent), transparent);
+  animation: busy-sweep 1.2s var(--ease-out) infinite;
+}
+
 .field {
   width: 100%;
   height: 32px;
@@ -985,6 +1032,8 @@ kbd { font: inherit; }
 @keyframes drop-in { from { transform: translateY(-100%); } }
 @keyframes rise-in { from { opacity: 0; transform: translate(-50%, 10px); } }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 12px) scale(0.98); } }
+@keyframes update-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+@keyframes busy-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @keyframes pop-in { from { opacity: 0; transform: scale(0.4); } }
 @keyframes indeterminate { from { left: -35%; } to { left: 100%; } }
 @keyframes breathe { 50% { opacity: 0.45; } }

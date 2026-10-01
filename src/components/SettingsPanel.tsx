@@ -4,6 +4,7 @@ import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
 import { deleteCustomProfile, listCustomProfiles, saveCustomProfile, splitArguments } from "../customProfiles";
 import { openExternal } from "../external";
+import { checkForUpdate, installUpdate, markChecked, type UpdateInfo } from "../updates";
 import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
@@ -80,6 +81,57 @@ function Group({ title, description, children }: { title?: string; description?:
       {description && <p className="group__description">{description}</p>}
       <div className="group__rows">{children}</div>
     </section>
+  );
+}
+
+type UpdateState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "current" }
+  | { kind: "available"; update: UpdateInfo }
+  | { kind: "installing"; update: UpdateInfo }
+  | { kind: "error"; message: string; update?: UpdateInfo };
+
+/** "Check now", and what it found. */
+function UpdateCheck() {
+  const [state, setState] = useState<UpdateState>({ kind: "idle" });
+  const errorText = (reason: unknown) => reason instanceof Error ? reason.message : String(reason);
+
+  const check = () => {
+    setState({ kind: "checking" });
+    markChecked();
+    checkForUpdate()
+      .then((update) => setState(update ? { kind: "available", update } : { kind: "current" }))
+      .catch((reason) => setState({ kind: "error", message: errorText(reason) }));
+  };
+  const install = (update: UpdateInfo) => {
+    setState({ kind: "installing", update });
+    installUpdate().catch((reason) => setState({ kind: "error", message: errorText(reason), update }));
+  };
+
+  const update = "update" in state ? state.update : undefined;
+  const description = {
+    idle: undefined,
+    checking: "Checking GitHub…",
+    current: "You have the latest version.",
+    available: update && `Version ${update.version} is available.`,
+    installing: "Downloading and checking the update. The app restarts when it's installed.",
+    error: state.kind === "error" ? state.message : undefined,
+  }[state.kind];
+
+  return (
+    <Row label="Check for updates" description={description}>
+      <div className="button-row">
+        {update && <button className="button" type="button" onClick={() => openExternal(update.url)}>What's new</button>}
+        {update && state.kind !== "installing" && update.install !== "manual"
+          ? <button className="button button--primary" type="button" onClick={() => install(update)}>Install and restart</button>
+          : update && update.install === "manual"
+            ? <button className="button button--primary" type="button" onClick={() => openExternal(update.url)}>Download</button>
+            : <button className={`button ${state.kind === "checking" || state.kind === "installing" ? "is-busy" : ""}`} type="button" disabled={state.kind === "checking" || state.kind === "installing"} onClick={check}>
+                {state.kind === "installing" ? "Installing…" : "Check now"}
+              </button>}
+      </div>
+    </Row>
   );
 }
 
@@ -689,6 +741,12 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <p>Version {version}</p>
                   </div>
                 </div>
+                <Group title="Updates">
+                  <Row label="Check automatically" description="Looks for a new version on GitHub once a day. Nothing installs without you.">
+                    <Switch label="Check for updates automatically" checked={preferences.checkForUpdates} onChange={(value) => patch("checkForUpdates", value)} />
+                  </Row>
+                  <UpdateCheck />
+                </Group>
                 <Group>
                   <Row label="Source code"><button className="button" type="button" onClick={() => openExternal(REPOSITORY)}>Open on GitHub</button></Row>
                   <Row label="Found a bug?"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/issues/new/choose`)}>Report a problem</button></Row>

@@ -5,6 +5,8 @@ import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keybo
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
+import UpdateBanner from "./components/UpdateBanner";
+import { automaticCheckDue, checkForUpdate, dismiss as dismissUpdate, isDismissed, markChecked, type UpdateInfo } from "./updates";
 import SearchBar from "./components/SearchBar";
 import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
@@ -96,6 +98,7 @@ export default function App() {
   const [searchResult, setSearchResult] = useState<{ index: number; count: number } | null>(null);
   const [activity, setActivity] = useState<ReadonlySet<string>>(() => new Set());
   const [finished, setFinished] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [closing, setClosing] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState<string | null>(null);
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
@@ -205,6 +208,20 @@ export default function App() {
       return next;
     });
   }, [activeTabId]);
+
+  // Look for a new version a few seconds after launch, at most once a day.
+  useEffect(() => {
+    if (!preferences.checkForUpdates || !automaticCheckDue()) return;
+    const timer = window.setTimeout(() => {
+      markChecked();
+      void checkForUpdate()
+        .then((info) => {
+          if (info && !isDismissed(info.version)) setUpdate(info);
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [preferences.checkForUpdates]);
 
   /** The user can't see this tab: another tab is in front, or the window is in the background. */
   const tabUnseen = useCallback((tabId: string) => document.hidden || !document.hasFocus() || tabId !== activeTabIdRef.current, []);
@@ -765,6 +782,7 @@ export default function App() {
       )}
 
       {notice && <div className="toast" role="status">{notice}</div>}
+      {update && <UpdateBanner update={update} onDismiss={() => { dismissUpdate(update.version); setUpdate(null); }} />}
     </main>
   );
 }
