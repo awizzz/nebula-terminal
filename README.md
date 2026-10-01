@@ -12,14 +12,14 @@ A terminal for Windows with Linux commands built in. Tabs, split panes, a comman
 
 Download the latest installer from [Releases](https://github.com/awizzz/nebula-shell/releases/latest):
 
-- `Nebula Terminal_<version>_x64-setup.exe`: per-user installer (recommended)
-- `Nebula Terminal_<version>_x64_en-US.msi`: MSI for managed machines
+- `Nebula.Terminal_<version>_x64-setup.exe`: per-user installer (recommended)
+- `Nebula.Terminal_<version>_x64_en-US.msi`: MSI for managed machines
 - `Nebula-Terminal-<version>-windows-x64-portable.zip`: no installation, just unzip and run
 
 Releases are not code-signed yet, so Windows SmartScreen may warn you the first time. Check the file against `SHA256SUMS.txt` from the same release before you continue:
 
 ```powershell
-Get-FileHash '.\Nebula Terminal_1.0.0_x64-setup.exe' -Algorithm SHA256
+Get-FileHash '.\Nebula.Terminal_1.0.0_x64-setup.exe' -Algorithm SHA256
 ```
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.
