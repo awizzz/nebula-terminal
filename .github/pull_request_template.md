@@ -1,12 +1,11 @@
 ## Summary
 
-Describe the change and its user-visible effect.
+What changes for the user, and why.
 
 ## Checks
 
-- [ ] `cargo fmt -- --check`
-- [ ] `cargo clippy --all-targets -- -D warnings`
-- [ ] `cargo test`
-- [ ] `cargo build --release`
-- [ ] docs updated when behavior changed
-- [ ] no credentials, tokens or private data included
+- [ ] `npm run build` and `npm test`
+- [ ] `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` in `src-tauri`
+- [ ] tried it in `npm run tauri dev` (screenshots for UI changes)
+- [ ] `CHANGELOG.md` updated for user-visible changes
+- [ ] no credentials, tokens or private data

@@ -1,118 +1,41 @@
 # Releasing
 
-Nebula releases are built and published by the dedicated `Release` GitHub Actions workflow.
+Releases are built by `.github/workflows/release.yml` on a Windows runner. Pushing to `main` never publishes anything. Only a `v*` tag, or a manual run of the workflow, does.
 
-A normal push to `main` never creates a release automatically.
+## 1. Bump the version
 
-## Before publishing
+The version lives in three files and they must match:
 
-Update the version in `Cargo.toml` and regenerate `Cargo.lock`. Update `CHANGELOG.md` with a matching section and make sure the user-facing documentation reflects the new behavior.
+- `package.json` (also run `npm install` so `package-lock.json` follows)
+- `src-tauri/tauri.conf.json`
+- `src-tauri/Cargo.toml` (then `cargo check --manifest-path src-tauri/Cargo.toml` to update `Cargo.lock`)
 
-Run locally:
+Add a `## <version>` section at the top of `CHANGELOG.md`. The workflow uses it as the release notes.
 
-```powershell
-cargo fmt -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked --all-targets
-cargo build --locked --release
-```
+## 2. Let CI pass on `main`
 
-Merge the release changes only after CI passes.
-
-## Publish from a tag
-
-Create a tag that exactly matches the Cargo package version:
+## 3. Tag
 
 ```powershell
-git tag v0.4.0
-git push origin v0.4.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-The release workflow rejects a tag whose version does not match `Cargo.toml`.
+Instead of tagging, you can run the **Release** workflow from the Actions tab with the version (`1.0.0`). It checks the version, runs the same validation as CI, builds the installers and publishes the release. It refuses to run if the tag and the files disagree, or if the release already exists. A version containing `-` (like `1.1.0-beta.1`) is published as a pre-release.
 
-## Publish manually
-
-The same workflow can be started from GitHub Actions with **Run workflow**. Enter the package version without the leading `v`, for example `0.4.0`.
-
-The workflow validates that the requested version matches `Cargo.toml` and publishes the release from the selected commit.
-
-## Release contents
-
-A successful release contains the standalone executable, its checksum, a versioned portable package and the installer scripts:
+## What gets published
 
 ```text
-Nebula.exe
-Nebula.exe.sha256
-Nebula-<version>-windows-x64.zip
-Nebula-<version>-windows-x64.zip.sha256
-install.ps1
-uninstall.ps1
+Nebula Terminal_<version>_x64-setup.exe          NSIS installer
+Nebula Terminal_<version>_x64_en-US.msi          MSI installer
+Nebula-Terminal-<version>-windows-x64-portable.zip
+SHA256SUMS.txt
 ```
 
-The portable ZIP contains:
-
-```text
-Nebula.exe
-README.md
-CHANGELOG.md
-LICENSE
-config.example.toml
-install.ps1
-uninstall.ps1
-```
-
-Release notes are taken from the matching version section in `CHANGELOG.md`.
-
-## Build provenance
-
-Both the final `Nebula.exe` and the versioned portable ZIP are submitted to GitHub Artifact Attestations before publication. The attestations record SLSA build provenance and are signed through GitHub's Sigstore-backed attestation service.
-
-Users can verify provenance with a recent GitHub CLI:
+When the repository is public, each file also gets a GitHub build-provenance attestation:
 
 ```powershell
-gh attestation verify .\Nebula.exe --repo awizzz/nebula-shell
-gh attestation verify .\Nebula-0.4.0-windows-x64.zip --repo awizzz/nebula-shell
+gh attestation verify '.\Nebula Terminal_1.0.0_x64-setup.exe' --repo awizzz/nebula-shell
 ```
 
-This provenance is separate from Authenticode. It proves which GitHub repository and workflow produced the artifact; Authenticode provides Windows publisher trust when a signing provider is configured.
-
-## Code signing
-
-Signing is optional. When the required SignPath settings are configured, the exact CI artifact is submitted for signing and the returned Authenticode signature is verified before publication.
-
-Repository variables:
-
-```text
-SIGNPATH_ORGANIZATION_ID
-SIGNPATH_PROJECT_SLUG
-SIGNPATH_SIGNING_POLICY_SLUG
-```
-
-Repository secret:
-
-```text
-SIGNPATH_API_TOKEN
-```
-
-If signing is not configured, the same release is published as unsigned and its title contains `(unsigned)`.
-
-Never commit signing tokens, certificates or private keys.
-
-## Release workflow guarantees
-
-Before publishing, the workflow:
-
-1. validates the PowerShell distribution scripts
-2. checks the requested/tagged version against `Cargo.toml`
-3. verifies formatting
-4. runs Clippy with warnings denied
-5. runs the test suite across all Cargo targets with the committed lockfile
-6. builds the release executable with the committed lockfile
-7. optionally signs the exact uploaded build artifact
-8. verifies Authenticode when signing is enabled
-9. generates SHA-256 files for the standalone executable and portable ZIP
-10. creates GitHub/Sigstore build-provenance attestations for the executable and ZIP
-11. publishes the installer and uninstaller alongside the binary artifacts
-12. publishes release notes from `CHANGELOG.md`
-
-The workflow is defined in `.github/workflows/release.yml`.
+Releases are not Authenticode-signed yet. Never commit certificates, signing tokens or private keys.

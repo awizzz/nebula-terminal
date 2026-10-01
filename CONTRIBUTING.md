@@ -1,67 +1,42 @@
 # Contributing
 
-Nebula is a Windows-focused Rust project. Small, focused pull requests are preferred.
+Thanks for helping out. Small, focused pull requests are easiest to review.
 
-## Development setup
+## Setup
 
-Requirements:
-
-- Windows for runtime testing
-- the Rust toolchain declared in `rust-toolchain.toml`
-- Cargo
-
-Clone the repository and build with the committed dependency graph:
+You need Windows, Node.js 24, Rust 1.98.1 (installed automatically from `rust-toolchain.toml` by rustup), the MSVC build tools and WebView2.
 
 ```powershell
-git clone https://github.com/awizzz/custom-shell.git
-cd custom-shell
-cargo build --locked
+npm ci
+npm run tauri dev
 ```
 
-Before opening a pull request, run:
+For interface-only work, `npm run dev` serves the UI in a browser with a fake session, and you don't need Rust for it.
+
+## Before opening a pull request
+
+These are the checks CI runs:
 
 ```powershell
-cargo fmt -- --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-cargo build --locked --release
+npm run build                     # type-check and bundle the UI
+npm test                          # frontend unit tests
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-These commands match the normal CI pipeline.
+## Guidelines
 
-## Pull requests
+- Explain user-visible changes in the pull request, and add a line to `CHANGELOG.md` under `Unreleased`.
+- Use the existing tokens in `src/styles.css` for colors, spacing and motion. Don't hard-code colors in components.
+- Every new action should get a command palette entry, and a shortcut if it's frequent.
+- Anything read from storage or from a file must be validated (see `sanitizePreferences`).
+- Don't add Tauri commands that run arbitrary programs. New shells are new profile ids resolved in `profiles.rs`.
+- Test behavior that can run without a real terminal (Rust unit tests, `*.test.ts`).
+- Commit lockfiles when dependencies change. Never commit build output, credentials or signing material.
 
-- keep unrelated changes in separate pull requests
-- explain user-visible behavior changes
-- update `CHANGELOG.md` for release-worthy changes
-- avoid committing generated build output under `target/`
-- commit `Cargo.lock` when dependency resolution changes
-- do not commit credentials, tokens, certificates or private keys
-- keep user-facing strings in the locale files
-- add or update tests for behavior that can be exercised without an interactive terminal
+See [docs/architecture.md](docs/architecture.md) for a map of the code.
 
-## Code layout
+## Reporting bugs
 
-Use `rustfmt` and keep Clippy clean.
-
-- `src/main.rs` — process entry point only
-- `src/shell.rs` — runtime state, built-ins and command dispatch
-- `src/editor.rs` — Reedline, prompt, completion and history
-- `src/config.rs` — configuration schema, validation and theme presets
-- `src/platform.rs` — Windows/platform integration
-- `src/i18n.rs` — localization
-- `src/ui.rs` — terminal presentation
-
-Avoid growing `src/main.rs` back into a general-purpose module. Platform-specific behavior belongs behind `platform.rs` or a dedicated platform module.
-
-## Localization
-
-Built-in locale files must expose the same keys. The test suite checks this automatically.
-
-When adding user-facing text, add the corresponding English and French entries under `locales/` rather than embedding presentation text in command logic.
-
-## Issues
-
-Bug reports should include the Nebula version, Windows version, terminal host, configured backend, reproduction steps, expected behavior and actual behavior.
-
-Remove secrets, usernames and private paths from logs before posting them publicly.
+Use the bug report template. Include your Nebula Terminal version (Settings → About), your Windows version, the shell, and the steps to reproduce. Remove usernames, tokens and private paths from anything you paste.
