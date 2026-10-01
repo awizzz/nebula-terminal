@@ -1,4 +1,4 @@
-export type ProfileKind = "nebula" | "cmd" | "powershell" | "pwsh" | "wsl" | "ssh" | "custom";
+export type ProfileKind = "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl";
 
 export interface TerminalProfile {
   id: string;

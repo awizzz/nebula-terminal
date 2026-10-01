@@ -39,7 +39,7 @@ export const defaultPreferences: AppearancePreferences = {
   backgroundImageOpacity: 0.28,
   animationLevel: "full",
   tabDensity: "comfortable",
-  defaultProfileId: "nebula",
+  defaultProfileId: "",
   workingDirectory: "",
   restoreSession: true,
   copyOnSelect: false,
