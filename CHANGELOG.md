@@ -8,12 +8,19 @@
 - up to eight panes per tab (was four)
 - rename a tab by double-clicking it, from its right-click menu or from the command palette; an empty name brings back the shell's title
 - tab colors: eight colors that work on dark and light themes, shown as a thin bar on the tab
+- one profile for each installed WSL distribution (`wsl -d <name>`), read from the registry; Docker Desktop's internal distributions are left out
+- one profile for each host in `~/.ssh/config` (and the files it includes) when OpenSSH is installed
+- custom profiles: any program with its own arguments, starting folder and color, added in Settings → Profiles. The arguments are split with the Windows rules and shown before you save
+- the new-tab menu and the default profile picker group shells, WSL distributions, SSH hosts and custom profiles once the list gets long; the menu scrolls when it no longer fits
+- "Connect to …" and "New … tab" commands in the palette for every profile, and a "Profile settings" command
 
 ### Changed
 
 - `Alt+Arrow` moves to the nearest pane in that direction, across nested splits
 - a pane too small to split shows a notice instead of producing an unusable pane
 - saved sessions use a new format; layouts saved by 1.0 are migrated on first launch
+- Settings → Shells is now Settings → Profiles and shows what each profile runs
+- tabs whose profile was removed keep running; on the next launch they open the default profile
 
 ## 1.0.0
 

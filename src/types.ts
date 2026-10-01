@@ -1,14 +1,49 @@
 import type { LayoutNode } from "./layout";
 
-export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl";
+export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl" | "ssh" | "custom";
 
+/**
+ * Something a tab can open. Ids are `nebula`, `pwsh`… for the built-in shells,
+ * `wsl:<distribution>`, `ssh:<host>` and `custom:<uuid>` for the others.
+ */
 export interface TerminalProfile {
   id: string;
   name: string;
   kind: ProfileKind;
   available: boolean;
-  executable?: string;
+  executable?: string | null;
+  /** Program and arguments, for display only. */
+  commandLine?: string | null;
   accent: string;
+}
+
+/** A profile added in Settings, as stored by the desktop host. */
+export interface CustomProfile {
+  id: string;
+  name: string;
+  executable: string;
+  args: string[];
+  /** `args` as one command line, for editing. */
+  arguments: string;
+  cwd?: string | null;
+  accent: string;
+}
+
+/** What the profile editor sends to be saved. Without an id, a new profile is added. */
+export interface CustomProfileDraft {
+  id?: string;
+  name: string;
+  executable: string;
+  arguments: string;
+  cwd: string;
+  accent: string;
+}
+
+export type CustomProfileField = "name" | "executable" | "arguments" | "cwd" | "accent";
+
+export interface ProfileFieldError {
+  field: CustomProfileField | null;
+  message: string;
 }
 
 export type BackgroundMode = "mica" | "solid" | "image";

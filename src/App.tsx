@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar from "./components/Titlebar";
 import TerminalPane from "./components/TerminalPane";
 import SearchBar from "./components/SearchBar";
@@ -9,7 +9,9 @@ import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import { clearSession, loadSession, saveSession } from "./session";
-import { pickProfile, previewProfiles } from "./profiles";
+import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
+import { detectProfiles } from "./customProfiles";
+import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
@@ -67,32 +69,11 @@ function dividerStyle({ rect, direction }: Divider): CSSProperties {
     : { top: `${rect.y * 100}%`, left: `calc(${rect.x * 100}% + ${edge(rect.x)}px)`, height: 1, width: `calc(${rect.width * 100}% - ${edge(rect.x)}px)` };
 }
 
-function remapTabs(tabs: TerminalTab[], profiles: TerminalProfile[]): TerminalTab[] {
-  const available = new Map(profiles.filter((profile) => profile.available).map((profile) => [profile.id, profile]));
-  const fallback = pickProfile(profiles);
-  if (!fallback) return tabs;
-  return tabs.map((tab) => ({
-    ...tab,
-    panes: tab.panes.map((pane) => ({ ...pane, profile: available.get(pane.profile.id) ?? fallback })),
-  }));
-}
-
 /** Shells often report their executable path as the title; show the profile name instead. */
 function cleanTitle(title: string, profile: TerminalProfile): string {
   const trimmed = title.replace(/^Administrator:\s*/i, "").trim();
   if (!trimmed || /^[a-z]:\\.*\.exe$/i.test(trimmed) || /\\(pwsh|powershell|cmd|bash|wsl)\.exe$/i.test(trimmed)) return profile.name;
   return trimmed;
-}
-
-/** Black or white, whichever reads better on the given hex color. */
-function readableOn(hex: string): string {
-  const value = Number.parseInt(hex.slice(1), 16);
-  const [r, g, b] = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((channel) => {
-    const c = channel / 255;
-    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.36 ? "#141414" : "#ffffff";
 }
 
 export default function App() {
@@ -156,18 +137,23 @@ export default function App() {
       }
       return;
     }
-    setTabs((current) => remapTabs(current, detected));
+    setTabs((current) => refreshTabProfiles(current, detected));
   }, []);
 
   useEffect(() => {
-    if (!nativeHost) {
-      hydrateWorkspace(previewProfiles);
-      return;
-    }
-    void invoke<TerminalProfile[]>("detect_profiles")
+    void detectProfiles()
       .then(hydrateWorkspace)
       .catch(() => hydrateWorkspace([]));
-  }, [hydrateWorkspace, nativeHost]);
+  }, [hydrateWorkspace]);
+
+  /** Detects profiles again after custom profiles changed; open panes keep running. */
+  const refreshProfiles = useCallback(async () => {
+    try {
+      hydrateWorkspace(await detectProfiles());
+    } catch {
+      // Keep the current list; the next launch detects again.
+    }
+  }, [hydrateWorkspace]);
 
   useEffect(() => {
     savePreferences(preferences);
@@ -458,15 +444,16 @@ export default function App() {
     const defaultProfile = resolveProfile();
     return [
       { id: "new-tab", group: "Tabs", label: "New tab", detail: defaultProfile?.name, icon: <Plus size={15} />, shortcut: keys.newTab, run: () => openNewTab() },
-      ...profiles.filter((profile) => profile.available).map((profile): PaletteCommand => ({
-        id: `new-${profile.id}`, group: "Tabs", label: `New ${profile.name} tab`, icon: <ProfileIcon kind={profile.kind} size={15} />, keywords: profile.kind, run: () => openNewTab(profile.id),
-      })),
       { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
       { id: "next-tab", group: "Tabs", label: "Next tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.nextTab, run: () => cycleTab(1) },
       { id: "previous-tab", group: "Tabs", label: "Previous tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.previousTab, run: () => cycleTab(-1) },
       { id: "close-tab", group: "Tabs", label: "Close tab", icon: <X size={15} />, shortcut: keys.closeTab, run: () => activeTab && closeTab(activeTab.id) },
       { id: "close-other-tabs", group: "Tabs", label: "Close other tabs", icon: <PanelTopClose size={15} />, run: () => activeTab && removeTabs(tabsRef.current.filter((tab) => tab.id !== activeTab.id).map((tab) => tab.id)) },
+      ...profiles.filter((profile) => profile.available).map((profile): PaletteCommand => ({
+        id: `new-${profile.id}`, group: "Profiles", label: profileCommandLabel(profile), detail: profileTag(profile) ?? (profileGroup(profile) === "custom" ? "Custom" : undefined),
+        icon: <ProfileIcon kind={profile.kind} accent={profile.accent} size={15} />, keywords: `${profile.kind} ${profileGroupLabels[profileGroup(profile)]} shell`, run: () => openNewTab(profile.id),
+      })),
       { id: "split-right", group: "Panes", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, run: () => splitActive("vertical") },
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
@@ -492,6 +479,7 @@ export default function App() {
       { id: "settings", group: "App", label: "Settings", icon: <Settings2 size={15} />, shortcut: keys.settings, run: () => openSettings() },
       { id: "appearance", group: "App", label: "Appearance settings", icon: <Palette size={15} />, keywords: "theme font", run: () => openSettings("appearance") },
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
+      { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
   }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, duplicateTab, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive]);
 
@@ -547,16 +535,22 @@ export default function App() {
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
       const defaultId = resolveProfile()?.id;
+      const sections = profileMenuSections(profiles);
+      const grouped = sections.some((section) => section.heading);
       return [
-        ...profiles.map((profile): MenuEntry => ({
-          id: profile.id,
-          label: profile.name,
-          detail: profile.available ? undefined : "Not installed",
-          disabled: !profile.available,
-          icon: <ProfileIcon kind={profile.kind} />,
-          shortcut: profile.id === defaultId ? keys.newTab : undefined,
-          run: () => openNewTab(profile.id),
-        })),
+        ...sections.flatMap(({ heading, profiles: members }, index): MenuEntry[] => [
+          ...(index > 0 ? ["separator" as const] : []),
+          ...(heading ? [{ heading }] : []),
+          ...members.map((profile): MenuEntry => ({
+            id: profile.id,
+            label: profile.name,
+            detail: profile.available ? (grouped ? undefined : profileTag(profile)) : profileGroup(profile) === "custom" ? "Program not found" : "Not installed",
+            disabled: !profile.available,
+            icon: <ProfileIcon kind={profile.kind} accent={profile.accent} />,
+            shortcut: profile.id === defaultId ? keys.newTab : undefined,
+            run: () => openNewTab(profile.id),
+          })),
+        ]),
         "separator",
         { id: "palette", label: "Command palette", icon: <Search size={15} />, shortcut: keys.commandPalette, run: () => setPaletteOpen(true) },
         { id: "settings", label: "Settings", icon: <Settings2 size={15} />, shortcut: keys.settings, run: () => openSettings() },
@@ -703,7 +697,7 @@ export default function App() {
         />
       </div>
 
-      {menu && <Menu {...menu} label={menu.kind === "profiles" ? "Open a shell" : menu.kind === "tab" ? "Tab" : "Terminal"} width={menu.kind === "terminal" ? 250 : menu.kind === "tab" ? 260 : 280} entries={menuEntries(menu)} onClose={() => { setMenu(null); closeOverlayFocus(); }} />}
+      {menu && <Menu {...menu} label={menu.kind === "profiles" ? "Open a profile" : menu.kind === "tab" ? "Tab" : "Terminal"} width={menu.kind === "terminal" ? 250 : menu.kind === "tab" ? 260 : 280} entries={menuEntries(menu)} onClose={() => { setMenu(null); closeOverlayFocus(); }} />}
 
       <Suspense fallback={null}>
         <SettingsPanel
@@ -715,6 +709,7 @@ export default function App() {
           onClose={() => { setSettingsOpen(false); closeOverlayFocus(); }}
           onReset={() => { setPreferences({ ...defaultPreferences, keybindings: { ...defaultKeybindings } }); setNotice("Settings reset"); }}
           onClearSession={clearSession}
+          onProfilesChanged={refreshProfiles}
         />
         <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
       </Suspense>

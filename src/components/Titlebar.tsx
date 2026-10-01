@@ -162,7 +162,7 @@ export default function Titlebar({
           const renaming = tab.id === renamingId && !closing.has(tab.id);
           const details = (
             <>
-              {pane && <ProfileIcon kind={pane.profile.kind} size={15} />}
+              {pane && <ProfileIcon kind={pane.profile.kind} accent={pane.profile.accent} size={15} />}
               {renaming
                 ? <TabRename tab={tab} onCommit={(name) => { onRename(tab.id, name); onRenameEnd(); }} onCancel={onRenameEnd} />
                 : <span className="tab__title">{title}</span>}
@@ -223,9 +223,9 @@ export default function Titlebar({
           <button
             ref={menuButtonRef}
             type="button"
-            aria-label="Open a specific shell"
+            aria-label="Open a profile"
             aria-haspopup="menu"
-            title="Open a specific shell"
+            title="Open a profile"
             onClick={() => {
               const rect = menuButtonRef.current?.getBoundingClientRect();
               if (rect) onOpenProfileMenu(rect.left, rect.bottom + 4);

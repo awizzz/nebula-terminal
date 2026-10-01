@@ -34,7 +34,7 @@ cargo test --locked --workspace
 - Use the existing tokens in `src/styles.css` for colors, spacing and motion. Don't hard-code colors in components.
 - Every new action should get a command palette entry, and a shortcut if it's frequent.
 - Anything read from storage or from a file must be validated (see `sanitizePreferences`).
-- Don't add Tauri commands that run arbitrary programs. New shells are new profile ids resolved in `profiles.rs`.
+- Don't add Tauri commands that run arbitrary programs. New shells are new profile ids resolved in `profiles.rs`; programs the user picks go through custom profiles, which Rust validates and stores (`custom.rs`).
 - Nebula commands should behave like their GNU counterparts. When output goes to a pipe or a file, print plain text (no colors, no icons).
 - New icons go in `crates/nebula-sh/src/icons.rs`; then rerun `scripts/subset-icons.py`.
 - Test behavior that can run without a real terminal (Rust unit tests, `*.test.ts`).

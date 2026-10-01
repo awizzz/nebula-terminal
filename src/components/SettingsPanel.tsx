@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Info, Keyboard, Monitor, Palette, RotateCcw, SquareTerminal, ToggleRight, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Check, Info, Keyboard, Monitor, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
 import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
+import { deleteCustomProfile, listCustomProfiles, saveCustomProfile, splitArguments } from "../customProfiles";
 import { openExternal } from "../external";
 import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
+import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, themes, type TerminalTheme } from "../themes";
 import Keys from "./Keys";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, KeybindingPreferences, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, KeybindingPreferences, ProfileFieldError, TerminalProfile } from "../types";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -19,6 +21,8 @@ interface SettingsPanelProps {
   onClose: () => void;
   onReset: () => void;
   onClearSession: () => void;
+  /** Called after a custom profile was added, changed or removed. */
+  onProfilesChanged: () => Promise<void>;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -26,7 +30,7 @@ export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" |
 const pages: Array<{ id: SettingsPage; label: string; icon: typeof Palette }> = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "terminal", label: "Terminal", icon: SquareTerminal },
-  { id: "profiles", label: "Shells", icon: Monitor },
+  { id: "profiles", label: "Profiles", icon: Monitor },
   { id: "keyboard", label: "Keyboard", icon: Keyboard },
   { id: "behavior", label: "Behavior", icon: ToggleRight },
   { id: "about", label: "About", icon: Info },
@@ -69,10 +73,11 @@ function Row({ label, description, children, stacked = false }: { label: string;
   );
 }
 
-function Group({ title, children }: { title?: string; children: ReactNode }) {
+function Group({ title, description, children }: { title?: string; description?: string; children: ReactNode }) {
   return (
     <section className="group">
       {title && <h3 className="group__title">{title}</h3>}
+      {description && <p className="group__description">{description}</p>}
       <div className="group__rows">{children}</div>
     </section>
   );
@@ -166,7 +171,238 @@ function ShortcutRecorder({ action, value, conflict, onChange }: { action: strin
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession }: SettingsPanelProps) {
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const NEW_PROFILE = "new";
+
+/** One detected profile: icon, name and what it runs. */
+function ProfileRow({ profile }: { profile: TerminalProfile }) {
+  const missing = profileGroup(profile) === "custom" ? "Program not found" : "Not installed";
+  return (
+    <div className={`shell-row ${profile.available ? "" : "is-missing"}`}>
+      <ProfileIcon kind={profile.kind} accent={profile.accent} size={20} />
+      <div className="row__text">
+        <span className="row__label">{profile.name}</span>
+        <span className="row__description" title={profile.commandLine ?? profile.executable ?? undefined}>{profile.available ? profile.commandLine ?? profile.executable : missing}</span>
+      </div>
+      {profile.available && <span className="badge"><Check size={12} strokeWidth={2.4} />Ready</span>}
+    </div>
+  );
+}
+
+/** Shows how the arguments line will be split, as the desktop host splits it. */
+function ArgumentPreview({ line }: { line: string }) {
+  const [args, setArgs] = useState<string[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    const timer = window.setTimeout(() => {
+      splitArguments(line)
+        .then((value) => { if (current) { setArgs(value); setProblem(null); } })
+        .catch((error: unknown) => { if (current) setProblem(String(error)); });
+    }, 120);
+    return () => { current = false; window.clearTimeout(timer); };
+  }, [line]);
+
+  if (problem) return <p className="field-note field-note--error">{problem}</p>;
+  if (!args) return null;
+  return (
+    <div className="arg-preview" aria-live="polite">
+      <span className="arg-preview__label">{args.length === 0 ? "No arguments" : args.length === 1 ? "1 argument" : `${args.length} arguments`}</span>
+      {args.map((arg, index) => <code key={index} className="arg-chip">{arg || <em>empty</em>}</code>)}
+    </div>
+  );
+}
+
+function EditorField({ id, label, note, error, children }: { id: string; label: string; note?: ReactNode; error?: string; children: ReactNode }) {
+  return (
+    <div className={`editor-field ${error ? "has-error" : ""}`}>
+      <label className="editor-field__label" htmlFor={id} id={`${id}-label`}>{label}</label>
+      {children}
+      {error ? <p className="field-note field-note--error" id={`${id}-error`} role="alert">{error}</p> : note && <p className="field-note">{note}</p>}
+    </div>
+  );
+}
+
+/** Add or edit one custom profile. The host validates it again before saving. */
+function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDraft; onSave: (draft: CustomProfileDraft) => Promise<void>; onCancel: () => void }) {
+  const [draft, setDraft] = useState(initial);
+  const [error, setError] = useState<ProfileFieldError | null>(null);
+  const [saving, setSaving] = useState(false);
+  const id = useId();
+  const set = (key: keyof CustomProfileDraft) => (event: { target: { value: string } }) => {
+    setDraft((current) => ({ ...current, [key]: event.target.value }));
+    if (error?.field === key) setError(null);
+  };
+  const errorFor = (field: CustomProfileField) => error?.field === field ? error.message : undefined;
+  const invalid = (field: CustomProfileField) => error?.field === field ? { "aria-invalid": true, "aria-describedby": `${id}-${field}-error` } : {};
+  const accent = draft.accent.toLowerCase();
+
+  useEffect(() => {
+    if (error?.field) document.getElementById(`${id}-${error.field}`)?.focus();
+  }, [error, id]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (saving) return;
+    setSaving(true);
+    try {
+      await onSave(draft);
+    } catch (reason) {
+      setError(reason && typeof reason === "object" && "message" in reason ? reason as ProfileFieldError : { field: null, message: String(reason) });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form
+      className="profile-editor"
+      aria-label={initial.id ? `Edit ${initial.name}` : "New profile"}
+      noValidate
+      onSubmit={(event) => void submit(event)}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); }
+      }}
+    >
+      <div className="profile-editor__head">
+        <ProfileIcon kind="custom" accent={HEX_COLOR.test(accent) ? accent : undefined} size={20} />
+        <span className="row__label">{initial.id ? "Edit profile" : "New profile"}</span>
+      </div>
+
+      <EditorField id={`${id}-name`} label="Name" error={errorFor("name")}>
+        <input id={`${id}-name`} className="field" value={draft.name} maxLength={60} autoFocus spellCheck={false} placeholder="Python" onChange={set("name")} {...invalid("name")} />
+      </EditorField>
+
+      <EditorField id={`${id}-executable`} label="Program" error={errorFor("executable")} note="A full path, or the name of a program on PATH. Accepts %VARIABLES%.">
+        <input id={`${id}-executable`} className="field field--mono" value={draft.executable} maxLength={1024} spellCheck={false} placeholder="C:\Python313\python.exe" onChange={set("executable")} {...invalid("executable")} />
+      </EditorField>
+
+      <EditorField id={`${id}-arguments`} label="Arguments" error={errorFor("arguments")}>
+        <input id={`${id}-arguments`} className="field field--mono" value={draft.arguments} maxLength={4096} spellCheck={false} placeholder="-NoExit -File &quot;C:\Scripts\start.ps1&quot;" onChange={set("arguments")} {...invalid("arguments")} />
+        {!errorFor("arguments") && <ArgumentPreview line={draft.arguments} />}
+      </EditorField>
+
+      <EditorField id={`${id}-cwd`} label="Starting folder" error={errorFor("cwd")} note="Leave empty to use the starting folder above. Accepts ~ and %VARIABLES%.">
+        <input id={`${id}-cwd`} className="field field--mono" value={draft.cwd} maxLength={1024} spellCheck={false} placeholder="Default starting folder" onChange={set("cwd")} {...invalid("cwd")} />
+      </EditorField>
+
+      <EditorField id={`${id}-accent`} label="Color" error={errorFor("accent")}>
+        <div className="swatches" role="radiogroup" aria-labelledby={`${id}-accent-label`} id={`${id}-accent`}>
+          {accentSwatches.map((color) => (
+            <button key={color} type="button" role="radio" aria-checked={accent === color} aria-label={color} className="swatch" style={{ background: color }} onClick={() => setDraft((current) => ({ ...current, accent: color }))} />
+          ))}
+          <label className="swatch swatch--custom" title="Custom color">
+            <input type="color" value={HEX_COLOR.test(accent) ? accent : "#9aa3ab"} onChange={(event) => setDraft((current) => ({ ...current, accent: event.target.value }))} aria-label="Custom profile color" />
+          </label>
+        </div>
+      </EditorField>
+
+      <div className="profile-editor__footer">
+        {error && error.field === null && <p className="field-note field-note--error" role="alert">{error.message}</p>}
+        <div className="button-row">
+          <button className="button" type="button" onClick={onCancel}>Cancel</button>
+          <button className="button button--primary" type="submit" disabled={saving}>{initial.id ? "Save" : "Add profile"}</button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+/** The user's own profiles, with an inline editor to add, change and remove them. */
+function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onProfilesChanged }: { profiles: TerminalProfile[]; defaultProfileId: string; onDefaultRemoved: () => void; onProfilesChanged: () => Promise<void> }) {
+  const [entries, setEntries] = useState<CustomProfile[] | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    listCustomProfiles()
+      .then((list) => { if (current) setEntries(list); })
+      .catch((error: unknown) => { if (current) { setEntries([]); setProblem(String(error)); } });
+    return () => { current = false; };
+  }, []);
+
+  if (!entries) return null;
+
+  const detected = new Map(profiles.map((profile) => [profile.id, profile]));
+  const unusedAccent = accentSwatches.find((color) => !entries.some((entry) => entry.accent === color)) ?? accentSwatches[0]!;
+
+  const save = async (draft: CustomProfileDraft) => {
+    const saved = await saveCustomProfile(draft);
+    setEntries((current) => {
+      const list = current ?? [];
+      return list.some((entry) => entry.id === saved.id) ? list.map((entry) => entry.id === saved.id ? saved : entry) : [...list, saved];
+    });
+    setEditing(null);
+    await onProfilesChanged();
+  };
+
+  const remove = async (id: string) => {
+    try {
+      await deleteCustomProfile(id);
+      setEntries((current) => (current ?? []).filter((entry) => entry.id !== id));
+      setRemoving(null);
+      setProblem(null);
+      if (defaultProfileId === id) onDefaultRemoved();
+      await onProfilesChanged();
+    } catch (error) {
+      setProblem(String(error));
+    }
+  };
+
+  const editorFor = (entry?: CustomProfile) => (
+    <ProfileEditor
+      key={entry?.id ?? NEW_PROFILE}
+      initial={entry
+        ? { id: entry.id, name: entry.name, executable: entry.executable, arguments: entry.arguments, cwd: entry.cwd ?? "", accent: entry.accent }
+        : { name: "", executable: "", arguments: "", cwd: "", accent: unusedAccent }}
+      onSave={save}
+      onCancel={() => setEditing(null)}
+    />
+  );
+
+  return (
+    <Group title="Custom profiles" description="Open any program in a tab, with its own arguments, folder and color.">
+      {entries.map((entry) => {
+        if (editing === entry.id) return editorFor(entry);
+        const available = detected.get(entry.id)?.available ?? true;
+        const command = [entry.executable, entry.arguments].filter(Boolean).join(" ");
+        return (
+          <div key={entry.id} className={`shell-row shell-row--actions ${available ? "" : "is-missing"}`}>
+            <ProfileIcon kind="custom" accent={entry.accent} size={20} />
+            <div className="row__text">
+              <span className="row__label">{entry.name}</span>
+              <span className={`row__description ${available ? "" : "row__description--warning"}`} title={command}>{available ? command : `Program not found: ${entry.executable}`}</span>
+            </div>
+            {removing === entry.id
+              ? <div className="button-row">
+                  <button className="button" type="button" onClick={() => setRemoving(null)}>Cancel</button>
+                  <button className="button button--danger" type="button" autoFocus onClick={() => void remove(entry.id)}>Remove</button>
+                </div>
+              : <div className="shell-row__actions">
+                  <button className="icon-button" type="button" aria-label={`Edit ${entry.name}`} title="Edit" disabled={editing !== null} onClick={() => { setEditing(entry.id); setRemoving(null); }}><Pencil size={15} strokeWidth={1.8} /></button>
+                  <button className="icon-button" type="button" aria-label={`Remove ${entry.name}`} title="Remove" disabled={editing !== null} onClick={() => setRemoving(entry.id)}><Trash size={15} strokeWidth={1.8} /></button>
+                </div>}
+          </div>
+        );
+      })}
+      {editing === NEW_PROFILE
+        ? editorFor()
+        : <div className="row">
+            <div className="row__text">
+              <span className="row__label">{entries.length ? "Add another profile" : "Add a profile"}</span>
+              <span className={`row__description ${problem ? "row__description--error" : ""}`}>{problem ?? (entries.length >= 50 ? "You can have up to 50 custom profiles." : "For example a REPL, a project shell or a remote session.")}</span>
+            </div>
+            <div className="row__control">
+              <button className="button" type="button" disabled={editing !== null || entries.length >= 50} onClick={() => { setEditing(NEW_PROFILE); setRemoving(null); }}><Plus size={14} />Add profile</button>
+            </div>
+          </div>}
+    </Group>
+  );
+}
+
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -365,28 +601,29 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
 
               {page === "profiles" && <>
                 <Group>
-                  <Row label="Default shell" description="Opened by the + button and at startup.">
+                  <Row label="Default profile" description="Opened by the + button and at startup.">
                     <select className="field field--select" value={available.some((profile) => profile.id === preferences.defaultProfileId) ? preferences.defaultProfileId : ""} onChange={(event) => patch("defaultProfileId", event.target.value)}>
                       <option value="">Automatic{available[0] ? ` (${available[0].name})` : ""}</option>
-                      {available.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                      {groupProfiles(available).map(({ group, profiles: members }) => {
+                        const options = members.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>);
+                        return group === "shell" ? options : <optgroup key={group} label={profileGroupLabels[group]}>{options}</optgroup>;
+                      })}
                     </select>
                   </Row>
                   <Row label="Starting folder" description="Leave empty for your user folder. Accepts ~ and %VARIABLES%." stacked>
                     <input className="field" value={preferences.workingDirectory} spellCheck={false} placeholder="%USERPROFILE%\Projects" onChange={(event) => patch("workingDirectory", event.target.value)} />
                   </Row>
                 </Group>
-                <Group title="Detected on this PC">
-                  {profiles.map((profile) => (
-                    <div key={profile.id} className={`shell-row ${profile.available ? "" : "is-missing"}`}>
-                      <ProfileIcon kind={profile.kind} size={20} />
-                      <div className="row__text">
-                        <span className="row__label">{profile.name}</span>
-                        <span className="row__description" title={profile.executable}>{profile.available ? profile.executable : "Not installed"}</span>
-                      </div>
-                      {profile.available && <span className="badge"><Check size={12} strokeWidth={2.4} />Ready</span>}
-                    </div>
-                  ))}
-                </Group>
+                <CustomProfilesGroup profiles={profiles} defaultProfileId={preferences.defaultProfileId} onDefaultRemoved={() => patch("defaultProfileId", "")} onProfilesChanged={onProfilesChanged} />
+                {groupProfiles(profiles).filter(({ group }) => group !== "custom").map(({ group, profiles: members }) => (
+                  <Group
+                    key={group}
+                    title={group === "shell" ? "Detected on this PC" : profileGroupLabels[group]}
+                    description={group === "wsl" ? "One profile for each installed distribution." : group === "ssh" ? "Hosts from your ~/.ssh/config. Edit that file to add more." : undefined}
+                  >
+                    {members.map((profile) => <ProfileRow key={profile.id} profile={profile} />)}
+                  </Group>
+                ))}
               </>}
 
               {page === "keyboard" && <>

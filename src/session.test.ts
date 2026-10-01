@@ -1,17 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { paneIds, paneLeaf, splitPane } from "./layout";
+import { paneIds, paneLeaf, splitPane, type LayoutNode } from "./layout";
 import { previewProfiles } from "./profiles";
 import { loadSession, saveSession } from "./session";
-import type { TerminalTab } from "./types";
+import type { TerminalProfile, TerminalTab } from "./types";
 
 const [nebula, pwsh] = previewProfiles as [typeof previewProfiles[0], typeof previewProfiles[0]];
+const custom: TerminalProfile = { id: "custom:0b9d4e63-58a2-4f1b-a7c4-2e5d9f8a6b10", name: "Python", kind: "custom", available: true, accent: "#3fb27f" };
+const debian = previewProfiles.find((profile) => profile.id === "wsl:Debian")!;
+
+function tab(...profiles: TerminalProfile[]): TerminalTab {
+  const panes = profiles.map((profile, index) => ({ id: `p${index}`, profile }));
+  const layout = panes.slice(1).reduce<LayoutNode>((node, pane, index) => splitPane(node, panes[index]!.id, pane.id, "vertical"), paneLeaf(panes[0]!.id));
+  return { id: crypto.randomUUID(), title: profiles[0]!.name, panes, layout, activePaneId: panes[0]!.id };
+}
 
 beforeEach(() => {
   const store = new Map<string, string>();
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => store.get(key) ?? null,
-    setItem: (key: string, value: string) => store.set(key, value),
-    removeItem: (key: string) => store.delete(key),
+    setItem: (key: string, value: string) => void store.set(key, value),
+    removeItem: (key: string) => void store.delete(key),
   });
 });
 
@@ -69,5 +77,29 @@ describe("session", () => {
     expect(loadSession(previewProfiles)).toBeNull();
     localStorage.setItem("nebula-terminal.session.v3", "{");
     expect(loadSession(previewProfiles)).toBeNull();
+  });
+});
+
+describe("profiles in a saved session", () => {
+  it("restores WSL, SSH and custom profiles that still exist", () => {
+    const first = tab(debian, custom);
+    saveSession([first], first.id);
+    const restored = loadSession([...previewProfiles, custom])!;
+    expect(restored.tabs[0]!.panes.map((pane) => pane.profile.id)).toEqual(["wsl:Debian", custom.id]);
+  });
+
+  it("opens the first available shell in place of a removed custom profile", () => {
+    const first = tab(custom);
+    const second = tab(debian);
+    saveSession([first, second], second.id);
+    const restored = loadSession(previewProfiles)!;
+    expect(restored.tabs.map((restoredTab) => restoredTab.panes[0]!.profile.id)).toEqual(["nebula", "wsl:Debian"]);
+    expect(restored.activeTabId).toBe(restored.tabs[1]!.id);
+  });
+
+  it("does the same for a custom profile whose program is missing", () => {
+    const first = tab(custom);
+    saveSession([first], first.id);
+    expect(loadSession([...previewProfiles, { ...custom, available: false }])!.tabs[0]!.panes[0]!.profile.id).toBe("nebula");
   });
 });

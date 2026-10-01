@@ -27,10 +27,31 @@ scripts/             sidecar build, icon font subset, preview recording
 | File | Responsibility |
 | --- | --- |
 | `main.rs` | Builds the Tauri app, registers commands and the opener plugin, applies Mica. |
-| `profiles.rs` | Finds the supported shells, resolves a profile id to an executable and arguments, expands `~` and `%VAR%` in the starting folder. |
+| `profiles.rs` | Lists everything a tab can open (built-in shells, WSL distributions, SSH hosts, custom profiles), resolves a profile id to an executable and arguments, expands `~` and `%VAR%` in the starting folder. |
+| `wsl.rs` | Installed WSL distributions, read from `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. If that key is missing, it asks `wsl.exe -l -q` (UTF-16 output) with a 3 second limit. Docker Desktop's and Rancher Desktop's internal distributions are skipped. |
+| `ssh.rs` | `Host` names from `~/.ssh/config` and the files it includes (one level deep, wildcards allowed in file names). Patterns with `*`, `?` or `!` are skipped. |
+| `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
+| `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. |
 
-The webview cannot start arbitrary programs. It sends a **profile id** (`pwsh`, `cmd`, …), and Rust decides which executable that means. Unknown ids are rejected.
+The webview cannot start arbitrary programs. It sends a **profile id**, and Rust decides which executable that means:
+
+| Id | Runs |
+| --- | --- |
+| `nebula`, `pwsh`, `powershell`, `cmd`, `gitbash`, `wsl` | The built-in shells, found on disk or on PATH. |
+| `wsl:<distribution>` | `wsl.exe -d <distribution> --cd ~`, only if that distribution is installed. |
+| `ssh:<host>` | `ssh.exe <host>`, only if the host is in your ssh config and `ssh.exe` is on PATH. |
+| `custom:<uuid>` | The program and arguments saved for that profile. |
+
+Unknown ids are rejected. Distribution and host names must start with a letter or digit and contain only letters, digits, `.`, `_` and `-`, so they can never be read as options. With a custom starting folder, WSL profiles drop `--cd ~` and start in that folder.
+
+Detection runs on a blocking thread when the app starts and again after a custom profile is saved. The registry lookup, the ssh config and the custom profiles file are all local reads; the only thing that can take time is the `wsl.exe` fallback, and it runs in parallel with the rest.
+
+### Custom profiles
+
+Custom profiles are kept in `custom-profiles.json` in the app's config folder (`%APPDATA%\dev.awizz.nebula-terminal`). Only Rust writes that file, through a temporary file so it is never left half written. Saving checks every field: a name of up to 60 characters, a program that is either an absolute path to an existing file or a bare name found on PATH (`%VAR%` and `~` are expanded; relative paths with folders are refused), at most 64 arguments, a starting folder that exists, and a `#rrggbb` color. There can be 50 of them. Entries read back from the file are checked again, and a profile whose program has been uninstalled stays listed as unavailable instead of disappearing.
+
+The editor sends the arguments as one line. Rust splits it with the Windows rules, stores the list, and the editor shows the split result as you type (`split_arguments`). Starting a custom profile uses the stored entry only; the webview never sends a program or arguments to run.
 
 ## Nebula interpreter (`crates/nebula-sh/src`)
 
@@ -59,13 +80,15 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `App.tsx` | Workspace state: tabs, panes, menus, overlays, global shortcuts, persistence. |
 | `components/TerminalPane.tsx` | One xterm.js instance bound to one PTY session: input, clipboard, paste guard, search, exit state. |
 | `components/Titlebar.tsx` | Tabs, new-tab button, caption buttons. |
-| `components/SettingsPanel.tsx` | Every setting, grouped by page. |
+| `components/SettingsPanel.tsx` | Every setting, grouped by page, including the custom profile editor. |
 | `components/CommandPalette.tsx` | Fuzzy-searchable list of actions. |
 | `components/Menu.tsx` | Context menus and dropdowns. |
 | `themes.ts` | Terminal color schemes. The UI chrome is derived from them in CSS. |
 | `preferences.ts` | Defaults, validation and migration of saved settings; theme import and export. |
 | `layout.ts` | The split layout of a tab as a tree: split, close, resize, find the pane next to another one, and validate a saved tree. |
-| `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. |
+| `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. A pane whose profile no longer exists opens the default profile instead. |
+| `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
+| `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
 | `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…). |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
@@ -86,12 +109,12 @@ Splitting a pane in the direction of its parent adds a sibling instead of nestin
 
 ### Saved data
 
-Settings and the tab layout are stored in the webview's local storage under the `nebula-terminal.*` keys. Everything read back from storage, or from an imported theme file, goes through validation first (`sanitizePreferences`, `loadSession`). Theme files only carry visual settings, never paths or shortcuts.
+Settings and the tab layout are stored in the webview's local storage under the `nebula-terminal.*` keys. Custom profiles are the exception: they live in a file that only Rust writes (see above), because they decide what runs. Everything read back from storage, or from an imported theme file, goes through validation first (`sanitizePreferences`, `loadSession`). Theme files only carry visual settings, never paths or shortcuts.
 
 ## Security
 
 - The capability file (`src-tauri/capabilities/default.json`) grants only window controls and opening `http(s)` links.
-- Profiles are resolved in Rust. The UI never passes a command line.
+- Profiles are resolved in Rust. The UI never passes a command line. Custom profiles are the one way to run a program of your choice: they are validated and stored by Rust, and started by id.
 - Links in terminal output open only on `Ctrl+Click`.
 - Multi-line pastes are confirmed by default.
 - Process output is rendered by xterm.js as text, never as HTML.

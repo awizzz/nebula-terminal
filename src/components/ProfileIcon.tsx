@@ -1,8 +1,39 @@
+import { readableOn } from "../color";
 import type { ProfileKind } from "../types";
 
-/** Small monochrome-friendly glyphs that identify a shell in tabs and menus. */
-export default function ProfileIcon({ kind, size = 16 }: { kind: ProfileKind; size?: number }) {
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/**
+ * Small monochrome-friendly glyphs that identify a shell in tabs and menus. Custom
+ * profiles are drawn in their own accent color.
+ */
+export default function ProfileIcon({ kind, accent, size = 16 }: { kind: ProfileKind; accent?: string; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 16 16", "aria-hidden": true, className: "profile-icon" } as const;
+
+  if (kind === "custom") {
+    const fill = accent && HEX_COLOR.test(accent) ? accent : "#9aa3ab";
+    const ink = readableOn(fill);
+    return (
+      <svg {...common}>
+        <rect x="1" y="2" width="14" height="12" rx="2.4" fill={fill} />
+        <path d="m4.2 6 2.4 2-2.4 2" fill="none" stroke={ink} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M8.2 10.4h3.6" stroke={ink} strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (kind === "ssh") {
+    return (
+      <svg {...common}>
+        <rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#2b6b62" />
+        <g fill="none" stroke="#eef6f4" strokeWidth="1.05">
+          <circle cx="8" cy="8" r="4.7" />
+          <ellipse cx="8" cy="8" rx="2" ry="4.7" />
+          <path d="M3.3 8h9.4" strokeLinecap="round" />
+        </g>
+      </svg>
+    );
+  }
 
   if (kind === "nebula") {
     return (

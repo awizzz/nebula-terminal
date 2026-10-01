@@ -75,6 +75,11 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
     };
   }, [onClose]);
 
+  // Long menus scroll; keep the keyboard selection in view.
+  useEffect(() => {
+    ref.current?.querySelector(".menu__item.is-active")?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
   const move = (delta: number) => {
     if (!items.some((item) => !item.disabled)) return;
     let next = active;
