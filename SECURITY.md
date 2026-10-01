@@ -12,7 +12,7 @@ Include the Nebula Terminal version, the Windows version, how to reproduce the p
 
 ## What Nebula Terminal stores
 
-Settings and the tab layout live in the WebView2 profile of the app on your machine. Nothing is sent anywhere. Command history belongs to your shell (PowerShell's PSReadLine, bash's `.bash_history`…), not to Nebula Terminal.
+Settings and the tab layout live in the WebView2 profile of the app on your machine. Nothing is sent anywhere. Command history belongs to each shell: Nebula keeps it in `%APPDATA%\Nebula\history.txt`, PowerShell in PSReadLine's file, bash in `.bash_history`. Nebula also runs `~/.nebularc` at startup, so treat that file like any other script.
 
 ## Design choices that matter for security
 

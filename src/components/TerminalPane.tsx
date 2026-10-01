@@ -7,6 +7,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openExternal } from "../external";
 import { registerPane } from "../paneRegistry";
+import { previewSession } from "../preview-session";
 import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
 
@@ -28,6 +29,11 @@ interface TerminalPaneProps {
 
 type ConnectionState = "starting" | "ready" | "closed" | "preview";
 
+/** Falls back to the bundled Nerd Font icons for glyphs the user's font lacks. */
+function withSymbols(fontFamily: string): string {
+  return `${fontFamily}, "Nebula Symbols"`;
+}
+
 function quoteDroppedPath(path: string): string {
   return `"${path.replaceAll('"', '\\"')}"`;
 }
@@ -36,27 +42,40 @@ function lineCount(text: string): number {
   return text.replace(/\r\n/g, "\n").replace(/[\r\n]+$/, "").split(/[\r\n]/).length;
 }
 
-const PREVIEW_PROMPT = "\x1b[34mPS\x1b[0m C:\\Users\\you> ";
+/** Nebula's prompt as the real interpreter draws it (see crates/nebula-sh/src/prompt.rs). */
+const NEBULA_PROMPT = "\x1b[1;34m~/projects/app\x1b[0m \x1b[2mon\x1b[0m \x1b[1;35m\ue725 main\x1b[0m \x1b[33m!1\x1b[0m \x1b[2m?1\x1b[0m\r\n\x1b[1;32m❯\x1b[0m ";
+const POWERSHELL_PROMPT = "\x1b[34mPS\x1b[0m C:\\Users\\you> ";
 
-/** Browser-only stand-in for a shell. `#screenshot` drops the notice for documentation images. */
+function previewPrompt(profile: TerminalProfile): string {
+  return profile.kind === "nebula" ? NEBULA_PROMPT : POWERSHELL_PROMPT;
+}
+
+/** Colors a command line the way Nebula's highlighter does. */
+function highlightCommand(line: string): string {
+  return line.split(" ").map((word, index) => {
+    if (index === 0) return `\x1b[1;32m${word}\x1b[0m`;
+    if (word.startsWith("-")) return `\x1b[36m${word}\x1b[0m`;
+    return word;
+  }).join(" ");
+}
+
+/**
+ * Browser-only stand-in for a shell: replays real Nebula output recorded by
+ * scripts/record-preview.py. `#screenshot` drops the notice for documentation images.
+ */
 function writePreview(terminal: Terminal, profile: TerminalProfile) {
   if (location.hash !== "#screenshot") {
     terminal.writeln(`\x1b[2m${profile.name} · browser preview. Shells only run inside the desktop app.\x1b[0m`);
     terminal.writeln("");
   }
-  terminal.write(`${PREVIEW_PROMPT}git status --short\r\n`);
-  terminal.writeln(" \x1b[31mM\x1b[0m src/App.tsx");
-  terminal.writeln(" \x1b[31mM\x1b[0m src/styles.css");
-  terminal.writeln("\x1b[32m??\x1b[0m src/themes.ts");
-  terminal.writeln("");
-  terminal.write(`${PREVIEW_PROMPT}npm test\r\n`);
-  terminal.writeln("");
-  terminal.writeln(" \x1b[32m✓\x1b[0m src/keys.test.ts \x1b[2m(8 tests)\x1b[0m");
-  terminal.writeln(" \x1b[32m✓\x1b[0m src/preferences.test.ts \x1b[2m(8 tests)\x1b[0m");
-  terminal.writeln("");
-  terminal.writeln(" \x1b[1mTests\x1b[0m  \x1b[1;32m16 passed\x1b[0m \x1b[2m(16)\x1b[0m");
-  terminal.writeln("");
-  terminal.write(PREVIEW_PROMPT);
+  if (profile.kind === "nebula") {
+    for (const { command, output } of previewSession) {
+      terminal.write(`${NEBULA_PROMPT}${highlightCommand(command)}\r\n`);
+      terminal.write(output.replace(/\n/g, "\r\n"));
+      terminal.write("\r\n");
+    }
+  }
+  terminal.write(previewPrompt(profile));
 }
 
 export default function TerminalPane({
@@ -113,7 +132,7 @@ export default function TerminalPane({
       cursorBlink: preferencesRef.current.cursorBlink,
       cursorStyle: preferencesRef.current.cursorStyle,
       cursorInactiveStyle: "outline",
-      fontFamily: preferencesRef.current.fontFamily,
+      fontFamily: withSymbols(preferencesRef.current.fontFamily),
       fontSize: preferencesRef.current.fontSize,
       lineHeight: preferencesRef.current.lineHeight,
       scrollback: preferencesRef.current.scrollback,
@@ -175,9 +194,9 @@ export default function TerminalPane({
         }
         return;
       }
-      if (data === "\r") terminal.write(`\r\n${PREVIEW_PROMPT}`);
+      if (data === "\r") terminal.write(`\r\n${previewPrompt(profile)}`);
       else if (data === "\u007f") terminal.write("\b \b");
-      else if (!data.startsWith("\x1b") && data >= " ") terminal.write(data.replace(/\r?\n/g, `\r\n${PREVIEW_PROMPT}`));
+      else if (!data.startsWith("\x1b") && data >= " ") terminal.write(data.replace(/\r?\n/g, `\r\n${previewPrompt(profile)}`));
     };
 
     const writeInput = (data: string) => {
@@ -324,7 +343,7 @@ export default function TerminalPane({
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    terminal.options.fontFamily = preferences.fontFamily;
+    terminal.options.fontFamily = withSymbols(preferences.fontFamily);
     terminal.options.fontSize = preferences.fontSize;
     terminal.options.lineHeight = preferences.lineHeight;
     terminal.options.cursorStyle = preferences.cursorStyle;
@@ -418,7 +437,7 @@ export default function TerminalPane({
     if (!data) return;
     const sessionId = sessionRef.current;
     if (isTauri() && sessionId) void invoke("write_session", { sessionId, data }).catch(() => undefined);
-    else if (!isTauri()) terminalRef.current?.write(data.replace(/\r?\n/g, `\r\n${PREVIEW_PROMPT}`));
+    else if (!isTauri()) terminalRef.current?.write(data.replace(/\r?\n/g, `\r\n${previewPrompt(profile)}`));
     requestAnimationFrame(() => terminalRef.current?.focus());
   };
 

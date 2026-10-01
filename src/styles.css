@@ -81,6 +81,13 @@
   --tab-h: 28px;
 }
 
+/* Nerd Font icons used by the Nebula interpreter (ls, tree, prompt). Subset by scripts/subset-icons.py. */
+@font-face {
+  font-family: "Nebula Symbols";
+  src: url("./assets/fonts/nebula-symbols.woff2") format("woff2");
+  font-display: block;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 html { background: transparent; }

@@ -4,6 +4,20 @@ import type { ProfileKind } from "../types";
 export default function ProfileIcon({ kind, size = 16 }: { kind: ProfileKind; size?: number }) {
   const common = { width: size, height: size, viewBox: "0 0 16 16", "aria-hidden": true, className: "profile-icon" } as const;
 
+  if (kind === "nebula") {
+    return (
+      <svg {...common}>
+        <rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#1b1c20" />
+        <g transform="translate(8 8) rotate(-24)" fill="none" stroke="#efe8da" strokeWidth="1.1">
+          <ellipse rx="6.2" ry="2.1" strokeOpacity="0.85" />
+          <circle r="3.1" fill="#eea640" stroke="none" />
+          {/* Front half of the orbit, drawn over the planet. */}
+          <path d="M-6.2 0A6.2 2.1 0 0 0 6.2 0" strokeLinecap="round" />
+        </g>
+      </svg>
+    );
+  }
+
   if (kind === "pwsh" || kind === "powershell") {
     const fill = kind === "pwsh" ? "#2f6fdc" : "#245aa8";
     return (

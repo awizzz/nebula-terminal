@@ -4,9 +4,9 @@
 [![Security audit](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A terminal for Windows. Tabs, split panes, a command palette and a settings screen you can actually click through. It runs PowerShell, Command Prompt, Git Bash and WSL.
+A terminal for Windows with Linux commands built in. Tabs, split panes, a command palette and a settings screen you can actually click through. It opens **Nebula**, its own command interpreter, by default, and runs PowerShell, Command Prompt, Git Bash and WSL too.
 
-![Nebula Terminal with two panes and the Nebula theme](docs/images/terminal.png)
+![Nebula Terminal running the Nebula interpreter](docs/images/terminal.png)
 
 ## Install
 
@@ -24,9 +24,35 @@ Get-FileHash '.\Nebula Terminal_1.0.0_x64-setup.exe' -Algorithm SHA256
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.
 
+## Nebula, the built-in interpreter
+
+If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`, `grep`, `find`, `head`, `tail`, `sort`, `wc`, `tree`, `ps`, `kill` and about 70 more commands work on Windows with the options you're used to. Windows programs like `git`, `node`, `python` or `code` run as usual.
+
+```text
+~/projects/app on  main !1 ?1
+❯ grep -rn TODO src | head -5
+```
+
+- **The real GNU behaviour.** The core commands come from [uutils coreutils](https://github.com/uutils/coreutils), a faithful MIT-licensed rewrite of GNU coreutils. `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open` are written for Nebula.
+- **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
+- **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept), and Tab completes commands and paths.
+- **`ls` and `tree` with icons and colors** on screen. When the output goes to a file or another command, it stays plain.
+- **Helpful errors.** Typing `gti` suggests `git`, and `dir`, `cls` or `findstr` point to `ls`, `clear` and `grep`.
+
+Your history is saved in `%APPDATA%\Nebula\history.txt`. Aliases and variables can go in `~/.nebularc`, which runs at startup:
+
+```sh
+alias gs='git status'
+export EDITOR=code
+```
+
+`nebula-sh.exe` also works on its own in Windows Terminal or any other terminal. Set `NEBULA_ICONS=1` there if your font includes Nerd Font icons.
+
+Not supported yet: `if`/`for`/`while` scripting, functions and background jobs (`&`). For scripts, use PowerShell, Git Bash or WSL.
+
 ## What you get
 
-- **Your shells, detected automatically.** PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL. The first one found becomes the default, and you can pick another in Settings.
+- **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL. Nebula is the default, and you can pick another in Settings.
 - **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Split a tab into up to four panes and resize them by dragging.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **Nine themes**, including light ones. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
@@ -62,7 +88,7 @@ You need Node.js 24, Rust 1.98.1 (pinned in `rust-toolchain.toml`), the MSVC bui
 git clone https://github.com/awizzz/nebula-shell.git
 cd nebula-shell
 npm ci
-npm run tauri dev      # run with hot reload
+npm run tauri dev      # builds the Nebula interpreter, then runs the app with hot reload
 npm run tauri build    # build the installers into src-tauri/target/release/bundle
 ```
 
@@ -70,10 +96,6 @@ npm run tauri build    # build the installers into src-tauri/target/release/bund
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs and [docs/architecture.md](docs/architecture.md) for how the code is organized.
 
-## About Nebula Shell
-
-This repository used to also contain **Nebula Shell**, a native command shell written in Rust. It has been discontinued so the project can focus on the terminal. Its last release, [v0.5.0](https://github.com/awizzz/nebula-shell/releases/tag/v0.5.0), and its source code (tag `v0.5.0`) remain available. Nebula Terminal does not need it.
-
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Nebula ships [uutils coreutils](https://github.com/uutils/coreutils) (MIT) and icons from [Nerd Fonts](https://www.nerdfonts.com) (MIT, see `src/assets/fonts/LICENSE-nerd-fonts.txt`).

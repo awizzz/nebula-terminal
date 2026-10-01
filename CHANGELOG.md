@@ -2,10 +2,12 @@
 
 ## 1.0.0
 
-Nebula Terminal is now the whole project and a standalone Windows terminal. Nebula Shell is discontinued; its last release stays available as `v0.5.0`.
+Nebula Terminal is now the whole project. The old standalone Nebula Shell (last release `v0.5.0`) is replaced by **Nebula**, a new interpreter that ships inside the terminal.
 
 ### Added
 
+- **Nebula**, a Linux-style command interpreter and the default shell: GNU coreutils from uutils (`ls`, `cp`, `rm`, `head`, `sort`, `wc`… about 70 commands), plus `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open`; pipes, `&&`/`||`, redirections, variables, `$(…)`, globs, aliases, `!!`; a prompt with Git status, command duration and exit code; colors while typing, history suggestions, Tab completion; `ls`/`tree` icons; "did you mean" and Windows-to-Linux command tips
+- bundled Nerd Font icon subset so icons render without installing a font
 - PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL are detected automatically; the first one found is the default
 - nine themes with full 16-color palettes, including two light themes; the window follows the theme
 - right-click menus on the terminal and on tabs
@@ -43,7 +45,7 @@ Nebula Terminal is now the whole project and a standalone Windows terminal. Nebu
 
 ### Removed
 
-- the bundled Nebula Shell and its profile
+- the old Nebula Shell (v0.5) and its separate installer
 - the "atmosphere" glow setting
 
 ## 0.2.0 (preview)

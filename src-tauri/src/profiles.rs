@@ -25,6 +25,7 @@ pub struct ResolvedProfile {
 /// Built-in profiles in order of preference. The first available one is the
 /// default for a fresh install.
 const PROFILES: &[(&str, &str, &str)] = &[
+    ("nebula", "Nebula", "#e8a33d"),
     ("pwsh", "PowerShell", "#5b8def"),
     ("powershell", "Windows PowerShell", "#3f7cc4"),
     ("cmd", "Command Prompt", "#9aa3ab"),
@@ -96,8 +97,36 @@ fn find_git_bash() -> Option<PathBuf> {
         .find(|candidate| candidate.is_file())
 }
 
+/// Places where the bundled `nebula-sh` interpreter can be: next to the app (installed
+/// builds, where Tauri puts sidecars), the sidecar staging folder, or a Cargo target
+/// folder during development. `NEBULA_SH` overrides them all.
+fn nebula_candidates(app_dir: &Path) -> Vec<PathBuf> {
+    let name = if cfg!(windows) {
+        "nebula-sh.exe"
+    } else {
+        "nebula-sh"
+    };
+    let mut candidates = vec![app_dir.join(name)];
+    for ancestor in app_dir.ancestors().take(6) {
+        candidates.push(ancestor.join("target").join("debug").join(name));
+        candidates.push(ancestor.join("target").join("release").join(name));
+    }
+    candidates
+}
+
+fn find_nebula() -> Option<PathBuf> {
+    if let Some(explicit) = env::var_os("NEBULA_SH").map(PathBuf::from) {
+        return explicit.is_file().then_some(explicit);
+    }
+    let exe = env::current_exe().ok()?;
+    nebula_candidates(exe.parent()?)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
 fn locate(id: &str) -> Option<ResolvedProfile> {
     let (executable, args): (Option<PathBuf>, &[&str]) = match id {
+        "nebula" => (find_nebula(), &[]),
         "pwsh" => (find_executable("pwsh.exe"), &["-NoLogo"]),
         "powershell" => (find_executable("powershell.exe"), &["-NoLogo"]),
         "cmd" => (find_executable("cmd.exe"), &[]),
@@ -226,8 +255,21 @@ mod tests {
     }
 
     #[test]
+    fn looks_for_nebula_next_to_the_app_first() {
+        let app = Path::new("/apps/nebula");
+        let candidates = nebula_candidates(app);
+        let name = if cfg!(windows) {
+            "nebula-sh.exe"
+        } else {
+            "nebula-sh"
+        };
+        assert_eq!(candidates[0], app.join(name));
+        assert!(candidates.contains(&Path::new("/target/debug").join(name)));
+    }
+
+    #[test]
     fn rejects_unknown_profiles() {
-        assert!(resolve_profile("nebula", false)
+        assert!(resolve_profile("cmd.exe", false)
             .unwrap_err()
             .contains("Unknown"));
         assert!(resolve_profile("anything.exe", true).is_err());

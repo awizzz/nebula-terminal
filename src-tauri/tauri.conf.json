@@ -4,9 +4,9 @@
   "version": "1.0.0",
   "identifier": "dev.awizz.nebula-terminal",
   "build": {
-    "beforeDevCommand": "npm run dev",
+    "beforeDevCommand": "node scripts/build-sidecar.mjs && npm run dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "node scripts/build-sidecar.mjs --release && npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -41,7 +41,10 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "shortDescription": "A fast, good-looking terminal for Windows",
-    "longDescription": "Nebula Terminal is a Windows terminal for PowerShell, Command Prompt, Git Bash and WSL, with tabs, split panes and live visual customization."
+    "shortDescription": "A good-looking terminal for Windows with Linux commands built in",
+    "longDescription": "Nebula Terminal runs Nebula, a Linux-style command interpreter, alongside PowerShell, Command Prompt, Git Bash and WSL, with tabs, split panes and live visual customization.",
+    "externalBin": [
+      "binaries/nebula-sh"
+    ]
   }
 }

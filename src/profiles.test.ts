@@ -7,8 +7,8 @@ describe("pickProfile", () => {
   });
 
   it("falls back to the first installed shell", () => {
-    expect(pickProfile(previewProfiles, "wsl")?.id).toBe("pwsh");
-    expect(pickProfile(previewProfiles, "")?.id).toBe("pwsh");
+    expect(pickProfile(previewProfiles, "wsl")?.id).toBe("nebula");
+    expect(pickProfile(previewProfiles, "")?.id).toBe("nebula");
     expect(pickProfile(previewProfiles.map((profile) => ({ ...profile, available: profile.id === "gitbash" })))?.id).toBe("gitbash");
   });
 

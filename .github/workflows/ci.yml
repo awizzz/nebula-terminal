@@ -44,22 +44,27 @@ jobs:
       - name: Test frontend
         run: npm test
 
+      - name: Stage the Nebula interpreter for Tauri
+        run: node scripts/build-sidecar.mjs
+
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+        run: cargo fmt --all -- --check
 
-      - name: Lint Rust backend
-        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+      - name: Lint Rust
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
-      - name: Test Rust backend
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+      - name: Test Rust (app backend and Nebula interpreter)
+        run: cargo test --locked --workspace --all-targets
 
       - name: Build desktop executable
         run: npm run tauri build -- --no-bundle
 
-      - name: Upload executable
+      - name: Upload executables
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: Nebula-Terminal-windows-x64
-          path: src-tauri/target/release/nebula-terminal.exe
+          path: |
+            target/release/nebula-terminal.exe
+            target/release/nebula-sh.exe
           if-no-files-found: error
           retention-days: 14

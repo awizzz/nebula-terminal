@@ -4,6 +4,9 @@ Nebula Terminal 1.0 covers daily use: shells, tabs, panes, themes, settings and 
 
 ## Next
 
+- **Nebula scripting.** `if`, `for`, `while` and functions, so simple `.sh` scripts run without Git Bash.
+- **Smarter completion in Nebula.** Options of common commands, Git branches, environment variables.
+
 - **Custom profiles.** Add any executable with its own arguments, folder, icon and environment, plus SSH hosts and one profile per WSL distribution.
 - **Real split layouts.** Mix horizontal and vertical splits in the same tab instead of one direction per tab.
 - **Rename tabs** and give a tab its own color.

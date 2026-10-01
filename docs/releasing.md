@@ -4,11 +4,11 @@ Releases are built by `.github/workflows/release.yml` on a Windows runner. Pushi
 
 ## 1. Bump the version
 
-The version lives in three files and they must match:
+The version lives in four files and they must match:
 
 - `package.json` (also run `npm install` so `package-lock.json` follows)
 - `src-tauri/tauri.conf.json`
-- `src-tauri/Cargo.toml` (then `cargo check --manifest-path src-tauri/Cargo.toml` to update `Cargo.lock`)
+- `src-tauri/Cargo.toml` and `crates/nebula-sh/Cargo.toml` (then `cargo check --workspace` to update `Cargo.lock`)
 
 Add a `## <version>` section at the top of `CHANGELOG.md`. The workflow uses it as the release notes.
 
@@ -28,7 +28,7 @@ Instead of tagging, you can run the **Release** workflow from the Actions tab wi
 ```text
 Nebula Terminal_<version>_x64-setup.exe          NSIS installer
 Nebula Terminal_<version>_x64_en-US.msi          MSI installer
-Nebula-Terminal-<version>-windows-x64-portable.zip
+Nebula-Terminal-<version>-windows-x64-portable.zip   includes nebula-sh.exe
 SHA256SUMS.txt
 ```
 

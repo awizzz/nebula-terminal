@@ -49,10 +49,12 @@ jobs:
         run: |
           $package = Get-Content package.json | ConvertFrom-Json
           $config = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
-          $cargo = Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
           $version = [string]$package.version
           if ($version -ne [string]$config.version) { throw "package.json and tauri.conf.json versions differ." }
-          if ($version -ne $cargo.Matches[0].Groups[1].Value) { throw "package.json and src-tauri/Cargo.toml versions differ." }
+          foreach ($manifest in @('src-tauri/Cargo.toml', 'crates/nebula-sh/Cargo.toml')) {
+            $cargo = Select-String -Path $manifest -Pattern '^version = "(.+)"' | Select-Object -First 1
+            if ($version -ne $cargo.Matches[0].Groups[1].Value) { throw "package.json and $manifest versions differ." }
+          }
 
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             $requested = '${{ inputs.version }}'.TrimStart('v')
@@ -78,9 +80,10 @@ jobs:
         run: |
           npm run build
           npm test
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-          cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
+          node scripts/build-sidecar.mjs
+          cargo fmt --all -- --check
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace --all-targets
 
       - name: Build installers
         run: npm run tauri build
@@ -89,14 +92,17 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          $target = 'src-tauri/target/release'
+          $target = 'target/release'
           $exe = Join-Path $target 'nebula-terminal.exe'
+          $shell = Join-Path $target 'nebula-sh.exe'
           if (-not (Test-Path $exe)) { throw 'nebula-terminal.exe was not built.' }
+          if (-not (Test-Path $shell)) { throw 'nebula-sh.exe was not built.' }
 
           New-Item -ItemType Directory -Force release | Out-Null
           $portable = "release/Nebula-Terminal-$version-windows-x64-portable"
           New-Item -ItemType Directory -Force $portable | Out-Null
           Copy-Item $exe (Join-Path $portable 'Nebula Terminal.exe')
+          Copy-Item $shell (Join-Path $portable 'nebula-sh.exe')
           Copy-Item README.md, LICENSE $portable
           Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -CompressionLevel Optimal
           Remove-Item -Recurse $portable

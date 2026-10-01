@@ -6,15 +6,15 @@ on:
     paths:
       - "package.json"
       - "package-lock.json"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
+      - "Cargo.lock"
+      - "**/Cargo.toml"
   pull_request:
     branches: [main]
     paths:
       - "package.json"
       - "package-lock.json"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
+      - "Cargo.lock"
+      - "**/Cargo.toml"
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
@@ -44,7 +44,6 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: Audit Rust dependencies
-        working-directory: src-tauri
         run: cargo audit
 
   npm:

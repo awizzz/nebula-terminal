@@ -11,7 +11,9 @@ npm ci
 npm run tauri dev
 ```
 
-For interface-only work, `npm run dev` serves the UI in a browser with a fake session, and you don't need Rust for it.
+For interface-only work, `npm run dev` serves the UI in a browser with a recorded session, and you don't need Rust for it.
+
+Working on the interpreter alone is quickest with `cargo run -p nebula-sh` in any terminal. `cargo test -p nebula-sh` runs its unit and end-to-end tests.
 
 ## Before opening a pull request
 
@@ -20,9 +22,10 @@ These are the checks CI runs:
 ```powershell
 npm run build                     # type-check and bundle the UI
 npm test                          # frontend unit tests
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-cargo test --locked --manifest-path src-tauri/Cargo.toml
+npm run sidecar                   # build nebula-sh; Tauri needs it before any cargo check of src-tauri
+cargo fmt --all -- --check
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo test --locked --workspace
 ```
 
 ## Guidelines
@@ -32,6 +35,8 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 - Every new action should get a command palette entry, and a shortcut if it's frequent.
 - Anything read from storage or from a file must be validated (see `sanitizePreferences`).
 - Don't add Tauri commands that run arbitrary programs. New shells are new profile ids resolved in `profiles.rs`.
+- Nebula commands should behave like their GNU counterparts. When output goes to a pipe or a file, print plain text (no colors, no icons).
+- New icons go in `crates/nebula-sh/src/icons.rs`; then rerun `scripts/subset-icons.py`.
 - Test behavior that can run without a real terminal (Rust unit tests, `*.test.ts`).
 - Commit lockfiles when dependencies change. Never commit build output, credentials or signing material.
 
