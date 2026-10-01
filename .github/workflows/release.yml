@@ -6,12 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish (for example 0.4.0)"
+        description: "Version to publish (for example 1.0.0)"
         required: true
         type: string
 
 permissions:
-  actions: read
   contents: write
   id-token: write
   attestations: write
@@ -23,31 +22,18 @@ concurrency:
 
 jobs:
   release:
+    name: Release / windows-x64
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Validate PowerShell scripts
-        shell: pwsh
-        run: |
-          $allErrors = @()
-          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
-            $tokens = $null
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile(
-              $_.FullName,
-              [ref]$tokens,
-              [ref]$errors
-            ) | Out-Null
-            $allErrors += @($errors)
-          }
-
-          if ($allErrors.Count -gt 0) {
-            $allErrors | ForEach-Object { Write-Error $_.Message }
-            exit 1
-          }
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+          cache: npm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
@@ -55,201 +41,103 @@ jobs:
           toolchain: 1.98.1
           components: rustfmt, clippy
 
-      - name: Validate release version
+      - name: Resolve version
         id: version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $metadata = cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json
-          $package = $metadata.packages | Where-Object { $_.name -eq 'nebula-shell' } | Select-Object -First 1
-          if (-not $package) { throw 'Could not find nebula-shell in Cargo metadata.' }
+          $package = Get-Content package.json | ConvertFrom-Json
+          $config = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
+          $cargo = Select-String -Path src-tauri/Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
+          $version = [string]$package.version
+          if ($version -ne [string]$config.version) { throw "package.json and tauri.conf.json versions differ." }
+          if ($version -ne $cargo.Matches[0].Groups[1].Value) { throw "package.json and src-tauri/Cargo.toml versions differ." }
 
-          $version = $package.version
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             $requested = '${{ inputs.version }}'.TrimStart('v')
-            if ($requested -ne $version) {
-              throw "Requested version '$requested' does not match Cargo.toml version '$version'."
-            }
+            if ($requested -ne $version) { throw "Requested version '$requested' does not match package version '$version'." }
             $tag = "v$requested"
           } else {
             $tag = '${{ github.ref_name }}'
-            if ($tag -ne "v$version") {
-              throw "Git tag '$tag' does not match Cargo.toml version 'v$version'."
-            }
+            if ($tag -ne "v$version") { throw "Tag '$tag' does not match package version 'v$version'." }
           }
+
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
 
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=$tag" >> $env:GITHUB_OUTPUT
-
-          $env:GH_TOKEN = '${{ github.token }}'
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            throw "Release $tag already exists."
-          }
+          "prerelease=$(($version -match '-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           exit 0
 
-      - name: Check formatting
-        run: cargo fmt -- --check
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Lint
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Test
-        run: cargo test --locked --all-targets
-
-      - name: Build release executable
-        run: cargo build --locked --release
-
-      - name: Prepare unsigned artifact
-        shell: pwsh
+      - name: Validate
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Copy-Item target/release/nebula.exe dist/Nebula.exe
+          npm run build
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --all-targets
 
-      - name: Upload unsigned artifact for signing
-        id: unsigned
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: Nebula-windows-x64-unsigned
-          path: dist/Nebula.exe
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Detect signing configuration
-        id: signing
-        shell: pwsh
-        env:
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-        run: |
-          $values = @(
-            $env:SIGNPATH_API_TOKEN,
-            $env:SIGNPATH_ORGANIZATION_ID,
-            $env:SIGNPATH_PROJECT_SLUG,
-            $env:SIGNPATH_SIGNING_POLICY_SLUG
-          )
-          $enabled = -not ($values | Where-Object { [string]::IsNullOrWhiteSpace($_) })
-          "enabled=$($enabled.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-
-      - name: Sign executable with SignPath
-        if: steps.signing.outputs.enabled == 'true'
-        uses: signpath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: ${{ github.workspace }}/signed
+      - name: Build installers
+        run: npm run tauri build
 
       - name: Prepare release files
-        id: files
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path release | Out-Null
-          $signed = '${{ steps.signing.outputs.enabled }}' -eq 'true'
-
-          if ($signed) {
-            $exe = Get-ChildItem -Path signed -Recurse -File -Filter Nebula.exe | Select-Object -First 1
-            if (-not $exe) { throw 'SignPath did not return Nebula.exe.' }
-            Copy-Item $exe.FullName release/Nebula.exe
-            $signature = Get-AuthenticodeSignature release/Nebula.exe
-            if ($signature.Status -ne 'Valid') {
-              throw "Authenticode verification failed: $($signature.Status) - $($signature.StatusMessage)"
-            }
-            "signed=true" >> $env:GITHUB_OUTPUT
-          } else {
-            Copy-Item dist/Nebula.exe release/Nebula.exe
-            "signed=false" >> $env:GITHUB_OUTPUT
-          }
-
-          $hash = (Get-FileHash release/Nebula.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  Nebula.exe" | Set-Content release/Nebula.exe.sha256 -Encoding ascii
-
           $version = '${{ steps.version.outputs.version }}'
-          $packageName = "Nebula-$version-windows-x64"
-          $packageDir = Join-Path release $packageName
-          New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
+          $target = 'src-tauri/target/release'
+          $exe = Join-Path $target 'nebula-terminal.exe'
+          if (-not (Test-Path $exe)) { throw 'nebula-terminal.exe was not built.' }
 
-          Copy-Item release/Nebula.exe (Join-Path $packageDir 'Nebula.exe')
-          Copy-Item README.md (Join-Path $packageDir 'README.md')
-          Copy-Item CHANGELOG.md (Join-Path $packageDir 'CHANGELOG.md')
-          Copy-Item LICENSE (Join-Path $packageDir 'LICENSE')
-          Copy-Item config.example.toml (Join-Path $packageDir 'config.example.toml')
-          Copy-Item scripts/install.ps1 (Join-Path $packageDir 'install.ps1')
-          Copy-Item scripts/uninstall.ps1 (Join-Path $packageDir 'uninstall.ps1')
+          New-Item -ItemType Directory -Force release | Out-Null
+          $portable = "release/Nebula-Terminal-$version-windows-x64-portable"
+          New-Item -ItemType Directory -Force $portable | Out-Null
+          Copy-Item $exe (Join-Path $portable 'Nebula Terminal.exe')
+          Copy-Item README.md, LICENSE $portable
+          Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -CompressionLevel Optimal
+          Remove-Item -Recurse $portable
 
-          $zipPath = "release/$packageName.zip"
-          Compress-Archive -Path "$packageDir/*" -DestinationPath $zipPath -CompressionLevel Optimal
-          $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$zipHash  $packageName.zip" | Set-Content "$zipPath.sha256" -Encoding ascii
+          $bundles = @()
+          $bundles += Get-ChildItem "$target/bundle/nsis" -File -Filter '*.exe' -ErrorAction SilentlyContinue
+          $bundles += Get-ChildItem "$target/bundle/msi" -File -Filter '*.msi' -ErrorAction SilentlyContinue
+          if ($bundles.Count -eq 0) { throw 'Tauri did not produce an installer.' }
+          foreach ($bundle in $bundles) { Copy-Item $bundle.FullName release/ }
 
-          Copy-Item scripts/install.ps1 release/install.ps1
-          Copy-Item scripts/uninstall.ps1 release/uninstall.ps1
+          Get-ChildItem release -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Add-Content release/SHA256SUMS.txt -Encoding ascii
+          }
 
           $lines = Get-Content CHANGELOG.md
-          $start = -1
-          $end = $lines.Count
+          $start = -1; $end = $lines.Count
           for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match "^## $([regex]::Escape($version))(\s|$)") {
-              $start = $i + 1
-              continue
-            }
-            if ($start -ge 0 -and $lines[$i] -match '^## ') {
-              $end = $i
-              break
-            }
+            if ($lines[$i] -match "^## $([regex]::Escape($version))(\s|$)") { $start = $i + 1; continue }
+            if ($start -ge 0 -and $lines[$i] -match '^## ') { $end = $i; break }
           }
-          if ($start -ge 0) {
-            $lines[$start..($end - 1)] | Set-Content release/release-notes.md -Encoding utf8
-          } else {
-            "Nebula $version" | Set-Content release/release-notes.md -Encoding utf8
-          }
+          if ($start -ge 0) { $lines[$start..($end - 1)] | Set-Content release-notes.md -Encoding utf8 }
+          else { "Nebula Terminal $version" | Set-Content release-notes.md -Encoding utf8 }
 
-      - name: Attest executable provenance
+      - name: Attest release files
+        if: github.event.repository.visibility == 'public'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
         with:
-          subject-path: release/Nebula.exe
-
-      - name: Attest portable package provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
-        with:
-          subject-path: release/Nebula-*-windows-x64.zip
-
-      - name: Upload final release artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: Nebula-windows-x64-release
-          path: |
-            release/Nebula.exe
-            release/Nebula.exe.sha256
-            release/Nebula-*-windows-x64.zip
-            release/Nebula-*-windows-x64.zip.sha256
-            release/install.ps1
-            release/uninstall.ps1
-          if-no-files-found: error
-          retention-days: 30
+          subject-path: |
+            release/*.exe
+            release/*.msi
+            release/*.zip
 
       - name: Publish GitHub Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = '${{ steps.version.outputs.tag }}'
-          $signed = '${{ steps.files.outputs.signed }}' -eq 'true'
-          $title = if ($signed) { "Nebula $tag" } else { "Nebula $tag (unsigned)" }
-          $zip = Get-ChildItem release -File -Filter 'Nebula-*-windows-x64.zip' | Select-Object -First 1
-          if (-not $zip) { throw 'Portable package was not created.' }
-
-          gh release create $tag `
-            release/Nebula.exe `
-            release/Nebula.exe.sha256 `
-            $zip.FullName `
-            "$($zip.FullName).sha256" `
-            release/install.ps1 `
-            release/uninstall.ps1 `
+          $flags = @()
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
+          $assets = Get-ChildItem release -File | ForEach-Object { $_.FullName }
+          gh release create '${{ steps.version.outputs.tag }}' $assets `
             --target '${{ github.sha }}' `
-            --title $title `
-            --notes-file release/release-notes.md
+            --title 'Nebula Terminal ${{ steps.version.outputs.version }}' `
+            --notes-file release-notes.md @flags

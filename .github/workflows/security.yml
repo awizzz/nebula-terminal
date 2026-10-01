@@ -4,13 +4,17 @@ on:
   push:
     branches: [main]
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
   pull_request:
     branches: [main]
     paths:
-      - "Cargo.toml"
-      - "Cargo.lock"
+      - "package.json"
+      - "package-lock.json"
+      - "src-tauri/Cargo.toml"
+      - "src-tauri/Cargo.lock"
   schedule:
     - cron: "17 5 * * 1"
   workflow_dispatch:
@@ -19,11 +23,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: security-${{ github.workflow }}-${{ github.ref }}
+  group: security-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   rustsec:
+    name: Rust dependencies
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -38,5 +43,22 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Audit dependencies
+      - name: Audit Rust dependencies
+        working-directory: src-tauri
         run: cargo audit
+
+  npm:
+    name: npm dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high --omit=dev

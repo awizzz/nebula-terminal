@@ -1,8 +1,8 @@
-/target/
-/dist/
-/release/
-*.pdb
-*.ilk
+node_modules/
+dist/
+*.tsbuildinfo
+src-tauri/target/
+src-tauri/gen/
 .vscode/
 .idea/
 .DS_Store

@@ -1,6 +1,5 @@
 * @awizzz
 
 /.github/workflows/ @awizzz
-/Cargo.toml @awizzz
-/Cargo.lock @awizzz
-/src/platform.rs @awizzz
+/src-tauri/capabilities/ @awizzz
+/src-tauri/src/pty.rs @awizzz
