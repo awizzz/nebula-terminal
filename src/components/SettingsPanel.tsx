@@ -38,7 +38,7 @@ const pages: Array<{ id: SettingsPage; label: string; icon: typeof Palette }> = 
 ];
 
 const monospaceFonts = ["Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Lucida Console"];
-const REPOSITORY = "https://github.com/awizzz/nebula-shell";
+const REPOSITORY = "https://github.com/awizzz/nebula-terminal";
 
 /**
  * Re-encodes a background image so it fits comfortably in local storage next to the

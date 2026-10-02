@@ -6,9 +6,9 @@ offer a product that competes with them (another terminal, a renamed copy, or
 Nebula inside a similar tool), whether you charge for it or not. Versions up to
 and including 1.1.0 were released under the MIT License and stay under it.
 
-Required Notice: Copyright (c) 2026 Awizz (https://github.com/awizzz/nebula-shell)
+Required Notice: Copyright (c) 2026 Awizz (https://github.com/awizzz/nebula-terminal)
 
-Licensor Line of Business: Nebula Terminal, a terminal application for Windows, and Nebula, a command interpreter (https://github.com/awizzz/nebula-shell)
+Licensor Line of Business: Nebula Terminal, a terminal application for Windows, and Nebula, a command interpreter (https://github.com/awizzz/nebula-terminal)
 
 Third-party code keeps its own license: uutils coreutils (MIT) and the Nerd
 Fonts symbols in src/assets/fonts (MIT, see LICENSE-nerd-fonts.txt there).
