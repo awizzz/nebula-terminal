@@ -10,7 +10,7 @@ A terminal for Windows with Linux commands built in. Tabs, split panes, a comman
 
 ## Install
 
-Download the latest installer from [Releases](https://github.com/awizzz/nebula-shell/releases/latest):
+Download the latest installer from [Releases](https://github.com/awizzz/nebula-terminal/releases/latest):
 
 - `Nebula.Terminal_<version>_x64-setup.exe`: per-user installer (recommended)
 - `Nebula.Terminal_<version>_x64_en-US.msi`: MSI for managed machines
@@ -98,13 +98,17 @@ Not supported: arrays, background jobs (`&`) and `trap`. For scripts that need t
 
 All of these except the last three rows can be changed in **Settings → Keyboard**. The recorder warns you when two actions share a shortcut.
 
+## What's next
+
+Opening new tabs in the current folder, jumping between commands, shell integration for PowerShell and bash, a French interface, winget packages, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+
 ## Build from source
 
 You need Node.js 24, Rust 1.98.1 (pinned in `rust-toolchain.toml`), the MSVC build tools and WebView2.
 
 ```powershell
-git clone https://github.com/awizzz/nebula-shell.git
-cd nebula-shell
+git clone https://github.com/awizzz/nebula-terminal.git
+cd nebula-terminal
 npm ci
 npm run tauri dev      # builds the Nebula interpreter, then runs the app with hot reload
 npm run tauri build    # build the installers into src-tauri/target/release/bundle

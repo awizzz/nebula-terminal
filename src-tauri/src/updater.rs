@@ -15,7 +15,7 @@ use std::{
 };
 use tauri::AppHandle;
 
-const REPOSITORY: &str = "awizzz/nebula-shell";
+const REPOSITORY: &str = "awizzz/nebula-terminal";
 /// Installers are around 10 MB; anything far bigger is not ours.
 const MAX_DOWNLOAD: u64 = 300 * 1024 * 1024;
 

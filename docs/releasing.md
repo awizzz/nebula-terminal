@@ -35,7 +35,7 @@ SHA256SUMS.txt
 When the repository is public, each file also gets a GitHub build-provenance attestation:
 
 ```powershell
-gh attestation verify '.\Nebula.Terminal_1.0.0_x64-setup.exe' --repo awizzz/nebula-shell
+gh attestation verify '.\Nebula.Terminal_1.0.0_x64-setup.exe' --repo awizzz/nebula-terminal
 ```
 
 Releases are not Authenticode-signed yet. Never commit certificates, signing tokens or private keys.

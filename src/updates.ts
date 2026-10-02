@@ -23,7 +23,7 @@ function previewUpdate(): UpdateInfo | null {
     version: "1.2.0",
     current: version,
     notes: "A made-up release for the browser preview.",
-    url: "https://github.com/awizzz/nebula-shell/releases/latest",
+    url: "https://github.com/awizzz/nebula-terminal/releases/latest",
     install: "installer",
   };
 }
