@@ -42,6 +42,10 @@ cargo test --locked --workspace
 
 See [docs/architecture.md](docs/architecture.md) for a map of the code.
 
+## License of contributions
+
+Nebula Terminal is source-available under the [PolyForm Shield License](LICENSE). By opening a pull request, you agree that your contribution is licensed under the same terms, and you allow the maintainer to use, change and relicense it as part of Nebula Terminal. Only send code you wrote or have the right to give under these terms.
+
 ## Reporting bugs
 
 Use the bug report template. Include your Nebula Terminal version (Settings → About), your Windows version, the shell, and the steps to reproduce. Remove usernames, tokens and private paths from anything you paste.

@@ -750,7 +750,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                 <Group>
                   <Row label="Source code"><button className="button" type="button" onClick={() => openExternal(REPOSITORY)}>Open on GitHub</button></Row>
                   <Row label="Found a bug?"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/issues/new/choose`)}>Report a problem</button></Row>
-                  <Row label="License"><span className="row__value">MIT</span></Row>
+                  <Row label="License"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/blob/main/LICENSE`)}>PolyForm Shield 1.0.0</button></Row>
                 </Group>
                 <Group title="Reset">
                   <Row label="Reset all settings" description="Theme, fonts, shells and shortcuts go back to their defaults.">

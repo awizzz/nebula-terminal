@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml)
 [![Security audit](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: PolyForm Shield](https://img.shields.io/badge/license-PolyForm%20Shield-blue.svg)](LICENSE)
 
 A terminal for Windows with Linux commands built in. Tabs, split panes, a command palette and a settings screen you can actually click through. It opens **Nebula**, its own command interpreter, by default, and runs PowerShell, Command Prompt, Git Bash and WSL too.
 
@@ -116,4 +116,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs and [docs/architec
 
 ## License
 
-[MIT](LICENSE). Nebula ships [uutils coreutils](https://github.com/uutils/coreutils) (MIT) and icons from [Nerd Fonts](https://www.nerdfonts.com) (MIT, see `src/assets/fonts/LICENSE-nerd-fonts.txt`).
+[PolyForm Shield 1.0.0](LICENSE). Use Nebula Terminal for anything, including at work, read the code and send pull requests; just don't use the code to build a product that competes with it. Versions up to 1.1.0 were released under the MIT License and stay under it.
+
+Nebula ships [uutils coreutils](https://github.com/uutils/coreutils) (MIT) and icons from [Nerd Fonts](https://www.nerdfonts.com) (MIT, see `src/assets/fonts/LICENSE-nerd-fonts.txt`).

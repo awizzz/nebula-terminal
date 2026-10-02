@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- the license is now the PolyForm Shield License 1.0.0: use the app for anything and contribute freely, but the code can't be used to build a competing product. Versions up to 1.1.0 stay under the MIT License
+
 ### Fixed
 
 - `SHA256SUMS.txt` lists files under the names GitHub publishes them with (`Nebula.Terminal_…` instead of `Nebula Terminal_…`), which the in-app updater needs to verify a download
