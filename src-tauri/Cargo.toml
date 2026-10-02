@@ -24,4 +24,4 @@ uuid = { version = "1", features = ["v4"] }
 window-vibrancy = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.55"
+winreg = "0.56"
