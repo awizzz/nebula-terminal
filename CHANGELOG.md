@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.1
+
+A small update: Ctrl+Wheel zoom works anywhere in the history, and the project has a new name and license.
 
 ### Changed
 
