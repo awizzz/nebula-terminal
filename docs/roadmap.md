@@ -1,23 +1,18 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.2)
+## Next (1.3)
 
-The things people notice in their first hour.
+Installing and updating the way Windows users expect.
 
-- **New tabs and splits open in the current folder.** Nebula reports its directory (OSC 7), so `Ctrl+Shift+T` or a split starts where you are, and restored tabs reopen in their last folder.
-- **Jump between commands.** `Ctrl+↑` / `Ctrl+↓` move from one prompt to the next, a click on a prompt selects its output, and "Copy last output" lands in the palette. Failed commands get a red mark in the scrollbar.
-- **Shell integration for PowerShell, Git Bash and WSL**, added automatically, so notifications and command jumps work there too, not just in Nebula.
-- **Open Nebula Terminal here** from the right-click menu in File Explorer, and a `nebula-terminal` command to open a folder from anywhere.
 - **winget and Scoop packages:** `winget install Awizz.NebulaTerminal`.
-- **French interface.** The app and Nebula's messages follow the Windows language, starting with English and French.
+- **Signed releases** (Authenticode), so SmartScreen stops warning and updates are checked against a signature as well as a checksum.
 
-## Soon (1.3 and 1.4)
+## Soon (1.4 and 1.5)
 
 ### Terminal
 
-- **Signed releases** (Authenticode), so SmartScreen stops warning and updates are checked against a signature as well as a checksum.
 - **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
 - **Run a profile as administrator**, in its own clearly marked tab.
 - **Several windows:** drag a tab out to make a new window, or back in to merge.
@@ -40,12 +35,11 @@ The things people notice in their first hour.
 ## Later
 
 - ARM64 builds for Windows on Arm laptops.
-- Set Nebula Terminal as the default terminal of Windows 11, so console programs open in it.
 - Settings sync through a file you choose (OneDrive, Dropbox, a Git repository), with no account.
 - Saved SSH connections with their own folder, keys and port forwarding, from the profile editor.
 - `help <command>` with short, practical examples, the way tldr does it.
 - A screen-reader mode and a high-contrast theme, checked with Narrator and NVDA.
-- More languages for the interface, contributed by users.
+- A French interface, then more languages contributed by users.
 - The documentation and the changelog on [nebula.awizz.space](https://nebula.awizz.space), next to the demo.
 
 ## Exploring

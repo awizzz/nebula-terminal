@@ -108,7 +108,7 @@ All of these except the last three rows can be changed in **Settings → Keyboar
 
 ## What's next
 
-Opening new tabs in the current folder, jumping between commands, shell integration for PowerShell and bash, a French interface, winget packages, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: winget and Scoop packages, signed releases, a Quake-style drop-down window, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
