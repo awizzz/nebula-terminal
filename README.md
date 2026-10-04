@@ -1,10 +1,12 @@
 # Nebula Terminal
 
-[![CI](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/ci.yml)
-[![Security audit](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-shell/actions/workflows/security.yml)
+[![CI](https://github.com/awizzz/nebula-terminal/actions/workflows/ci.yml/badge.svg)](https://github.com/awizzz/nebula-terminal/actions/workflows/ci.yml)
+[![Security audit](https://github.com/awizzz/nebula-terminal/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-terminal/actions/workflows/security.yml)
 [![License: PolyForm Shield](https://img.shields.io/badge/license-PolyForm%20Shield-blue.svg)](LICENSE)
 
 A terminal for Windows with Linux commands built in. Tabs, split panes, a command palette and a settings screen you can actually click through. It opens **Nebula**, its own command interpreter, by default, and runs PowerShell, Command Prompt, Git Bash and WSL too.
+
+Website and download: [nebula.awizz.space](https://nebula.awizz.space)
 
 ![Nebula Terminal running the Nebula interpreter](docs/images/terminal.png)
 
