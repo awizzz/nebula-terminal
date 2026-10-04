@@ -13,6 +13,7 @@
 - `trap` on EXIT, ERR and INT
 - `Ctrl+R` searches the history fuzzily as you type, newest first among equal matches
 - `z`: jumps to the folder you visit most that matches (`z proj`), learned from the `cd`s you type. `z -l` lists them
+- Find (`Ctrl+Shift+F`) can match case, whole words or a regular expression (`Alt+C`, `Alt+W`, `Alt+R`). The choice is remembered, and a pattern that doesn't compile says so
 - Tab completion for the scripts of package.json (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets and `z`
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 

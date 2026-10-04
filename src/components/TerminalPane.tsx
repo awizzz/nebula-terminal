@@ -3,6 +3,7 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { Terminal, type IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
+import { validPattern } from "./SearchBar";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { adjacentPrompt, joinLines } from "../commandMarks";
@@ -25,7 +26,7 @@ interface TerminalPaneProps {
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
-  searchRequest?: { query: string; nonce: number; backwards?: boolean };
+  searchRequest?: { query: string; nonce: number; backwards?: boolean; caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean };
   onFocus: () => void;
   onFontSizeDelta: (delta: number) => void;
   onTitleChange: (title: string) => void;
@@ -611,6 +612,9 @@ export default function TerminalPane({
     const accent = preferences.accent;
     const options = {
       incremental: !searchRequest.backwards,
+      caseSensitive: searchRequest.caseSensitive,
+      wholeWord: searchRequest.wholeWord,
+      regex: searchRequest.regex,
       decorations: {
         matchBackground: `${accent}55`,
         matchBorder: `${accent}00`,
@@ -620,9 +624,13 @@ export default function TerminalPane({
         activeMatchColorOverviewRuler: accent,
       },
     };
+    if (searchRequest.regex && !validPattern(searchRequest.query)) {
+      search.clearDecorations();
+      return;
+    }
     if (searchRequest.backwards) search.findPrevious(searchRequest.query, options);
     else search.findNext(searchRequest.query, options);
-  }, [preferences.accent, searchRequest?.backwards, searchRequest?.nonce, searchRequest?.query]);
+  }, [preferences.accent, searchRequest?.backwards, searchRequest?.nonce, searchRequest?.query, searchRequest?.caseSensitive, searchRequest?.wholeWord, searchRequest?.regex]);
 
   useEffect(() => {
     if (connectionState !== "closed" || !focused) return;

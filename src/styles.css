@@ -470,6 +470,9 @@ kbd { font: inherit; }
 .find__status { min-width: 70px; padding: 0 6px; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 .find button { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-m); color: var(--text-2); }
 .find button:hover { background: var(--hover); color: var(--text); }
+.find__toggles { display: flex; gap: 2px; margin-left: 4px; }
+.find .find__toggle { width: 26px; height: 26px; color: var(--text-3); }
+.find .find__toggle.is-on { background: var(--hover-strong); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* ---------- Menus ---------- */
 
