@@ -304,18 +304,23 @@ export default function TerminalPane({
       void navigator.clipboard?.writeText(text).catch(() => undefined);
       return true;
     };
-    // A click on the first line of a prompt selects that command's output.
+    // A click on a prompt or on the command typed after it selects that command's output,
+    // unless the click only clears a selection.
+    let hadSelection = false;
+    const noteSelection = () => { hadSelection = terminal.hasSelection(); };
     const selectOutputAt = (event: MouseEvent) => {
       if (event.button !== 0 || event.detail !== 1 || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (terminal.hasSelection() || terminal.modes.mouseTrackingMode !== "none" || terminal.buffer.active.type !== "normal") return;
+      if (hadSelection || terminal.hasSelection() || terminal.modes.mouseTrackingMode !== "none" || terminal.buffer.active.type !== "normal") return;
       const screen = host.querySelector<HTMLElement>(".xterm-screen")?.getBoundingClientRect();
       if (!screen || screen.height === 0) return;
       const row = Math.floor((event.clientY - screen.top) / (screen.height / terminal.rows));
       const line = terminal.buffer.active.viewportY + row;
-      const command = liveCommands().find((candidate) => candidate.prompt && !candidate.prompt.isDisposed && candidate.prompt.line === line);
+      const command = liveCommands().find(({ prompt, output }) => prompt && !prompt.isDisposed
+        && (line === prompt.line || (output !== undefined && !output.isDisposed && line > prompt.line && line < output.line)));
       const lines = command && outputLines(command);
       if (lines) terminal.selectLines(lines[0], lines[1]);
     };
+    host.addEventListener("mousedown", noteSelection, true);
     host.addEventListener("click", selectOutputAt);
     // Programs can ask for a notification: OSC 9;text (iTerm2) and OSC 777;notify;title;body.
     const notification = terminal.parser.registerOscHandler(9, (data) => {
@@ -515,6 +520,7 @@ export default function TerminalPane({
       host.removeEventListener("wheel", handleWheel, { capture: true });
       host.removeEventListener("contextmenu", handleContextMenu);
       host.removeEventListener("click", selectOutputAt);
+      host.removeEventListener("mousedown", noteSelection, true);
       window.removeEventListener("nebula:insert-paths", insertDropped);
       const sessionId = sessionRef.current;
       sessionRef.current = null;
