@@ -96,6 +96,8 @@ export interface AppearancePreferences {
   workingDirectory: string;
   /** New tabs and splits open where the focused pane's shell is. */
   openInCurrentFolder: boolean;
+  /** PowerShell, Git Bash and WSL get a script that marks their commands. */
+  shellIntegration: boolean;
   restoreSession: boolean;
   copyOnSelect: boolean;
   confirmMultilinePaste: boolean;

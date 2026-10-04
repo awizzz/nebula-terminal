@@ -1,4 +1,8 @@
-use crate::{custom::CustomProfiles, profiles};
+use crate::{
+    custom::CustomProfiles,
+    integration::{Kind, Scripts},
+    profiles,
+};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
@@ -158,7 +162,7 @@ fn existing_directory(folder: &str) -> Result<PathBuf, String> {
 /// `cwd` is the folder typed in Settings and `known_folder` the Desktop or Documents
 /// choice. `start_in` is where this pane should reopen: the folder of the pane it was
 /// split from, or the one it was in when the app closed. It only applies while it
-/// still exists.
+/// still exists. `shell_integration` lets PowerShell, Git Bash and WSL mark their commands.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn start_session(
@@ -168,9 +172,11 @@ pub async fn start_session(
     cwd: Option<String>,
     known_folder: Option<String>,
     start_in: Option<String>,
+    shell_integration: bool,
     on_event: Channel<PtyEvent>,
     state: State<'_, PtyState>,
     custom_profiles: State<'_, CustomProfiles>,
+    scripts: State<'_, Scripts>,
 ) -> Result<String, String> {
     let cwd = cwd.filter(|value| !value.trim().is_empty());
     let start_in = start_in
@@ -178,7 +184,10 @@ pub async fn start_session(
         .filter(|folder| folder.is_dir());
     let known_folder = known_folder.as_deref().and_then(profiles::known_folder);
     let custom_cwd = cwd.is_some() || known_folder.is_some() || start_in.is_some();
-    let profile = profiles::resolve_profile(&profile_id, custom_cwd, &custom_profiles)?;
+    let mut profile = profiles::resolve_profile(&profile_id, custom_cwd, &custom_profiles)?;
+    if let Some(kind) = Kind::of(&profile_id).filter(|_| shell_integration) {
+        scripts.apply(kind, &mut profile.args);
+    }
     // A profile's own starting folder wins, then the pane's own, then Settings.
     let directory = match (&profile.cwd, start_in, &cwd) {
         (Some(folder), _, _) => Some(existing_directory(folder)?),

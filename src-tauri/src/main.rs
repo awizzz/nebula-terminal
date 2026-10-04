@@ -2,6 +2,7 @@
 
 mod cmdline;
 mod custom;
+mod integration;
 mod profiles;
 mod pty;
 mod ssh;
@@ -56,6 +57,12 @@ fn main() {
                 .ok()
                 .map(|directory| directory.join("custom-profiles.json"));
             app.manage(custom::CustomProfiles::new(path));
+            let scripts = app
+                .path()
+                .app_local_data_dir()
+                .ok()
+                .map(|directory| directory.join("shell-integration"));
+            app.manage(integration::Scripts::new(scripts));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

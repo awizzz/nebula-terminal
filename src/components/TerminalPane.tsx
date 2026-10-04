@@ -409,7 +409,7 @@ export default function TerminalPane({
       };
 
       resize();
-      const { startingFolder, workingDirectory } = preferencesRef.current;
+      const { startingFolder, workingDirectory, shellIntegration } = preferencesRef.current;
       void invoke<string>("start_session", {
         profileId: profile.id,
         cols: terminal.cols,
@@ -417,6 +417,7 @@ export default function TerminalPane({
         cwd: startingFolder === "custom" ? workingDirectory.trim() || null : null,
         knownFolder: startingFolder === "desktop" || startingFolder === "documents" ? startingFolder : null,
         startIn: startInRef.current ?? null,
+        shellIntegration,
         onEvent: channel,
       }).then((sessionId) => {
         if (disposed) {
