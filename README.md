@@ -80,6 +80,7 @@ Not supported: arrays, background jobs (`&`) and `trap`. For scripts that need t
 - **Knows when you're done.** When a long command finishes in a tab you're not looking at, you get a Windows notification and a green or red dot on the tab.
 - **Updates itself.** When a new version is out, the app offers to install it and restarts. You can also check from Settings → About.
 - **Opens from Explorer and from any shell.** Right-click a folder and choose Open in Nebula Terminal, or type `nebula-terminal .` in cmd, PowerShell, Git Bash or WSL. Both open a tab in the window you already have.
+- **Your default terminal, if you want.** On Windows 11, Settings → Behavior makes Nebula Terminal the default terminal: `cmd`, scripts and other console programs started from the Start menu or Explorer open in a tab.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
 - **Opens where you are.** New tabs and splits start in the folder of the shell you're in. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.

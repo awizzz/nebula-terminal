@@ -27,4 +27,7 @@ window-vibrancy = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Com", "Win32_System_Pipes", "Win32_System_Threading"] }
+# The COM macros of `windows` refer to `windows_core` by name.
+windows-core = "0.62"
 winreg = "0.56"

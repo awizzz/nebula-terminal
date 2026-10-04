@@ -22,10 +22,17 @@ import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, Launchers, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
+
+/** How this copy of the app was started. */
+interface Launch {
+  folder?: string;
+  forHandoff: boolean;
+  handoffs: HandoffInfo[];
+}
 
 const TAB_CLOSE_MS = 150;
 /** Smallest pane a split or a divider drag may produce, in pixels. */
@@ -48,6 +55,12 @@ function makePane(profile: TerminalProfile, cwd?: string): TerminalPaneModel {
 function makeTab(profile: TerminalProfile, cwd?: string): TerminalTab {
   const pane = makePane(profile, cwd);
   return { id: crypto.randomUUID(), title: profile.name, panes: [pane], layout: paneLeaf(pane.id), activePaneId: pane.id };
+}
+
+/** A tab for a console Windows handed over; its title is the console's own. */
+function makeHandoffTab(profile: TerminalProfile, handoff: HandoffInfo): TerminalTab {
+  const tab = makeTab(profile);
+  return { ...tab, title: handoff.title || "Console", panes: tab.panes.map((pane) => ({ ...pane, handoffId: handoff.id })) };
 }
 
 function paneElement(paneId: string): HTMLElement | null {
@@ -124,29 +137,27 @@ export default function App() {
   const renamingRef = useRef(renaming);
   renamingRef.current = renaming;
 
-  /** `launchFolder` is the folder the app was started with (`nebula-terminal C:\Projects`). */
-  const hydrateWorkspace = useCallback((detected: TerminalProfile[], launchFolder?: string) => {
+  /**
+   * `launch.folder` is the folder the app was started with (`nebula-terminal C:\Projects`).
+   * A copy started for a console Windows handed over opens only that console's tab.
+   */
+  const hydrateWorkspace = useCallback((detected: TerminalProfile[], launch: Launch = { forHandoff: false, handoffs: [] }) => {
     setProfiles(detected);
     if (!hydratedRef.current) {
       hydratedRef.current = true;
       setReady(true);
       const restored = preferencesRef.current.restoreSession ? loadSession(detected) : null;
       const first = pickProfile(detected, preferencesRef.current.defaultProfileId);
-      const opened = first && (launchFolder || !restored) ? makeTab(first, launchFolder) : null;
-      const workspace = [...restored?.tabs ?? [], ...opened ? [opened] : []];
-      setTabs(workspace);
-      setActiveTabId(opened?.id ?? restored?.activeTabId ?? "");
+      const wantsTab = launch.folder || (!restored && !launch.forHandoff);
+      const opened = first && wantsTab ? [makeTab(first, launch.folder)] : [];
+      if (first) opened.push(...launch.handoffs.map((handoff) => makeHandoffTab(first, handoff)));
+      setTabs([...restored?.tabs ?? [], ...opened]);
+      setActiveTabId(opened.at(-1)?.id ?? restored?.activeTabId ?? "");
       return;
     }
     setTabs((current) => refreshTabProfiles(current, detected));
   }, []);
 
-  useEffect(() => {
-    const launchFolder = nativeHost ? invoke<string | null>("launch_folder").catch(() => null) : Promise.resolve(null);
-    void Promise.all([detectProfiles(), launchFolder])
-      .then(([detected, folder]) => hydrateWorkspace(detected, folder ?? undefined))
-      .catch(() => hydrateWorkspace([]));
-  }, [hydrateWorkspace, nativeHost]);
 
   /** Detects profiles again after custom profiles changed; open panes keep running. */
   const refreshProfiles = useCallback(async () => {
@@ -296,6 +307,50 @@ export default function App() {
     const stop = listen<string | null>("open-tab", (event) => openNewTabRef.current(undefined, event.payload ?? undefined));
     return () => void stop.then((unlisten) => unlisten());
   }, [nativeHost]);
+
+  /** Opens a tab for each console Windows handed over since the last look. */
+  const openHandoffs = useCallback(async () => {
+    // Until the workspace exists, hydration takes them.
+    if (!hydratedRef.current) return;
+    const handoffs = await invoke<HandoffInfo[]>("take_handoffs").catch(() => []);
+    const profile = resolveProfile();
+    if (!profile || handoffs.length === 0) return;
+    const opened = handoffs.map((handoff) => makeHandoffTab(profile, handoff));
+    setTabs((current) => [...current, ...opened]);
+    setActiveTabId(opened.at(-1)!.id);
+  }, [resolveProfile]);
+
+  const openHandoffsRef = useRef(openHandoffs);
+  openHandoffsRef.current = openHandoffs;
+  useEffect(() => {
+    if (!nativeHost) return;
+    const stop = listen("handoff", () => void openHandoffsRef.current());
+    return () => void stop.then((unlisten) => unlisten());
+  }, [nativeHost]);
+
+  useEffect(() => {
+    const launch: Promise<Launch> = nativeHost
+      ? Promise.all([
+        invoke<string | null>("launch_folder").catch(() => null),
+        invoke<boolean>("launched_for_handoff").catch(() => false),
+        invoke<HandoffInfo[]>("take_handoffs").catch(() => []),
+      ]).then(([folder, forHandoff, handoffs]) => ({ folder: folder ?? undefined, forHandoff, handoffs }))
+      : Promise.resolve({ forHandoff: false, handoffs: [] });
+    void Promise.all([detectProfiles(), launch])
+      .then(([detected, started]) => hydrateWorkspace(detected, started))
+      .catch(() => hydrateWorkspace([]))
+      // A console that arrived while the workspace was loading.
+      .then(() => openHandoffsRef.current());
+  }, [hydrateWorkspace, nativeHost]);
+
+  const [defaultTerminal, setDefaultTerminal] = useState<DefaultTerminal | null>(null);
+  const changeDefaultTerminal = useCallback((enabled: boolean | null) => {
+    if (!nativeHost) return;
+    invoke<DefaultTerminal>("default_terminal", { enabled })
+      .then(setDefaultTerminal)
+      .catch((error) => setNotice(String(error)));
+  }, [nativeHost]);
+  useEffect(() => changeDefaultTerminal(null), [changeDefaultTerminal]);
 
   const [launchers, setLaunchers] = useState<Launchers | null>(null);
   useEffect(() => {
@@ -744,6 +799,7 @@ export default function App() {
                         paneId={pane.id}
                         profile={pane.profile}
                         startIn={pane.cwd}
+                        handoffId={pane.handoffId}
                         preferences={preferences}
                         focused={focused}
                         visible={visible}
@@ -814,6 +870,8 @@ export default function App() {
           onClearSession={clearSession}
           onProfilesChanged={refreshProfiles}
           launchers={launchers}
+          defaultTerminal={defaultTerminal}
+          onDefaultTerminalChange={changeDefaultTerminal}
         />
         <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
       </Suspense>

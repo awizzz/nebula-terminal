@@ -2,6 +2,7 @@
 
 mod cmdline;
 mod custom;
+mod defterm;
 mod integration;
 mod launcher;
 mod profiles;
@@ -62,6 +63,7 @@ fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--uninstall") {
         launcher::uninstall();
+        defterm::uninstall();
         return;
     }
     tauri::Builder::default()
@@ -82,6 +84,7 @@ fn main() {
                 .ok()
                 .map(|directory| directory.join("shell-integration"));
             app.manage(integration::Scripts::new(scripts));
+            defterm::listen(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -100,6 +103,10 @@ fn main() {
             updater::install_update,
             launcher::launch_folder,
             launcher::sync_launchers,
+            defterm::default_terminal,
+            defterm::launched_for_handoff,
+            pty::take_handoffs,
+            pty::attach_handoff,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");

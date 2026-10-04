@@ -20,6 +20,8 @@ interface TerminalPaneProps {
   profile: TerminalProfile;
   /** Where the shell starts when it has no folder of its own (its last one, or the pane it was split from). */
   startIn?: string;
+  /** A console Windows handed over. The pane shows it first; a restart runs the profile. */
+  handoffId?: string;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -112,6 +114,7 @@ export default function TerminalPane({
   paneId,
   profile,
   startIn,
+  handoffId,
   preferences,
   focused,
   visible,
@@ -137,6 +140,7 @@ export default function TerminalPane({
   const visibleRef = useRef(visible);
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
+  const handoffRef = useRef(handoffId);
   const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange });
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
@@ -410,16 +414,22 @@ export default function TerminalPane({
 
       resize();
       const { startingFolder, workingDirectory, shellIntegration } = preferencesRef.current;
-      void invoke<string>("start_session", {
-        profileId: profile.id,
-        cols: terminal.cols,
-        rows: terminal.rows,
-        cwd: startingFolder === "custom" ? workingDirectory.trim() || null : null,
-        knownFolder: startingFolder === "desktop" || startingFolder === "documents" ? startingFolder : null,
-        startIn: startInRef.current ?? null,
-        shellIntegration,
-        onEvent: channel,
-      }).then((sessionId) => {
+      const handoff = handoffRef.current;
+      // A handed-over console can only be attached once.
+      handoffRef.current = undefined;
+      const started = handoff
+        ? invoke<string>("attach_handoff", { handoffId: handoff, cols: terminal.cols, rows: terminal.rows, onEvent: channel })
+        : invoke<string>("start_session", {
+          profileId: profile.id,
+          cols: terminal.cols,
+          rows: terminal.rows,
+          cwd: startingFolder === "custom" ? workingDirectory.trim() || null : null,
+          knownFolder: startingFolder === "desktop" || startingFolder === "documents" ? startingFolder : null,
+          startIn: startInRef.current ?? null,
+          shellIntegration,
+          onEvent: channel,
+        });
+      void started.then((sessionId) => {
         if (disposed) {
           void invoke("close_session", { sessionId }).catch(() => undefined);
           return;
@@ -433,7 +443,7 @@ export default function TerminalPane({
         queued = [];
       }).catch((error) => {
         if (disposed) return;
-        terminal.writeln(`\x1b[31mCould not start ${profile.name}: ${String(error)}\x1b[0m`);
+        terminal.writeln(`\x1b[31mCould not ${handoff ? "open this console" : `start ${profile.name}`}: ${String(error)}\x1b[0m`);
         setConnectionState("closed");
       });
     } else {
