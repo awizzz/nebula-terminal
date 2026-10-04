@@ -43,8 +43,8 @@ If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`,
 
 - **The real GNU behaviour.** The core commands come from [uutils coreutils](https://github.com/uutils/coreutils), a faithful MIT-licensed rewrite of GNU coreutils, and `sed`, `diff` and `cmp` from the uutils [sed](https://github.com/uutils/sed) and [diffutils](https://github.com/uutils/diffutils). `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open` are written for Nebula.
 - **A real `awk`.** The POSIX language (patterns, fields, arrays, functions, `printf`, `getline`, pipes to and from commands) and the gawk functions people reach for: `gensub`, `strftime`, `asort`, `match` with groups. It was checked line by line against GNU awk.
-- **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, `{a,b}` and `{1..10}`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
-- **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, arrays and associative arrays, `$((…))`, `[[ … ]]`, `read`, `mapfile`, `${name%.txt}` and the other `${…}` forms, `set -e`, `trap`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
+- **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, `**/*.rs` for every subfolder, `{a,b}` and `{1..10}`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
+- **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, arrays and associative arrays, `$((…))`, `[[ … ]]`, `read`, `mapfile`, `${name%.txt}` and the other `${…}` forms, `getopts`, `set -e`, `trap`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
 - **Background jobs.** `cmd &` runs while you keep typing; `jobs`, `wait`, `fg` and `kill %1` handle them. A job can't take the keyboard, and Ctrl+C only stops what runs in front.
 - **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
 - **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, the scripts of your `package.json` (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets, `$VARIABLES` and your SSH hosts.
@@ -74,7 +74,7 @@ for file in *.log; do
 done
 ```
 
-Not supported yet: `getopts`, `**` globs, and pausing a job with Ctrl+Z. For scripts that need them, use Git Bash or WSL.
+Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git Bash or WSL.
 
 ## What you get
 

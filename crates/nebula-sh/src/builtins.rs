@@ -61,6 +61,7 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
         "disown" => disown(shell, args),
         "trap" => trap(shell, args, &mut out),
         "z" => z(shell, args, &mut out),
+        "getopts" => getopts(shell, args, &mut err),
         other => Err(format!("{other}: not a builtin")),
     };
     let _ = out.flush();
@@ -222,6 +223,100 @@ fn disown(shell: &mut Shell, args: &[String]) -> Outcome {
 }
 
 /// The conditions `trap` knows, by the names and numbers scripts use.
+/// `getopts optstring name [arg…]`: puts the next option of the arguments (or of `$@`)
+/// in `name` and its value in `OPTARG`, as bash does. A leading `:` in `optstring`
+/// reports problems through `name` and `OPTARG` instead of messages.
+fn getopts(shell: &mut Shell, args: &[String], err: &mut dyn Write) -> Outcome {
+    let [spec, name, explicit @ ..] = args else {
+        let _ = writeln!(err, "getopts: usage: getopts optstring name [arg ...]");
+        return Ok(2);
+    };
+    valid_name(name)?;
+    let words = if explicit.is_empty() {
+        shell.positional.clone()
+    } else {
+        explicit.to_vec()
+    };
+    let (silent, spec) = match spec.strip_prefix(':') {
+        Some(spec) => (true, spec),
+        None => (false, spec.as_str()),
+    };
+    let mut index = env::var("OPTIND")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|&index| index > 0)
+        .unwrap_or(1);
+    let mut offset = match shell.getopts_next {
+        Some((at, offset)) if at == index => offset,
+        _ => 0,
+    };
+    let word: Vec<char> = words
+        .get(index - 1)
+        .map(|word| word.chars().collect())
+        .unwrap_or_default();
+    if offset == 0 || offset >= word.len() {
+        // Options end at the first word that isn't one, or after `--`.
+        let dashes = word == ['-', '-'];
+        if dashes || word.len() < 2 || word[0] != '-' {
+            shell.getopts_next = None;
+            env::set_var("OPTIND", (index + usize::from(dashes)).to_string());
+            env::remove_var("OPTARG");
+            shell.assign_scalar(name, "?".to_owned(), false);
+            return Ok(1);
+        }
+        offset = 1;
+    }
+    let option = word[offset];
+    let rest: String = word[offset + 1..].iter().collect();
+    // The next call goes on in this word, or at the next one.
+    let mut next = if rest.is_empty() {
+        (index + 1, 0)
+    } else {
+        (index, offset + 1)
+    };
+    let report = !silent && env::var("OPTERR").map_or(true, |value| value != "0");
+    let mut found = option.to_string();
+    let mut argument = None;
+    match spec.find(option).filter(|_| option != ':') {
+        None => {
+            if report {
+                let _ = writeln!(err, "{}: illegal option -- {option}", shell.script_name);
+            }
+            found = "?".to_owned();
+            argument = silent.then(|| option.to_string());
+        }
+        Some(at) if spec[at + option.len_utf8()..].starts_with(':') => {
+            if !rest.is_empty() {
+                argument = Some(rest);
+                next = (index + 1, 0);
+            } else if let Some(value) = words.get(index) {
+                argument = Some(value.clone());
+                next = (index + 2, 0);
+            } else {
+                if report {
+                    let _ = writeln!(
+                        err,
+                        "{}: option requires an argument -- {option}",
+                        shell.script_name
+                    );
+                }
+                found = if silent { ":" } else { "?" }.to_owned();
+                argument = silent.then(|| option.to_string());
+            }
+        }
+        Some(_) => {}
+    }
+    index = next.0;
+    shell.getopts_next = (next.1 > 0).then_some(next);
+    env::set_var("OPTIND", index.to_string());
+    match argument {
+        Some(value) => env::set_var("OPTARG", value),
+        None => env::remove_var("OPTARG"),
+    }
+    shell.assign_scalar(name, found, false);
+    Ok(0)
+}
+
 fn trap_condition(name: &str) -> Option<&'static str> {
     let upper = name.to_ascii_uppercase();
     let bare = upper.strip_prefix("SIG").unwrap_or(&upper);
@@ -1348,8 +1443,8 @@ fn help(out: &mut dyn Write) -> Outcome {
         (
             "Scripting",
             &[
-                "test", "read", "local", "return", "shift", "set", "eval", "let", "command",
-                "source",
+                "test", "read", "local", "return", "shift", "getopts", "set", "eval", "let",
+                "command", "source",
             ],
         ),
         (

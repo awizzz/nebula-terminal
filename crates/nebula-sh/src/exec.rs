@@ -476,6 +476,9 @@ pub struct Shell {
     /// `trap` actions by condition: EXIT, ERR, INT… An empty action ignores it.
     pub traps: BTreeMap<String, String>,
     in_trap: bool,
+    /// Where `getopts` stopped inside a group like `-abc`: `OPTIND` then, and the
+    /// position in that word.
+    pub getopts_next: Option<(usize, usize)>,
 }
 
 impl Shell {
@@ -520,6 +523,7 @@ impl Shell {
             starting_background: false,
             traps: BTreeMap::new(),
             in_trap: false,
+            getopts_next: None,
         }
     }
 
@@ -1288,6 +1292,10 @@ impl Shell {
 
     /// `name=value`: on an array, this sets element 0, as in bash.
     pub fn assign_scalar(&mut self, name: &str, value: String, append: bool) {
+        // Setting OPTIND, even to the value it has, starts `getopts` over.
+        if name == "OPTIND" {
+            self.getopts_next = None;
+        }
         match self.arrays.get_mut(name) {
             Some(Array::Indexed(map)) => {
                 let value = if append {

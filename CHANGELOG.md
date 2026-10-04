@@ -11,6 +11,8 @@
 - arrays and associative arrays: `a=(x y)`, `a[3]=z`, `a+=(w)`, `"${a[@]}"`, `${#a[@]}`, `${!a[@]}`, slices, `declare -A`, `local -a`, `read -a`, `mapfile`, plus `${!name}`
 - background jobs: `cmd &`, `jobs`, `wait`, `fg`, `kill %1` and `$!`. A job can't take the keyboard, and Ctrl+C doesn't stop it
 - `trap` on EXIT, ERR and INT
+- `getopts`, for scripts that take options like `-v -e prod -n3`, checked against bash
+- `**` in a glob matches any number of subfolders, as with bash's `globstar`: `ls src/**/*.rs`, `echo **/` for every folder
 - `Ctrl+R` searches the history fuzzily as you type, newest first among equal matches
 - `z`: jumps to the folder you visit most that matches (`z proj`), learned from the `cd`s you type. `z -l` lists them
 - Find (`Ctrl+Shift+F`) can match case, whole words or a regular expression (`Alt+C`, `Alt+W`, `Alt+R`). The choice is remembered, and a pattern that doesn't compile says so
@@ -18,6 +20,11 @@
 - import color schemes from Windows Terminal (one scheme, or the `schemes` of your whole settings.json) and iTerm2 (`.itermcolors`) in Settings → Appearance. A scheme that's already built in, like Dracula, selects the built-in theme instead of adding a copy. Exported theme files carry the imported scheme they use
 - Tab completion for the scripts of package.json (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets and `z`
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
+
+### Fixed
+
+- in Nebula, globs that start with a dot (`.*`, `.env*`) found no hidden file, and `.*` returned `./.` and `./..`. They match hidden files now, and never `.` or `..`
+- `*/` keeps the trailing slash on the folders it lists, as in bash, and Git Bash style paths like `/c/Users/*` expand
 
 ## 1.2.0
 

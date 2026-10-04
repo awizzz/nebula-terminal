@@ -18,6 +18,7 @@ mod frecency;
 mod fuzzy;
 mod icons;
 mod parse;
+mod pathnames;
 mod prompt;
 mod style;
 mod suggest;
@@ -64,6 +65,11 @@ fn shell_main(args: &[String]) -> ExitCode {
     prepare_environment();
     ignore_interrupts(&shell);
     let first = args.get(1).map_or("", String::as_str);
+    // Variables live in the environment, so a script would see the OPTIND of the shell
+    // that started it. Sub-shells keep it, as forked ones do in bash.
+    if first != "--subshell" {
+        std::env::set_var("OPTIND", "1");
+    }
 
     match first {
         "-c" => {
