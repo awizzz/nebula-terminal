@@ -10,11 +10,10 @@
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\shell\NebulaTerminal" Action="removeOnUninstall" />
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\NebulaTerminal" Action="removeOnUninstall" />
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Drive\shell\NebulaTerminal" Action="removeOnUninstall" />
-        <RemoveRegistryKey Root="HKCU" Key="Software\Nebula Terminal" Action="removeOnUninstall" />
       </Component>
     </DirectoryRef>
 
-    <!-- Runs the app with --uninstall while its files are still there. -->
+    <!-- Runs the app's own cleanup (launcher.rs) while its files are still there. -->
     <CustomAction Id="LauncherUninstall" FileKey="Path" ExeCommand="--uninstall" Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="LauncherUninstall" Before="RemoveFiles">REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
