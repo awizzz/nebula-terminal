@@ -104,14 +104,15 @@ const legacyThemeIds: Record<string, string> = {
   paper: "nebula-light",
 };
 
-export function normalizeThemeId(id: unknown): string | undefined {
+/** A theme id that exists, among the built-in themes and the imported ones. */
+export function normalizeThemeId(id: unknown, custom: readonly TerminalTheme[] = []): string | undefined {
   if (typeof id !== "string") return undefined;
-  if (themes.some((theme) => theme.id === id)) return id;
+  if (themes.some((theme) => theme.id === id) || custom.some((theme) => theme.id === id)) return id;
   return legacyThemeIds[id];
 }
 
-export function resolveTheme(id: string): TerminalTheme {
-  return themes.find((theme) => theme.id === id) ?? themes[0]!;
+export function resolveTheme(id: string, custom: readonly TerminalTheme[] = []): TerminalTheme {
+  return themes.find((theme) => theme.id === id) ?? custom.find((theme) => theme.id === id) ?? themes[0]!;
 }
 
 export function xtermTheme(theme: TerminalTheme, accent: string) {

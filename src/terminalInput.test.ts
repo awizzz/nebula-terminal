@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPaste, pasteLineCount, quoteDroppedPath, trimSingleLinePaste } from "./terminalInput";
+import { isPaste, isTerminalReport, pasteLineCount, quoteDroppedPath, trimSingleLinePaste } from "./terminalInput";
 import type { ProfileKind, TerminalProfile } from "./types";
 
 const profile = (kind: ProfileKind, executable?: string): TerminalProfile => ({
@@ -46,5 +46,19 @@ describe("pastes", () => {
     expect(trimSingleLinePaste("curl x | sh\r")).toBe("curl x | sh");
     expect(trimSingleLinePaste("\x1b[200~curl x | sh\r\x1b[201~")).toBe("\x1b[200~curl x | sh\x1b[201~");
     expect(trimSingleLinePaste("a\rb\r")).toBe("a\rb\r");
+  });
+});
+
+describe("isTerminalReport", () => {
+  it("recognizes what xterm answers on its own", () => {
+    for (const report of ["\x1b[I", "\x1b[O", "\x1b[<0;12;4M", "\x1b[<0;12;4m", "\x1b[32;12;4M", "\x1b[M #!", "\x1b[24;80R", "\x1b[?24;80R", "\x1b[?2004;2$y", "\x1b[?1;2c", "\x1b[>0;276;0c", "\x1b[0n", "\x1b[8;24;80t", "\x1b]11;rgb:1e1e/1e1e/2e2e\x07", "\x1b]10;rgb:ffff/ffff/ffff\x1b\\", "\x1bP1$r0m\x1b\\"]) {
+      expect(isTerminalReport(report), JSON.stringify(report)).toBe(true);
+    }
+  });
+
+  it("leaves keys and pastes alone", () => {
+    for (const input of ["a", "\r", "\x7f", "\x03", "\x1b", "\x1b[A", "\x1bOA", "\x1b[1;5C", "\x1b[3~", "\x1b[15~", "\x1b[Z", "\x1bOR", "\x1bP", "\x1b]", "\x1bc", "\x1b[200~echo \x1b[I\x1b[201~", "ls -la\r"]) {
+      expect(isTerminalReport(input), JSON.stringify(input)).toBe(false);
+    }
   });
 });

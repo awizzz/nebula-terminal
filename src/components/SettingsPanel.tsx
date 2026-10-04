@@ -9,6 +9,7 @@ import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, themes, type TerminalTheme } from "../themes";
+import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeImport";
 import Keys from "./Keys";
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
@@ -168,6 +169,13 @@ function Slider({ value, min, max, step, onChange, format, label }: { value: num
       <output>{format(value)}</output>
     </div>
   );
+}
+
+function schemeImportMessage(added: TerminalTheme[], repeated: TerminalTheme[]): string {
+  const known = repeated.length === 1 ? `${repeated[0]!.name} is already built in` : `${repeated.length} schemes are already built in`;
+  if (added.length === 0) return known;
+  const imported = added.length === 1 ? `Imported ${added[0]!.name}` : `Imported ${added.length} color schemes`;
+  return repeated.length === 0 ? imported : `${imported}; ${known}`;
 }
 
 function ThemePreview({ theme }: { theme: TerminalTheme }) {
@@ -466,6 +474,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const themeInputRef = useRef<HTMLInputElement | null>(null);
+  const schemeInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
 
@@ -494,6 +503,33 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   const patchBinding = (key: keyof KeybindingPreferences, value: string) => onChange({ ...preferences, keybindings: { ...preferences.keybindings, [key]: value } });
   const pageIndex = pages.findIndex((item) => item.id === page);
   const available = profiles.filter((profile) => profile.available);
+
+  const importSchemes = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 2_000_000) return setMessage({ tone: "error", text: "That file is too large to be a color scheme." });
+    try {
+      const { added, repeated } = sortOutSchemes(parseColorSchemes(await file.text(), file.name), themes);
+      const kept = added.slice(0, MAX_CUSTOM_THEMES);
+      const replaced = new Set(kept.map((theme) => theme.id));
+      const first = kept[0] ?? repeated[0]!;
+      onChange((current) => ({
+        ...current,
+        customThemes: [...current.customThemes.filter((theme) => !replaced.has(theme.id)), ...kept].slice(-MAX_CUSTOM_THEMES),
+        themeId: first.id,
+        accent: first.accent,
+      }));
+      setMessage({ tone: "info", text: schemeImportMessage(kept, repeated) });
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
+    }
+  };
+
+  const removeScheme = (id: string) => {
+    const customThemes = preferences.customThemes.filter((theme) => theme.id !== id);
+    onChange(preferences.themeId === id
+      ? { ...preferences, customThemes, themeId: themes[0]!.id, accent: themes[0]!.accent }
+      : { ...preferences, customThemes });
+  };
 
   const importTheme = async (file?: File) => {
     if (!file) return;
@@ -553,13 +589,21 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
               {page === "appearance" && <>
                 <Group title="Theme">
                   <div className="theme-grid" role="radiogroup" aria-label="Theme">
-                    {themes.map((theme) => {
+                    {[...themes, ...preferences.customThemes].map((theme) => {
                       const selected = preferences.themeId === theme.id;
+                      const custom = theme.id.startsWith("custom-");
                       return (
-                        <button key={theme.id} type="button" role="radio" aria-checked={selected} className="theme-card" onClick={() => onChange({ ...preferences, themeId: theme.id, accent: theme.accent })}>
-                          <ThemePreview theme={theme} />
-                          <span className="theme-card__name">{theme.name}{selected && <Check size={14} strokeWidth={2.2} />}</span>
-                        </button>
+                        <div key={theme.id} className="theme-card-wrap">
+                          <button type="button" role="radio" aria-checked={selected} className="theme-card" onClick={() => onChange({ ...preferences, themeId: theme.id, accent: theme.accent })}>
+                            <ThemePreview theme={theme} />
+                            <span className="theme-card__name">{theme.name}{selected && <Check size={14} strokeWidth={2.2} />}</span>
+                          </button>
+                          {custom && (
+                            <button type="button" className="theme-card__remove" aria-label={`Remove ${theme.name}`} title="Remove" onClick={() => removeScheme(theme.id)}>
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -600,6 +644,10 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                 </Group>
 
                 <Group title="Share your look">
+                  <Row label="Color scheme" description="From Windows Terminal (a scheme, or your whole settings.json) or iTerm2 (.itermcolors).">
+                    <button className="button" type="button" onClick={() => schemeInputRef.current?.click()}>Import…</button>
+                  </Row>
+                  <input ref={schemeInputRef} hidden type="file" accept=".json,.itermcolors,application/json" onChange={(event) => { void importSchemes(event.target.files?.[0]); event.target.value = ""; }} />
                   <Row label="Theme file" description="Colors, fonts and window style. Never includes paths or shortcuts.">
                     <div className="button-row">
                       <button className="button" type="button" onClick={() => themeInputRef.current?.click()}>Import…</button>

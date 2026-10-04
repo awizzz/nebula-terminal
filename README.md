@@ -82,7 +82,7 @@ Not supported yet: `getopts`, `**` globs, and pausing a job with Ctrl+Z. For scr
 - **Your own profiles.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color. You see how the arguments will be split before you save.
 - **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
-- **Nine themes**, including light ones. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
+- **Nine themes**, including light ones, and any scheme from Windows Terminal or iTerm2 you import. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts. Every change applies immediately.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
 - **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
@@ -91,6 +91,7 @@ Not supported yet: `getopts`, `**` globs, and pausing a job with Ctrl+Z. For scr
 - **Opens from Explorer and from any shell.** Right-click a folder and choose Open in Nebula Terminal, or type `nebula-terminal .` in cmd, PowerShell, Git Bash or WSL. Both open a tab in the window you already have.
 - **Your default terminal, if you want.** On Windows 11, Settings → Behavior makes Nebula Terminal the default terminal: `cmd`, scripts and other console programs started from the Start menu or Explorer open in a tab.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
+- **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, to run the same command on several servers or shells. A colored outline shows when it's on.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
 - **Opens where you are.** New tabs and splits start in the folder of the shell you're in. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.
 - **Picks up where you left off.** Your tabs, their names and colors, your splits and the folder each one was in are restored on launch. The shells themselves start fresh.
@@ -108,12 +109,13 @@ Not supported yet: `getopts`, `**` globs, and pausing a job with Ctrl+Z. For scr
 | Close pane | `Ctrl+Shift+Q` |
 | Find (`Alt+C` match case, `Alt+W` whole word, `Alt+R` regex) | `Ctrl+Shift+F` |
 | Previous / next command | `Ctrl+↑` / `Ctrl+↓` |
+| Type in every pane | `Ctrl+Shift+B` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
 | Open a link | `Ctrl+Click` |
 
-All of these except the last three rows can be changed in **Settings → Keyboard**. The recorder warns you when two actions share a shortcut.
+All of these except going to a tab by number, moving between panes and opening links can be changed in **Settings → Keyboard**. The recorder warns you when two actions share a shortcut.
 
 ## What's next
 

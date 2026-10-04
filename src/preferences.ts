@@ -1,4 +1,5 @@
-import { normalizeThemeId } from "./themes";
+import { normalizeThemeId, type TerminalTheme } from "./themes";
+import { isCustomTheme, MAX_CUSTOM_THEMES } from "./themeImport";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 export const defaultKeybindings: KeybindingPreferences = {
@@ -15,6 +16,7 @@ export const defaultKeybindings: KeybindingPreferences = {
   zoomIn: "Ctrl+=",
   zoomOut: "Ctrl+-",
   zoomReset: "Ctrl+0",
+  toggleBroadcast: "Ctrl+Shift+B",
   previousCommand: "Ctrl+ArrowUp",
   nextCommand: "Ctrl+ArrowDown",
 };
@@ -33,6 +35,7 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   zoomReset: "Reset zoom",
+  toggleBroadcast: "Type in every pane",
   previousCommand: "Previous command",
   nextCommand: "Next command",
 };
@@ -65,6 +68,7 @@ export const defaultPreferences: AppearancePreferences = {
   searchCaseSensitive: false,
   searchWholeWord: false,
   searchRegex: false,
+  customThemes: [],
   confirmMultilinePaste: true,
   confirmCloseMultipleTabs: true,
   scrollback: 10_000,
@@ -113,9 +117,14 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
   const keybindings = Object.fromEntries(
     Object.entries(defaultKeybindings).map(([key, fallback]) => [key, stringFrom(bindings[key], fallback, 48)]),
   ) as unknown as KeybindingPreferences;
+  // Each one checked: they come back from storage or a theme file.
+  const customThemes: TerminalTheme[] = Array.isArray(value.customThemes)
+    ? value.customThemes.filter(isCustomTheme).slice(-MAX_CUSTOM_THEMES)
+    : [];
   return {
     accent: isHex(value.accent) ? value.accent : defaultPreferences.accent,
-    themeId: normalizeThemeId(value.themeId) ?? defaultPreferences.themeId,
+    themeId: normalizeThemeId(value.themeId, customThemes) ?? defaultPreferences.themeId,
+    customThemes,
     fontFamily: stringFrom(value.fontFamily, defaultPreferences.fontFamily, 240).trim() || defaultFontFamily,
     fontSize: numberIn(value.fontSize, defaultPreferences.fontSize, 8, 32),
     lineHeight: numberIn(value.lineHeight, defaultPreferences.lineHeight, 1, 2),
@@ -190,7 +199,9 @@ export function savePreferences(value: AppearancePreferences): void {
 }
 
 export function exportAppearance(preferences: AppearancePreferences): void {
-  const blob = new Blob([JSON.stringify({ version: 2, appearance: pickThemePreferences(preferences) }, null, 2)], { type: "application/json" });
+  // An imported color scheme travels with the file that uses it.
+  const customTheme = preferences.customThemes.find((theme) => theme.id === preferences.themeId);
+  const blob = new Blob([JSON.stringify({ version: 2, appearance: pickThemePreferences(preferences), customTheme }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -205,8 +216,14 @@ export function exportAppearance(preferences: AppearancePreferences): void {
  */
 export async function importAppearance(file: File): Promise<(current: AppearancePreferences) => AppearancePreferences> {
   if (file.size > 1_000_000) throw new Error("This theme file is too large.");
-  const parsed = JSON.parse(await file.text()) as { version?: number; appearance?: unknown; preferences?: unknown };
+  const parsed = JSON.parse(await file.text()) as { version?: number; appearance?: unknown; preferences?: unknown; customTheme?: unknown };
   const imported = parsed.version === 2 ? parsed.appearance : parsed.version === 1 ? parsed.preferences : undefined;
   if (!isRecord(imported)) throw new Error("This is not a Nebula Terminal theme file.");
-  return (current) => ({ ...current, ...pickThemePreferences(sanitizePreferences({ ...current, ...imported })) });
+  const customTheme = isCustomTheme(parsed.customTheme) ? parsed.customTheme : null;
+  return (current) => {
+    const customThemes = customTheme
+      ? [...current.customThemes.filter((theme) => theme.id !== customTheme.id), customTheme].slice(-MAX_CUSTOM_THEMES)
+      : current.customThemes;
+    return { ...current, customThemes, ...pickThemePreferences(sanitizePreferences({ ...current, ...imported, customThemes })) };
+  };
 }

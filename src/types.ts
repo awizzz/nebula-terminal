@@ -1,3 +1,4 @@
+import type { TerminalTheme } from "./themes";
 import type { LayoutNode } from "./layout";
 
 export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl" | "ssh" | "custom";
@@ -68,6 +69,7 @@ export interface KeybindingPreferences {
   zoomIn: string;
   zoomOut: string;
   zoomReset: string;
+  toggleBroadcast: string;
   previousCommand: string;
   nextCommand: string;
 }
@@ -108,6 +110,8 @@ export interface AppearancePreferences {
   searchCaseSensitive: boolean;
   searchWholeWord: boolean;
   searchRegex: boolean;
+  /** Color schemes imported from Windows Terminal or iTerm2. */
+  customThemes: TerminalTheme[];
   confirmMultilinePaste: boolean;
   confirmCloseMultipleTabs: boolean;
   scrollback: number;
@@ -139,6 +143,8 @@ export interface TerminalTab {
   panes: TerminalPaneModel[];
   layout: LayoutNode;
   activePaneId: string;
+  /** What is typed in one pane goes to every pane of the tab. Not saved. */
+  broadcast?: boolean;
 }
 
 export interface PersistedPane {

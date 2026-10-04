@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Radio, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -135,7 +135,7 @@ export default function App() {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const activePane = activeTab?.panes.find((pane) => pane.id === activeTab.activePaneId) ?? activeTab?.panes[0];
-  const theme = resolveTheme(preferences.themeId);
+  const theme = resolveTheme(preferences.themeId, preferences.customThemes);
   const overlayOpen = settingsOpen || paletteOpen || confirmation !== null;
   // A tab closed mid-rename takes its editor with it, so only a live tab counts.
   const renaming = renamingTabId !== null && tabs.some((tab) => tab.id === renamingTabId && !closing.has(tab.id));
@@ -312,6 +312,26 @@ export default function App() {
     const stop = listen<string | null>("open-tab", (event) => openNewTabRef.current(undefined, event.payload ?? undefined));
     return () => void stop.then((unlisten) => unlisten());
   }, [nativeHost]);
+
+  /** Broadcast input: what is typed in one pane of the tab also goes to the others. */
+  const broadcastInput = useCallback((tabId: string, paneId: string, data: string) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    if (!tab?.broadcast) return;
+    for (const pane of tab.panes) {
+      if (pane.id !== paneId) getPane(pane.id)?.write(data);
+    }
+  }, []);
+
+  const toggleBroadcast = useCallback((tabId?: string) => {
+    const id = tabId ?? activeTabIdRef.current;
+    const tab = tabsRef.current.find((candidate) => candidate.id === id);
+    if (!tab) return;
+    const broadcast = !tab.broadcast;
+    setTabs((current) => current.map((candidate) => candidate.id === id ? { ...candidate, broadcast } : candidate));
+    setNotice(broadcast
+      ? tab.panes.length > 1 ? `Typing goes to all ${tab.panes.length} panes` : "Typing will go to every pane you open in this tab"
+      : "Typing goes to one pane again");
+  }, []);
 
   /** Opens a tab for each console Windows handed over since the last look. */
   const openHandoffs = useCallback(async () => {
@@ -597,6 +617,7 @@ export default function App() {
       { id: "split-right", group: "Panes", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, run: () => splitActive("vertical") },
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
+      { id: "broadcast", group: "Panes", label: activeTab?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, keywords: "broadcast input sync panes", shortcut: keys.toggleBroadcast, run: () => toggleBroadcast() },
       ...[undefined, ...tabColors].map((color): PaletteCommand => ({
         id: `tab-color-${color?.id ?? "none"}`, group: "Tab color", label: `Tab color: ${color?.name ?? "None"}`, keywords: "colour",
         icon: <span className={`palette__swatch ${color ? "" : "palette__swatch--none"}`} style={color ? { background: color.value } : undefined} />,
@@ -614,7 +635,7 @@ export default function App() {
       { id: "zoom-out", group: "View", label: "Zoom out", icon: <Minus size={15} />, shortcut: keys.zoomOut, run: () => adjustFontSize(-1) },
       { id: "zoom-reset", group: "View", label: "Reset zoom", shortcut: keys.zoomReset, run: () => setPreferences((current) => ({ ...current, fontSize: defaultPreferences.fontSize })) },
       { id: "compact-tabs", group: "View", label: preferences.tabDensity === "compact" ? "Use normal tabs" : "Use compact tabs", run: () => setPreferences((current) => ({ ...current, tabDensity: current.tabDensity === "compact" ? "comfortable" : "compact" })) },
-      ...themes.map((candidate): PaletteCommand => ({
+      ...[...themes, ...preferences.customThemes].map((candidate): PaletteCommand => ({
         id: `theme-${candidate.id}`, group: "Theme", label: `Theme: ${candidate.name}`, keywords: `color scheme ${candidate.scheme}`,
         icon: <span className="palette__swatch" style={{ background: candidate.background, boxShadow: `inset 0 0 0 4px ${candidate.background}, inset 0 0 0 9px ${candidate.accent}` }} />,
         run: () => setPreferences((current) => ({ ...current, themeId: candidate.id, accent: candidate.accent })),
@@ -624,7 +645,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openNewTab, openSearch, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -647,6 +668,7 @@ export default function App() {
       if (action(keys.splitVertical, () => splitActive("vertical"))) return;
       if (action(keys.splitHorizontal, () => splitActive("horizontal"))) return;
       if (action(keys.closePane, closeActivePane)) return;
+      if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.nextTab, () => cycleTab(1))) return;
       if (action(keys.previousTab, () => cycleTab(-1))) return;
       if (action(keys.zoomIn, () => adjustFontSize(1))) return;
@@ -681,7 +703,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
@@ -714,6 +736,7 @@ export default function App() {
         { id: "rename", label: "Rename tab", icon: <Pencil size={15} />, run: () => setRenamingTabId(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
+        { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
         "separator",
         { heading: "Color" },
         {
@@ -795,7 +818,7 @@ export default function App() {
             <div key={tab.id} className={`workspace__tab ${visible ? "is-visible" : ""}`} aria-hidden={!visible}>
               {/* Panes stay in one flat, keyed list whatever the tree looks like, so React never
                   remounts a terminal (and restarts its shell) when the layout changes shape. */}
-              <div className={`panes ${tab.panes.length > 1 ? "is-split" : ""}`}>
+              <div className={`panes ${tab.panes.length > 1 ? "is-split" : ""} ${tab.broadcast ? "is-broadcast" : ""}`}>
                 {tab.panes.map((pane) => {
                   const focused = visible && pane.id === tab.activePaneId && !overlayOpen && !searchOpen && !menu && !renaming;
                   return (
@@ -817,6 +840,7 @@ export default function App() {
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
                         onSearchResult={setSearchResult}
+                        onInput={(data) => broadcastInput(tab.id, pane.id, data)}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
                         onClose={() => closePane(tab.id, pane.id)}
                       />

@@ -6,6 +6,8 @@ export interface PaneHandle {
   clear: () => void;
   hasSelection: () => boolean;
   focus: () => void;
+  /** Sends text to the shell as if it was typed (broadcast input). */
+  write: (data: string) => void;
   /** Scrolls to the previous or next command. False when the shell marks no commands. */
   jumpToCommand: (direction: -1 | 1) => boolean;
   /** Copies the output of the last finished command. False when there is none. */
