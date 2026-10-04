@@ -360,12 +360,15 @@ export default function TerminalPane({
       return true;
     });
 
+    // xterm's scroll area swallows wheel events whenever it can scroll, so Ctrl+Wheel
+    // is caught on the way down, before it gets there.
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
       event.preventDefault();
+      event.stopPropagation();
       callbacksRef.current.onFontSizeDelta(event.deltaY < 0 ? 1 : -1);
     };
-    host.addEventListener("wheel", handleWheel, { passive: false });
+    host.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
     const handleContextMenu = (event: MouseEvent) => {
       event.preventDefault();
@@ -403,7 +406,7 @@ export default function TerminalPane({
       searchDisposable.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();
-      host.removeEventListener("wheel", handleWheel);
+      host.removeEventListener("wheel", handleWheel, { capture: true });
       host.removeEventListener("contextmenu", handleContextMenu);
       window.removeEventListener("nebula:insert-paths", insertDropped);
       const sessionId = sessionRef.current;

@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Ctrl+Wheel zooms wherever the scrollbar is; it only worked at the very top or bottom of the history (#30)
 - `SHA256SUMS.txt` lists files under the names GitHub publishes them with (`Nebula.Terminal_…` instead of `Nebula Terminal_…`), which the in-app updater needs to verify a download
 
 ## 1.1.0
