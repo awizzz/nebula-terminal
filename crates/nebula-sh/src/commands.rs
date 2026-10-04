@@ -46,6 +46,7 @@ pub const BUILTINS: &[&str] = &[
     "trap",
     "mapfile",
     "readarray",
+    "z",
 ];
 
 /// Builtins that run other commands; inside a pipeline they need a sub-shell.
@@ -114,6 +115,7 @@ pub fn describe(name: &str) -> Option<&'static str> {
         "bg" | "disown" => "background jobs",
         "trap" => "run commands on exit, error or Ctrl+C",
         "mapfile" | "readarray" => "read lines into an array",
+        "z" => "jump to a folder you visit often",
         "cat" => "print files",
         "cp" => "copy files",
         "mv" => "move or rename",

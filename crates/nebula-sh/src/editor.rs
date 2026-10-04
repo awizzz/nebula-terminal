@@ -7,13 +7,72 @@ use crate::prompt::NebulaPrompt;
 use crate::sys;
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_emacs_keybindings, ColumnarMenu, DefaultHinter, Emacs, FileBackedHistory, Highlighter,
-    KeyCode, KeyModifiers, MenuBuilder, Reedline, ReedlineEvent, ReedlineMenu, Signal, StyledText,
-    ValidationResult, Validator,
+    default_emacs_keybindings, ColumnarMenu, Completer, CompletionResult, DefaultHinter, Emacs,
+    FileBackedHistory, Highlighter, KeyCode, KeyModifiers, ListMenu, MenuBuilder, Reedline,
+    ReedlineEvent, ReedlineMenu, Signal, Span, StyledText, Suggestion, ValidationResult, Validator,
 };
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+// ---------------------------------------------------------------------------
+// History search (Ctrl+R)
+
+/// Ctrl+R: the history ranked by fuzzy match against the line typed so far, newest
+/// first among equals. An empty line lists the latest commands.
+struct HistorySearch {
+    history: Arc<Mutex<Vec<String>>>,
+}
+
+/// More would only scroll; the best matches come first anyway.
+const SEARCH_RESULTS: usize = 50;
+
+impl HistorySearch {
+    fn matches(&self, query: &str) -> Vec<String> {
+        let Ok(history) = self.history.lock() else {
+            return Vec::new();
+        };
+        let mut seen = std::collections::HashSet::new();
+        let recent = history
+            .iter()
+            .rev()
+            .filter(|line| seen.insert(line.as_str()));
+        if query.trim().is_empty() {
+            return recent.take(SEARCH_RESULTS).cloned().collect();
+        }
+        let mut scored: Vec<(i64, usize, &String)> = recent
+            .enumerate()
+            .filter_map(|(age, line)| {
+                crate::fuzzy::score(query, line).map(|score| (score, age, line))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        scored
+            .into_iter()
+            .take(SEARCH_RESULTS)
+            .map(|(_, _, line)| line.clone())
+            .collect()
+    }
+}
+
+impl Completer for HistorySearch {
+    fn complete(&mut self, line: &str, pos: usize) -> CompletionResult {
+        // The whole line is the query, and the chosen command replaces it.
+        let span = Span::new(0, line.len().max(pos));
+        let suggestions: Vec<Suggestion> = self
+            .matches(line)
+            .into_iter()
+            .map(|value| Suggestion {
+                value,
+                span,
+                append_whitespace: false,
+                ..Suggestion::default()
+            })
+            .collect();
+        CompletionResult::fresh(suggestions)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Highlighting
@@ -245,19 +304,6 @@ impl Validator for NebulaValidator {
 
 // ---------------------------------------------------------------------------
 
-fn data_dir() -> PathBuf {
-    let base = if cfg!(windows) {
-        std::env::var_os("APPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| sys::home().unwrap_or_default())
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| sys::home().unwrap_or_default().join(".local/share"))
-    };
-    base.join(if cfg!(windows) { "Nebula" } else { "nebula" })
-}
-
 /// The last word of a command line as typed, quotes included (`"My Docs"`).
 fn last_word(line: &str) -> &str {
     let mut start = 0;
@@ -407,7 +453,7 @@ fn folder_url(path: &str, host: &str) -> String {
 pub fn interactive(shell: &mut Shell) -> i32 {
     shell.interactive = true;
     let integration = shell_integration();
-    let data = data_dir();
+    let data = sys::data_dir();
     let _ = std::fs::create_dir_all(&data);
     let history_path = data.join("history.txt");
     if let Ok(text) = std::fs::read_to_string(&history_path) {
@@ -443,6 +489,23 @@ pub fn interactive(shell: &mut Shell) -> i32 {
         ReedlineEvent::MenuPrevious,
     );
 
+    keybindings.add_binding(
+        KeyModifiers::CONTROL,
+        KeyCode::Char('r'),
+        ReedlineEvent::UntilFound(vec![
+            ReedlineEvent::Menu("history_search".into()),
+            ReedlineEvent::MenuNext,
+        ]),
+    );
+    let shared_history = Arc::new(Mutex::new(shell.history.clone()));
+    let history_menu = ListMenu::default()
+        .with_name("history_search")
+        .with_only_buffer_difference(false)
+        .with_page_size(10)
+        .with_text_style(Style::new())
+        .with_selected_text_style(Style::new().fg(Color::Black).on(Color::Blue))
+        .with_marker("");
+
     let menu = ColumnarMenu::default()
         .with_name("completion_menu")
         .with_text_style(Style::new())
@@ -462,6 +525,12 @@ pub fn interactive(shell: &mut Shell) -> i32 {
             known: known.clone(),
         }))
         .with_menu(ReedlineMenu::EngineCompleter(Box::new(menu)))
+        .with_menu(ReedlineMenu::WithCompleter {
+            menu: Box::new(history_menu),
+            completer: Box::new(HistorySearch {
+                history: shared_history.clone(),
+            }),
+        })
         .with_validator(Box::new(NebulaValidator))
         .with_quick_completions(true)
         .with_partial_completions(true)
@@ -499,6 +568,9 @@ pub fn interactive(shell: &mut Shell) -> i32 {
                     None => line,
                 };
                 shell.history.push(line.clone());
+                if let Ok(mut history) = shared_history.lock() {
+                    history.push(line.clone());
+                }
                 let name = line.split_whitespace().next().unwrap_or("").to_owned();
                 set_title(&name);
                 if integration {

@@ -47,11 +47,12 @@ If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`,
 - **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, arrays and associative arrays, `$((…))`, `[[ … ]]`, `read`, `mapfile`, `${name%.txt}` and the other `${…}` forms, `set -e`, `trap`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
 - **Background jobs.** `cmd &` runs while you keep typing; `jobs`, `wait`, `fg` and `kill %1` handle them. A job can't take the keyboard, and Ctrl+C only stops what runs in front.
 - **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
-- **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, `$VARIABLES` and your SSH hosts.
+- **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, the scripts of your `package.json` (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets, `$VARIABLES` and your SSH hosts.
+- **Finds what you did before.** `Ctrl+R` searches your history as you type, fuzzily: `gpo` finds `git push origin`. `z proj` jumps to the folder you visit most that matches, learned from your `cd`s.
 - **`ls` and `tree` with icons and colors** on screen. When the output goes to a file or another command, it stays plain.
 - **Helpful errors.** Typing `gti` suggests `git`, and `dir`, `cls` or `findstr` point to `ls`, `clear` and `grep`.
 
-Your history is saved in `%APPDATA%\Nebula\history.txt`. Aliases and variables can go in `~/.nebularc`, which runs at startup:
+Your history is saved in `%APPDATA%\Nebula\history.txt`, and the folders `z` knows in `dirs.txt` next to it. Aliases and variables can go in `~/.nebularc`, which runs at startup:
 
 ```sh
 alias gs='git status'

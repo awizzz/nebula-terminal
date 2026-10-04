@@ -464,6 +464,178 @@ fn ssh_hosts() -> Vec<String> {
     hosts
 }
 
+const NPM_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install the dependencies"),
+    ("ci", "clean install from the lockfile"),
+    ("run", "run a package.json script"),
+    ("test", "run the test script"),
+    ("start", "run the start script"),
+    ("init", "create a package.json"),
+    ("update", "update the dependencies"),
+    ("uninstall", "remove a dependency"),
+    ("list", "list installed packages"),
+    ("outdated", "show outdated packages"),
+    ("audit", "check for vulnerabilities"),
+    ("exec", "run a package's command"),
+    ("publish", "publish the package"),
+    ("version", "bump the version"),
+    ("pack", "make a tarball"),
+    ("link", "link a local package"),
+    ("view", "show a package's details"),
+    ("explain", "why a package is installed"),
+];
+
+const PACKAGE_MANAGER_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install the dependencies"),
+    ("add", "add a dependency"),
+    ("remove", "remove a dependency"),
+    ("run", "run a package.json script"),
+    ("test", "run the test script"),
+    ("update", "update the dependencies"),
+    ("why", "why a package is installed"),
+    ("dlx", "run a package without installing it"),
+    ("exec", "run a command from the dependencies"),
+];
+
+const CARGO_COMMANDS: &[(&str, &str)] = &[
+    ("build", "compile the package"),
+    ("check", "check for errors without building"),
+    ("clippy", "lint the code"),
+    ("run", "build and run"),
+    ("test", "run the tests"),
+    ("bench", "run the benchmarks"),
+    ("doc", "build the documentation"),
+    ("fmt", "format the code"),
+    ("new", "create a package in a new folder"),
+    ("init", "create a package here"),
+    ("add", "add a dependency"),
+    ("remove", "remove a dependency"),
+    ("update", "update the lockfile"),
+    ("install", "install a binary"),
+    ("uninstall", "remove an installed binary"),
+    ("clean", "remove the target folder"),
+    ("tree", "show the dependency tree"),
+    ("publish", "publish to crates.io"),
+    ("search", "search crates.io"),
+    ("fix", "apply compiler suggestions"),
+    ("metadata", "package details as JSON"),
+];
+
+const WINGET_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install a package"),
+    ("upgrade", "upgrade packages"),
+    ("uninstall", "remove a package"),
+    ("search", "find packages"),
+    ("list", "installed packages"),
+    ("show", "a package's details"),
+    ("source", "manage sources"),
+    ("export", "save the installed packages to a file"),
+    ("import", "install packages from a file"),
+    ("pin", "keep a package at a version"),
+    ("download", "download an installer"),
+    ("repair", "repair a package"),
+    ("settings", "open the settings"),
+    ("configure", "apply a configuration"),
+];
+
+const DOCKER_COMMANDS: &[(&str, &str)] = &[
+    ("run", "run a command in a new container"),
+    ("exec", "run a command in a running container"),
+    ("ps", "list containers"),
+    ("build", "build an image"),
+    ("images", "list images"),
+    ("pull", "download an image"),
+    ("push", "upload an image"),
+    ("logs", "a container's logs"),
+    ("stop", "stop containers"),
+    ("start", "start containers"),
+    ("restart", "restart containers"),
+    ("rm", "remove containers"),
+    ("rmi", "remove images"),
+    ("compose", "multi-container apps"),
+    ("network", "manage networks"),
+    ("volume", "manage volumes"),
+    ("inspect", "low-level details"),
+    ("cp", "copy files to or from a container"),
+    ("stats", "live resource use"),
+    ("login", "sign in to a registry"),
+    ("tag", "name an image"),
+    ("system", "disk use and cleanup"),
+];
+
+fn table(
+    entries: &'static [(&'static str, &'static str)],
+) -> impl Iterator<Item = (String, String)> {
+    entries
+        .iter()
+        .map(|(name, help)| ((*name).to_owned(), (*help).to_owned()))
+}
+
+/// The scripts of the nearest package.json, with their commands as descriptions.
+fn package_scripts() -> Vec<(String, String)> {
+    std::env::current_dir()
+        .map(|dir| package_scripts_from(&dir))
+        .unwrap_or_default()
+}
+
+fn package_scripts_from(start: &std::path::Path) -> Vec<(String, String)> {
+    let mut dir = Some(start.to_path_buf());
+    while let Some(current) = dir {
+        if let Ok(text) = std::fs::read_to_string(current.join("package.json")) {
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+                return Vec::new();
+            };
+            let Some(scripts) = json.get("scripts").and_then(|scripts| scripts.as_object()) else {
+                return Vec::new();
+            };
+            return scripts
+                .iter()
+                .map(|(name, command)| {
+                    let command: String = command.as_str().unwrap_or("").chars().take(60).collect();
+                    (name.clone(), command)
+                })
+                .collect();
+        }
+        dir = current.parent().map(std::path::Path::to_path_buf);
+    }
+    Vec::new()
+}
+
+/// The targets of the Makefile in this folder.
+fn make_targets() -> Vec<(String, String)> {
+    make_targets_in(std::path::Path::new("."))
+}
+
+fn make_targets_in(dir: &std::path::Path) -> Vec<(String, String)> {
+    let Some(text) = ["GNUmakefile", "makefile", "Makefile"]
+        .iter()
+        .find_map(|name| std::fs::read_to_string(dir.join(name)).ok())
+    else {
+        return Vec::new();
+    };
+    let mut targets: Vec<(String, String)> = text
+        .lines()
+        .filter(|line| !line.starts_with(['\t', ' ', '#', '.']))
+        .filter_map(|line| {
+            let (names, rest) = line.split_once(':')?;
+            // `VAR := value` and `VAR ::= value` are variables, not targets.
+            if rest.starts_with('=') || names.contains(['=', '$', '%']) {
+                return None;
+            }
+            Some(
+                names
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .map(|target| (target, String::new()))
+        .collect();
+    targets.dedup();
+    targets
+}
+
 fn word_suggestions<I>(candidates: I, prefix: &str, span: Span) -> Vec<Suggestion>
 where
     I: IntoIterator<Item = (String, String)>,
@@ -677,6 +849,48 @@ impl Completer for NebulaCompleter {
                     suggestions
                 }
                 "cd" | "pushd" | "rmdir" => self.paths(token, span, true),
+                "npm" => match words.get(1).map(String::as_str) {
+                    None => word_suggestions(table(NPM_COMMANDS), token, span),
+                    Some("run" | "run-script" | "rum" | "urn") if words.len() == 2 => {
+                        word_suggestions(package_scripts(), token, span)
+                    }
+                    _ => self.paths(token, span, false),
+                },
+                "pnpm" | "yarn" | "bun" => match words.get(1).map(String::as_str) {
+                    None => {
+                        let mut candidates = package_scripts();
+                        candidates.extend(table(PACKAGE_MANAGER_COMMANDS));
+                        word_suggestions(candidates, token, span)
+                    }
+                    Some("run") if words.len() == 2 => {
+                        word_suggestions(package_scripts(), token, span)
+                    }
+                    _ => self.paths(token, span, false),
+                },
+                "cargo" if words.len() == 1 => word_suggestions(table(CARGO_COMMANDS), token, span),
+                "winget" if words.len() == 1 => {
+                    word_suggestions(table(WINGET_COMMANDS), token, span)
+                }
+                "docker" if words.len() == 1 => {
+                    word_suggestions(table(DOCKER_COMMANDS), token, span)
+                }
+                "make" => word_suggestions(make_targets(), token, span),
+                "z" => {
+                    let typed: Vec<String> = words[1..]
+                        .iter()
+                        .cloned()
+                        .chain((!token.is_empty()).then(|| token.to_owned()))
+                        .collect();
+                    let mut suggestions = word_suggestions(
+                        crate::frecency::ranked(&typed)
+                            .into_iter()
+                            .map(|(_, path)| (path, String::new())),
+                        "",
+                        span,
+                    );
+                    suggestions.truncate(20);
+                    suggestions
+                }
                 "unset" | "export" | "local" | "declare" | "typeset" if !token.contains('=') => {
                     let mut names: Vec<String> = std::env::vars_os()
                         .filter_map(|(name, _)| name.into_string().ok())
@@ -697,6 +911,34 @@ impl Completer for NebulaCompleter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_package_scripts_and_make_targets() {
+        let dir = std::env::temp_dir().join(format!("nebula-complete-{}", std::process::id()));
+        let nested = dir.join("src").join("deep");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            dir.join("package.json"),
+            r#"{"name": "x", "scripts": {"dev": "vite", "test": "vitest run"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("Makefile"),
+            "CC := gcc\n.PHONY: all\nall: build\nbuild test:\n\tcargo build\n# comment: x\n",
+        )
+        .unwrap();
+        let scripts = package_scripts_from(&nested);
+        assert_eq!(
+            scripts,
+            [
+                ("dev".to_owned(), "vite".to_owned()),
+                ("test".to_owned(), "vitest run".to_owned())
+            ]
+        );
+        let targets: Vec<String> = make_targets_in(&dir).into_iter().map(|(t, _)| t).collect();
+        assert_eq!(targets, ["all", "build", "test"]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn finds_the_word_under_the_cursor() {

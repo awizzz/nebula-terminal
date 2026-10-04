@@ -26,6 +26,8 @@ regex = "1.13.1"
 # sed, from the uutils project. It is built on an older uucore, named here so Nebula
 # can tell it which command it is running.
 sed = "0.2.0"
+# package.json scripts for completion.
+serde_json = "1"
 uucore_sed = { package = "uucore", version = "0.10.0" }
 strsim = "0.11.1"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }

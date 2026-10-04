@@ -26,9 +26,8 @@ Installing and updating the way Windows users expect.
 ### Nebula
 
 - **`getopts`** and `**` globs.
-- **Fuzzy history search** on `Ctrl+R`, and directory jumping that learns where you go (`z projects`).
 - **A configurable prompt** in `~/.nebularc`: choose the segments (Git, time, Node or Rust version, battery), their order and colors, or keep using Starship.
-- **Completion for more programs:** npm and pnpm scripts, cargo, docker, kubectl, winget, and your own completions in a simple file.
+- **Completion for more programs:** kubectl and the rest, and your own completions in a simple file.
 
 ## Later
 

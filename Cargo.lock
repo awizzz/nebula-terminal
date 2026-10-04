@@ -3201,6 +3201,7 @@ dependencies = [
  "reedline",
  "regex",
  "sed",
+ "serde_json",
  "strsim",
  "sysinfo",
  "terminal_size",
