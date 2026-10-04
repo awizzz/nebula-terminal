@@ -14,6 +14,12 @@ describe("folderFromReport", () => {
     expect(folderFromReport("file://wsl$/Debian/tmp")).toBe("\\\\wsl$\\Debian\\tmp");
   });
 
+  it("reads what the PowerShell and bash scripts report", () => {
+    expect(folderFromReport("file://PC/D:/a b")).toBe("D:\\a b");
+    expect(folderFromReport("file://PC/C:/")).toBe("C:\\");
+    expect(folderFromReport("file://wsl$/Ubuntu/home/me/100%25 done")).toBe("\\\\wsl$\\Ubuntu\\home\\me\\100% done");
+  });
+
   it("ignores folders a Windows tab can't open in", () => {
     expect(folderFromReport("file://ubuntu-box/home/me")).toBeNull();
     expect(folderFromReport("file://server/share/project")).toBeNull();

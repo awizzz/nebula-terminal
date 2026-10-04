@@ -76,6 +76,7 @@ Not supported: arrays, background jobs (`&`) and `trap`. For scripts that need t
 - **Nine themes**, including light ones. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts. Every change applies immediately.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
+- **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
 - **Knows when you're done.** When a long command finishes in a tab you're not looking at, you get a Windows notification and a green or red dot on the tab.
 - **Updates itself.** When a new version is out, the app offers to install it and restarts. You can also check from Settings → About.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.

@@ -684,6 +684,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Open new tabs and splits in the current folder" description="Uses the folder the focused shell is in.">
                     <Switch label="Open new tabs and splits in the current folder" checked={preferences.openInCurrentFolder} onChange={(value) => patch("openInCurrentFolder", value)} />
                   </Row>
+                  <Row label="Shell integration" description="PowerShell, Git Bash and WSL mark their commands and report their folder, as Nebula does. Your profile still runs first. Applies to new tabs.">
+                    <Switch label="Shell integration" checked={preferences.shellIntegration} onChange={(value) => patch("shellIntegration", value)} />
+                  </Row>
                 </Group>
                 <CustomProfilesGroup profiles={profiles} defaultProfileId={preferences.defaultProfileId} onDefaultRemoved={() => patch("defaultProfileId", "")} onProfilesChanged={onProfilesChanged} />
                 {groupProfiles(profiles).filter(({ group }) => group !== "custom").map(({ group, profiles: members }) => (
@@ -727,7 +730,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Notifications">
-                  <Row label="Notify when a long command finishes" description="When its tab is in the background or the window is not in front. Needs Nebula, or a program that sends notifications.">
+                  <Row label="Notify when a long command finishes" description="When its tab is in the background or the window is not in front. Works in Nebula, in PowerShell, Git Bash and WSL with shell integration, and with programs that send notifications.">
                     <Switch label="Notify when a long command finishes" checked={preferences.notifyLongCommands} onChange={(value) => patch("notifyLongCommands", value)} />
                   </Row>
                   <Row label="Long means at least">
