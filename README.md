@@ -119,7 +119,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: a winget package, signed releases, a Quake-style drop-down window, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: the winget package (in review), a Quake-style drop-down window, a theme editor and per-profile looks. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

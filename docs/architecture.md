@@ -147,11 +147,11 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `keys.ts` | Shortcut parsing, matching and recording. |
 | `commandMarks.ts` | Finding the next prompt for command jumps, and joining wrapped lines of a command's output. |
 | `folders.ts` | Reading the folder a shell reports (OSC 7) and checking a folder before a new shell starts in it. |
-| `terminalInput.ts` | Quoting dropped paths for each shell, and telling pastes from typing. |
+| `terminalInput.ts` | Quoting dropped paths for each shell, telling pastes from typing, and telling both from what xterm answers on its own (kept out of broadcast input). |
 | `notify.ts` | Windows notifications, and the text for a finished command. |
 | `updates.ts` | Update checks: when to check, which version was put off. |
 | `platform.ts` | The Windows build number, for xterm's ConPTY handling. |
-| `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…). |
+| `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…), and broadcast input write to the other panes of a tab. |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
 
 The icon glyphs that `ls`, `tree` and the prompt print come from `assets/fonts/nebula-symbols.woff2`, a subset of the Nerd Fonts symbols built by `scripts/subset-icons.py`. It's added as a fallback after the user's terminal font and loaded before the first terminal renders.
