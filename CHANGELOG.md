@@ -4,7 +4,7 @@
 
 ### Added
 
-- a Scoop bucket in the repository: `scoop bucket add nebula-terminal https://github.com/awizzz/nebula-terminal`, then `scoop install nebula-terminal/nebula-terminal`
+- a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 
 ## 1.2.0
 

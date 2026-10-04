@@ -115,6 +115,8 @@ jobs:
           # so SHA256SUMS.txt matches what people (and the in-app updater) download.
           foreach ($bundle in $bundles) { Copy-Item $bundle.FullName (Join-Path release ($bundle.Name -replace ' ', '.')) }
 
+          ./scripts/scoop-manifest.ps1 -Version $version -Zip "$portable.zip" -Repository $env:GITHUB_REPOSITORY -Out release/nebula-terminal.json
+
           Get-ChildItem release -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)" | Add-Content release/SHA256SUMS.txt -Encoding ascii

@@ -29,8 +29,11 @@ Instead of tagging, you can run the **Release** workflow from the Actions tab wi
 Nebula.Terminal_<version>_x64-setup.exe          NSIS installer
 Nebula.Terminal_<version>_x64_en-US.msi          MSI installer
 Nebula-Terminal-<version>-windows-x64-portable.zip   includes nebula-sh.exe
+nebula-terminal.json                             Scoop manifest for the portable zip
 SHA256SUMS.txt
 ```
+
+`scripts/scoop-manifest.ps1` writes the Scoop manifest. People install from `releases/latest/download/nebula-terminal.json`, and Scoop reads that address again on `scoop update`, so a release needs nothing else for Scoop. Pre-releases never reach it, since `latest` skips them.
 
 When the repository is public, each file also gets a GitHub build-provenance attestation:
 
