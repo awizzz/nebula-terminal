@@ -138,6 +138,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `components/Menu.tsx` | Context menus and dropdowns. |
 | `themes.ts` | Terminal color schemes. The UI chrome is derived from them in CSS. |
 | `preferences.ts` | Defaults, validation and migration of saved settings; theme import and export. |
+| `themeImport.ts` | Reading Windows Terminal and iTerm2 color schemes, and checking imported schemes read back from storage. |
 | `layout.ts` | The split layout of a tab as a tree: split, close, resize, find the pane next to another one, and validate a saved tree. |
 | `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. A pane whose profile no longer exists opens the default profile instead. |
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |

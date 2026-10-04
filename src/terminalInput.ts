@@ -44,6 +44,27 @@ export function quoteDroppedPath(path: string, profile: TerminalProfile): string
   return `'${text.replaceAll("'", "'\\''")}'`;
 }
 
+const REPORTS = [
+  /^\x1b\[[IO]$/, // focus in and out
+  /^\x1b\[<\d+;\d+;\d+[Mm]$/, // mouse (SGR)
+  /^\x1b\[\d+;\d+;\d+M$/, // mouse (urxvt)
+  /^\x1b\[M[\s\S]{3}$/, // mouse (UTF-8)
+  /^\x1b\[\??\d+;\d+R$/, // cursor position
+  /^\x1b\[\??\d+;\d+\$y$/, // mode
+  /^\x1b\[[?>]?[\d;]*[cnt]$/, // device attributes, status, window size
+  /^\x1b\][\s\S]*(?:\x07|\x1b\\)$/, // colors and other OSC replies
+  /^\x1bP[\s\S]*\x1b\\$/, // settings (DECRQSS)
+];
+
+/**
+ * Input xterm sends on its own rather than for a key: answers to the shell's queries,
+ * focus changes and mouse reports. They only make sense in the pane they came from.
+ * Shift, Ctrl or Alt+F3 (`ESC[1;5R`) reads like a cursor report and counts as one.
+ */
+export function isTerminalReport(data: string): boolean {
+  return REPORTS.some((pattern) => pattern.test(data));
+}
+
 /** Input that came from a paste rather than from typing. */
 export function isPaste(data: string): boolean {
   return data.includes(PASTE_START) || (data.length > 1 && /[\r\n]/.test(data));

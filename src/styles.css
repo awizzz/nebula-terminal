@@ -470,6 +470,9 @@ kbd { font: inherit; }
 .find__status { min-width: 70px; padding: 0 6px; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
 .find button { width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-m); color: var(--text-2); }
 .find button:hover { background: var(--hover); color: var(--text); }
+/* Broadcast input: every pane of the tab shows that it receives the typing. */
+.panes.is-broadcast .pane { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 70%, transparent); }
+.panes.is-broadcast .pane.is-active { box-shadow: inset 0 0 0 2px var(--accent); }
 .find__toggles { display: flex; gap: 2px; margin-left: 4px; }
 .find .find__toggle { width: 26px; height: 26px; color: var(--text-3); }
 .find .find__toggle.is-on { background: var(--hover-strong); color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -996,6 +999,9 @@ kbd { font: inherit; }
 .theme-card:hover { transform: translateY(-2px); box-shadow: inset 0 0 0 1px var(--line-strong), 0 6px 16px rgb(0 0 0 / 0.18); }
 .theme-card:active { transform: translateY(0); }
 .theme-card[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+.theme-card-wrap { position: relative; display: grid; }
+.theme-card__remove { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; background: rgb(0 0 0 / 0.55); color: #fff; opacity: 0; transition: opacity var(--dur-2); }
+.theme-card-wrap:hover .theme-card__remove, .theme-card__remove:focus-visible { opacity: 1; }
 .theme-card__preview { display: flex; flex-direction: column; gap: 1px; margin: 2px 2px 0; padding: 10px 12px; border-radius: 6px 6px 0 0; font: 11px/1.45 var(--mono-font); white-space: nowrap; overflow: hidden; }
 .theme-card__preview b { font-weight: 600; }
 .theme-card__name { display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 12px; font-size: 12px; }

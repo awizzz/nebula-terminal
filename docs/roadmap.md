@@ -16,9 +16,8 @@ Installing and updating the way Windows users expect.
 - **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
 - **Run a profile as administrator**, in its own clearly marked tab.
 - **Several windows:** drag a tab out to make a new window, or back in to merge.
-- **Broadcast input:** type once, send to every pane of a tab.
 - **Per-profile looks:** each profile can have its own theme, font and background.
-- **Theme editor**, and import of Windows Terminal and iTerm2 color schemes.
+- **Theme editor:** change any color of a scheme and keep it as your own.
 - **Images in the terminal** (Sixel and the iTerm2 protocol), for tools like `chafa` or `viu`.
 - **Font ligatures** for fonts that have them (Cascadia Code, Fira Code, JetBrains Mono).
 

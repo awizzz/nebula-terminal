@@ -14,6 +14,8 @@
 - `Ctrl+R` searches the history fuzzily as you type, newest first among equal matches
 - `z`: jumps to the folder you visit most that matches (`z proj`), learned from the `cd`s you type. `z -l` lists them
 - Find (`Ctrl+Shift+F`) can match case, whole words or a regular expression (`Alt+C`, `Alt+W`, `Alt+R`). The choice is remembered, and a pattern that doesn't compile says so
+- typing in every pane of a tab at once, to run the same command on several machines or shells: `Ctrl+Shift+B`, the tab's menu or the command palette. The panes get a colored outline while it's on
+- import color schemes from Windows Terminal (one scheme, or the `schemes` of your whole settings.json) and iTerm2 (`.itermcolors`) in Settings → Appearance. A scheme that's already built in, like Dracula, selects the built-in theme instead of adding a copy. Exported theme files carry the imported scheme they use
 - Tab completion for the scripts of package.json (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets and `z`
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 

@@ -11,7 +11,7 @@ import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { registerPane } from "../paneRegistry";
 import { windowsBuild } from "../platform";
-import { isPaste, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
+import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
 import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
@@ -32,6 +32,8 @@ interface TerminalPaneProps {
   onTitleChange: (title: string) => void;
   onActivity: () => void;
   onSearchResult: (result: { index: number; count: number }) => void;
+  /** Input the user typed or pasted here, for panes that type together. */
+  onInput?: (data: string) => void;
   onContextMenu: (x: number, y: number) => void;
   onCommandFinished: (finished: FinishedCommand) => void;
   onNotify: (title: string, body: string) => void;
@@ -125,6 +127,7 @@ export default function TerminalPane({
   onTitleChange,
   onActivity,
   onSearchResult,
+  onInput,
   onContextMenu,
   onCommandFinished,
   onNotify,
@@ -142,7 +145,7 @@ export default function TerminalPane({
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput });
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
@@ -152,9 +155,9 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput };
 
-  const theme = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
+  const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
   // A translucent terminal lets the workspace paint the background; an opaque one keeps
   // xterm's own background so glyphs get subpixel antialiasing.
@@ -372,17 +375,25 @@ export default function TerminalPane({
 
     writeRef.current = writeRaw;
 
+    const typed = (data: string) => {
+      writeRaw(data);
+      callbacksRef.current.onInput?.(data);
+    };
     const writeInput = (data: string) => {
-      if (!isPaste(data)) {
+      if (isTerminalReport(data)) {
         writeRaw(data);
+        return;
+      }
+      if (!isPaste(data)) {
+        typed(data);
         return;
       }
       if (pasteLineCount(data) > 1) {
         if (preferencesRef.current.confirmMultilinePaste) setPendingPaste(data);
-        else writeRaw(data);
+        else typed(data);
         return;
       }
-      writeRaw(trimSingleLinePaste(data));
+      typed(trimSingleLinePaste(data));
     };
 
     const paste = () => {
@@ -511,6 +522,7 @@ export default function TerminalPane({
       clear: () => terminal.clear(),
       hasSelection: () => terminal.hasSelection(),
       focus: () => terminal.focus(),
+      write: (data: string) => writeRef.current(data),
       jumpToCommand,
       copyLastOutput,
       hasCommandOutput: () => lastOutputLines() !== undefined,
@@ -649,6 +661,7 @@ export default function TerminalPane({
     if (!data) return;
     if (isTauri()) writeRef.current(data);
     else terminalRef.current?.write(previewText(data).replace(/\n/g, `\r\n${previewPrompt(profile)}`));
+    callbacksRef.current.onInput?.(data);
     requestAnimationFrame(() => terminalRef.current?.focus());
   };
 
