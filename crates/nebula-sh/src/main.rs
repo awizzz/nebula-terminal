@@ -14,6 +14,8 @@ mod editor;
 mod exec;
 mod expand;
 mod extras;
+mod frecency;
+mod fuzzy;
 mod icons;
 mod parse;
 mod prompt;

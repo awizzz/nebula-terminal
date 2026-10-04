@@ -60,6 +60,7 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
         "bg" => bg(shell, args),
         "disown" => disown(shell, args),
         "trap" => trap(shell, args, &mut out),
+        "z" => z(shell, args, &mut out),
         other => Err(format!("{other}: not a builtin")),
     };
     let _ = out.flush();
@@ -73,6 +74,35 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
 }
 
 type Outcome = Result<i32, String>;
+
+/// `z words…` goes to the folder you visit most that matches, `z -l words…` lists the
+/// matches, `z` alone lists every folder it knows, best last.
+fn z(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let list = args.first().is_some_and(|arg| arg == "-l");
+    let words: Vec<String> = args.iter().filter(|arg| *arg != "-l").cloned().collect();
+    if words.is_empty() || list {
+        let ranked = crate::frecency::ranked(&words);
+        for (score, path) in ranked.iter().rev() {
+            let _ = writeln!(out, "{score:<10.1} {path}");
+        }
+        return Ok(i32::from(ranked.is_empty() && !words.is_empty()));
+    }
+    // A real folder needs no ranking.
+    if words.len() == 1 {
+        let target = resolve_dir(&words[0]);
+        if target.is_dir() {
+            shell.change_dir(&target)?;
+            return Ok(0);
+        }
+    }
+    match crate::frecency::ranked(&words).into_iter().next() {
+        Some((_, path)) => {
+            shell.change_dir(std::path::Path::new(&path))?;
+            Ok(0)
+        }
+        None => Err(format!("no folder you visited matches {}", words.join(" "))),
+    }
+}
 
 /// `jobs [-l | -p]`: the background jobs, newest last, with `+` on the current one.
 fn jobs(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {

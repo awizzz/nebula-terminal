@@ -1903,6 +1903,10 @@ impl Shell {
             env::set_var("OLDPWD", previous);
         }
         if let Ok(current) = env::current_dir() {
+            // Folders visited by hand are what `z` jumps to; scripts don't count.
+            if self.interactive {
+                crate::frecency::record(&current);
+            }
             env::set_var("PWD", current);
         }
         Ok(())

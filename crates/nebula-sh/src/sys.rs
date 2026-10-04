@@ -168,6 +168,20 @@ pub fn terminal_width() -> usize {
         .unwrap_or(80)
 }
 
+/// Where Nebula keeps its history and folder ranks: `%APPDATA%\Nebula` on Windows.
+pub fn data_dir() -> PathBuf {
+    let base = if cfg!(windows) {
+        std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().unwrap_or_default())
+    } else {
+        std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| home().unwrap_or_default().join(".local/share"))
+    };
+    base.join(if cfg!(windows) { "Nebula" } else { "nebula" })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

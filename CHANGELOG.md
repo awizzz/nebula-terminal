@@ -11,6 +11,9 @@
 - arrays and associative arrays: `a=(x y)`, `a[3]=z`, `a+=(w)`, `"${a[@]}"`, `${#a[@]}`, `${!a[@]}`, slices, `declare -A`, `local -a`, `read -a`, `mapfile`, plus `${!name}`
 - background jobs: `cmd &`, `jobs`, `wait`, `fg`, `kill %1` and `$!`. A job can't take the keyboard, and Ctrl+C doesn't stop it
 - `trap` on EXIT, ERR and INT
+- `Ctrl+R` searches the history fuzzily as you type, newest first among equal matches
+- `z`: jumps to the folder you visit most that matches (`z proj`), learned from the `cd`s you type. `z -l` lists them
+- Tab completion for the scripts of package.json (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets and `z`
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 
 ## 1.2.0
