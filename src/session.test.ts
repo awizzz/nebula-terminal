@@ -46,6 +46,24 @@ describe("session", () => {
     expect(restored.activePaneId).toBe(order[2]);
   });
 
+  it("brings back the folder each pane was in, if it's one a tab can open", () => {
+    const layout = splitPane(splitPane(paneLeaf("one"), "one", "two", "vertical"), "two", "three", "vertical");
+    saveSession([{
+      id: "tab",
+      title: "Nebula",
+      panes: [
+        { id: "one", profile: nebula, cwd: "C:\\Users\\me\\src" },
+        { id: "two", profile: debian, cwd: "\\\\wsl.localhost\\Debian\\home\\me" },
+        { id: "three", profile: pwsh, cwd: "\\\\server\\share" },
+      ],
+      layout,
+      activePaneId: "one",
+    }], "tab");
+    const restored = loadSession(previewProfiles)!.tabs[0]!;
+    const folders = paneIds(restored.layout).map((id) => restored.panes.find((pane) => pane.id === id)?.cwd);
+    expect(folders).toEqual(["C:\\Users\\me\\src", "\\\\wsl.localhost\\Debian\\home\\me", undefined]);
+  });
+
   it("migrates a version 2 snapshot", () => {
     localStorage.setItem("nebula-terminal.session.v2", JSON.stringify({
       version: 2,

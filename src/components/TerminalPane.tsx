@@ -6,6 +6,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { openExternal } from "../external";
+import { folderFromReport } from "../folders";
 import { registerPane } from "../paneRegistry";
 import { windowsBuild } from "../platform";
 import { isPaste, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
@@ -16,6 +17,8 @@ import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types"
 interface TerminalPaneProps {
   paneId: string;
   profile: TerminalProfile;
+  /** Where the shell starts when it has no folder of its own (its last one, or the pane it was split from). */
+  startIn?: string;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -28,6 +31,7 @@ interface TerminalPaneProps {
   onContextMenu: (x: number, y: number) => void;
   onCommandFinished: (finished: FinishedCommand) => void;
   onNotify: (title: string, body: string) => void;
+  onFolderChange: (folder: string) => void;
   onClose: () => void;
 }
 
@@ -92,6 +96,7 @@ function writePreview(terminal: Terminal, profile: TerminalProfile) {
 export default function TerminalPane({
   paneId,
   profile,
+  startIn,
   preferences,
   focused,
   visible,
@@ -104,6 +109,7 @@ export default function TerminalPane({
   onContextMenu,
   onCommandFinished,
   onNotify,
+  onFolderChange,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -115,7 +121,8 @@ export default function TerminalPane({
   const focusedRef = useRef(focused);
   const visibleRef = useRef(visible);
   const preferencesRef = useRef(preferences);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify });
+  const startInRef = useRef(startIn);
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange });
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
@@ -124,7 +131,8 @@ export default function TerminalPane({
   focusedRef.current = focused;
   visibleRef.current = visible;
   preferencesRef.current = preferences;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify };
+  startInRef.current = startIn;
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId), [preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -237,6 +245,12 @@ export default function TerminalPane({
       callbacksRef.current.onNotify(title.slice(0, 120) || profile.name, body.join(";").slice(0, 300));
       return true;
     });
+    // OSC 7: the shell's current folder, where splits and the next launch start.
+    const folderReport = terminal.parser.registerOscHandler(7, (data) => {
+      const folder = folderFromReport(data);
+      if (folder) callbacksRef.current.onFolderChange(folder);
+      return true;
+    });
     const searchDisposable = search.onDidChangeResults(({ resultIndex, resultCount }) => {
       callbacksRef.current.onSearchResult({ index: resultIndex, count: resultCount });
     });
@@ -305,11 +319,14 @@ export default function TerminalPane({
       };
 
       resize();
+      const { startingFolder, workingDirectory } = preferencesRef.current;
       void invoke<string>("start_session", {
         profileId: profile.id,
         cols: terminal.cols,
         rows: terminal.rows,
-        cwd: preferencesRef.current.workingDirectory.trim() || null,
+        cwd: startingFolder === "custom" ? workingDirectory.trim() || null : null,
+        knownFolder: startingFolder === "desktop" || startingFolder === "documents" ? startingFolder : null,
+        startIn: startInRef.current ?? null,
         onEvent: channel,
       }).then((sessionId) => {
         if (disposed) {
@@ -403,6 +420,7 @@ export default function TerminalPane({
       integration.dispose();
       notification.dispose();
       titledNotification.dispose();
+      folderReport.dispose();
       searchDisposable.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();

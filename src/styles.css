@@ -935,7 +935,8 @@ kbd { font: inherit; }
 .row__label { font-size: 13px; }
 .row__description { color: var(--text-3); font-size: 12px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; }
 .row__control { flex: none; display: flex; align-items: center; }
-.row--stacked .row__control { display: block; }
+.row--stacked .row__control { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.row--stacked .row__control > .field { align-self: stretch; }
 .row__value { color: var(--text-2); font-size: 13px; }
 
 .shell-row { min-height: 56px; display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 14px; padding: 10px 16px; }

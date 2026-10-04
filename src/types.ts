@@ -70,6 +70,9 @@ export interface KeybindingPreferences {
   zoomReset: string;
 }
 
+/** Where new shells start when they have no folder of their own. */
+export type StartingFolder = "home" | "desktop" | "documents" | "custom";
+
 export interface AppearancePreferences {
   accent: string;
   themeId: string;
@@ -86,7 +89,11 @@ export interface AppearancePreferences {
   animationLevel: AnimationLevel;
   tabDensity: TabDensity;
   defaultProfileId: string;
+  startingFolder: StartingFolder;
+  /** The folder typed in Settings, used when `startingFolder` is "custom". */
   workingDirectory: string;
+  /** New tabs and splits open where the focused pane's shell is. */
+  openInCurrentFolder: boolean;
   restoreSession: boolean;
   copyOnSelect: boolean;
   confirmMultilinePaste: boolean;
@@ -102,6 +109,8 @@ export interface AppearancePreferences {
 export interface TerminalPaneModel {
   id: string;
   profile: TerminalProfile;
+  /** The last folder the shell reported, or the one the pane should start in. */
+  cwd?: string;
 }
 
 export interface TerminalTab {
@@ -122,7 +131,7 @@ export interface PersistedPane {
 }
 
 export type PersistedLayout =
-  | { type: "pane"; profileId: string }
+  | { type: "pane"; profileId: string; cwd?: string }
   | { type: "split"; direction: SplitDirection; sizes: number[]; children: PersistedLayout[] };
 
 export interface PersistedTab {

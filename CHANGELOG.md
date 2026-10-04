@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- new tabs and splits open in the folder of the shell you're in (Nebula reports it with OSC 7), and restored tabs reopen in the folder they were in
+- a choice of starting folder in Settings → Profiles: your user folder (still the default), Desktop, Documents or a folder you type. Desktop and Documents follow OneDrive and other redirections
+
 ## 1.1.1
 
 A small update: Ctrl+Wheel zoom works anywhere in the history, and the project has a new name and license.
