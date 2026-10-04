@@ -46,7 +46,7 @@ The things people notice in their first hour.
 - `help <command>` with short, practical examples, the way tldr does it.
 - A screen-reader mode and a high-contrast theme, checked with Narrator and NVDA.
 - More languages for the interface, contributed by users.
-- A small website with a demo, the documentation and the changelog.
+- The documentation and the changelog on [nebula.awizz.space](https://nebula.awizz.space), next to the demo.
 
 ## Exploring
 
