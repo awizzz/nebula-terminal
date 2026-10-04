@@ -21,7 +21,14 @@ Download the latest installer from [Releases](https://github.com/awizzz/nebula-t
 Releases are not code-signed yet, so Windows SmartScreen may warn you the first time. Check the file against `SHA256SUMS.txt` from the same release before you continue:
 
 ```powershell
-Get-FileHash '.\Nebula.Terminal_1.1.0_x64-setup.exe' -Algorithm SHA256
+Get-FileHash '.\Nebula.Terminal_1.2.0_x64-setup.exe' -Algorithm SHA256
+```
+
+With [Scoop](https://scoop.sh), the repository is its own bucket. Scoop installs the portable version and adds the `nebula-terminal` command:
+
+```powershell
+scoop bucket add nebula-terminal https://github.com/awizzz/nebula-terminal
+scoop install nebula-terminal/nebula-terminal
 ```
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.
@@ -108,7 +115,7 @@ All of these except the last three rows can be changed in **Settings → Keyboar
 
 ## What's next
 
-Next up: winget and Scoop packages, signed releases, a Quake-style drop-down window, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: a winget package, signed releases, a Quake-style drop-down window, `sed` and `awk` in Nebula, and more. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

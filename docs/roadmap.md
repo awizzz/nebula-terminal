@@ -6,7 +6,7 @@ Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles,
 
 Installing and updating the way Windows users expect.
 
-- **winget and Scoop packages:** `winget install Awizz.NebulaTerminal`.
+- **A winget package:** `winget install Awizz.NebulaTerminal`. (Scoop already works, see the README.)
 - **Signed releases** (Authenticode), so SmartScreen stops warning and updates are checked against a signature as well as a checksum.
 
 ## Soon (1.4 and 1.5)
