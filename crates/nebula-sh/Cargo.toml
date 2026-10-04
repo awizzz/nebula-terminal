@@ -14,12 +14,19 @@ path = "src/main.rs"
 [dependencies]
 ctrlc = "3.5.2"
 crossterm = "0.29.0"
+# diff and cmp, from the uutils diffutils project.
+diffutils = "0.5.0"
 glob = "0.3.4"
+indexmap = "2.14.2"
 jiff = "0.2.37"
 nu-ansi-term = "0.50.3"
 os_pipe = "1.2.3"
 reedline = "0.52.0"
 regex = "1.13.1"
+# sed, from the uutils project. It is built on an older uucore, named here so Nebula
+# can tell it which command it is running.
+sed = "0.2.0"
+uucore_sed = { package = "uucore", version = "0.10.0" }
 strsim = "0.11.1"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 terminal_size = "0.4.4"

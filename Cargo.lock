@@ -636,8 +636,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link",
 ]
 
@@ -664,10 +666,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_lex"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486"
+
+[[package]]
+name = "clap_mangen"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "211d617eaa4b735c96c9e0228fcbdb5120ef623f2b8cb67ffb84c3e02dbc28a4"
+dependencies = [
+ "clap",
+ "roff",
+]
 
 [[package]]
 name = "colorchoice"
@@ -959,7 +980,7 @@ dependencies = [
  "cssparser-macros",
  "dtoa-short",
  "itoa",
- "phf",
+ "phf 0.13.1",
  "smallvec",
 ]
 
@@ -1121,6 +1142,32 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
+name = "difflib"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+
+[[package]]
+name = "diffutils"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba6999910c01606653d73925f86a769a5920393b2baac5c85f87afa3a599b9f8"
+dependencies = [
+ "chrono",
+ "diff",
+ "itoa",
+ "regex",
+ "same-file",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -1394,6 +1441,17 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1e1dacd0d2082dfcf1351c4bdd566bbe89a2b263235a2b50058f1e130a47277"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "fancy-regex"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d301f5bf187b3c295fce6468d3875037a0bccc5f6b151c63cac2f85babf21912"
@@ -1475,6 +1533,15 @@ dependencies = [
  "crc32fast",
  "miniz_oxide 0.9.1",
  "zlib-rs",
+]
+
+[[package]]
+name = "float-cmp"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -2423,6 +2490,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "icu_segmenter"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82d07aafccd67af15d02512a6adf5896fbc5ed00f2e99b471d2efa14016db3db"
+dependencies = [
+ "icu_collections",
+ "icu_locale_fallback",
+ "icu_provider",
+ "icu_segmenter_data",
+ "potential_utf",
+ "smallvec",
+ "utf8_iter",
+ "zerovec",
+]
+
+[[package]]
+name = "icu_segmenter_data"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae293c039020f9ec10710af98d29ce6aa2051486638b49c9a6409f3b4a9e98ad"
+
+[[package]]
 name = "icu_time"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3103,12 +3192,15 @@ version = "1.2.0"
 dependencies = [
  "crossterm",
  "ctrlc",
+ "diffutils",
  "glob",
+ "indexmap 2.14.2",
  "jiff",
  "nu-ansi-term",
  "os_pipe",
  "reedline",
  "regex",
+ "sed",
  "strsim",
  "sysinfo",
  "terminal_size",
@@ -3177,7 +3269,8 @@ dependencies = [
  "uu_wc",
  "uu_whoami",
  "uu_yes",
- "uucore",
+ "uucore 0.10.0",
+ "uucore 0.12.0",
  "walkdir",
  "windows-sys 0.61.2",
 ]
@@ -3244,6 +3337,12 @@ checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "normalize-line-endings"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 
 [[package]]
 name = "notify"
@@ -3725,7 +3824,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1562dc717473dbaa4c1f85a36410e03c047b2e7df7f45ee938fbef64ae7fadf"
 dependencies = [
  "phf_macros",
- "phf_shared",
+ "phf_shared 0.13.1",
+ "serde",
+]
+
+[[package]]
+name = "phf"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "010378780309880b08997fae13be7834dba947d36393bd372f2b1556deb2a2f6"
+dependencies = [
+ "phf_shared 0.14.0",
  "serde",
 ]
 
@@ -3735,8 +3844,18 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49aa7f9d80421bca176ca8dbfebe668cc7a2684708594ec9f3c0db0805d5d6e1"
 dependencies = [
- "phf_generator",
- "phf_shared",
+ "phf_generator 0.13.1",
+ "phf_shared 0.13.1",
+]
+
+[[package]]
+name = "phf_codegen"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41b585a510fb76fdebead6897982ef2a03a21d8e6cbcca904999742a4afc6ffe"
+dependencies = [
+ "phf_generator 0.14.0",
+ "phf_shared 0.14.0",
 ]
 
 [[package]]
@@ -3746,7 +3865,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "135ace3a761e564ec88c03a77317a7c6b80bb7f7135ef2544dbe054243b89737"
 dependencies = [
  "fastrand",
- "phf_shared",
+ "phf_shared 0.13.1",
+]
+
+[[package]]
+name = "phf_generator"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeb62e0959d5a1bebc965f4d15d9e2b7cea002b6b0f5ba8cde6cc26738467100"
+dependencies = [
+ "fastrand",
+ "phf_shared 0.14.0",
 ]
 
 [[package]]
@@ -3755,8 +3884,8 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812f032b54b1e759ccd5f8b6677695d5268c588701effba24601f6932f8269ef"
 dependencies = [
- "phf_generator",
- "phf_shared",
+ "phf_generator 0.13.1",
+ "phf_shared 0.13.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -3767,6 +3896,15 @@ name = "phf_shared"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fd9027e2d9319be6349febd1db4e8d02aa544921200c9b777720ac34a3aa89"
 dependencies = [
  "siphasher",
 ]
@@ -3924,6 +4062,26 @@ name = "precomputed-hash"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
+
+[[package]]
+name = "predicates"
+version = "3.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ada8f2932f28a27ee7b70dd6c1c39ea0675c55a36879ab92f3a715eaa1e63cfe"
+dependencies = [
+ "anstyle",
+ "difflib",
+ "float-cmp",
+ "normalize-line-endings",
+ "predicates-core",
+ "regex",
+]
+
+[[package]]
+name = "predicates-core"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cad38746f3166b4031b1a0d39ad9f954dd291e7854fcc0eed52ee41a0b50d144"
 
 [[package]]
 name = "proc-macro-crate"
@@ -4257,6 +4415,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "roff"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323c417e1d9665a65b263ec744ba09030cfb277e9daa0b018a4ab62e57bc8189"
+
+[[package]]
 name = "rust-ini"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4473,6 +4637,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "sed"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19bce1f582ae9c42585d227c1d18cd909e9b532f471dffb386333d4685fa8cab"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "clap_mangen",
+ "fancy-regex 0.18.0",
+ "memchr",
+ "memmap2",
+ "phf 0.14.0",
+ "phf_codegen 0.14.0",
+ "predicates",
+ "regex",
+ "rustix",
+ "tempfile",
+ "terminal_size",
+ "textwrap",
+ "uucore 0.10.0",
+]
+
+[[package]]
 name = "selectors"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4483,8 +4670,8 @@ dependencies = [
  "derive_more",
  "log",
  "new_debug_unreachable",
- "phf",
- "phf_codegen",
+ "phf 0.13.1",
+ "phf_codegen 0.13.1",
  "precomputed-hash",
  "rustc-hash",
  "servo_arc",
@@ -4835,6 +5022,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891"
 
 [[package]]
+name = "smawk"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
+
+[[package]]
 name = "socket2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4918,7 +5111,7 @@ checksum = "a18596f8c785a729f2819c0f6a7eae6ebeebdfffbfe4214ae6b087f690e31901"
 dependencies = [
  "new_debug_unreachable",
  "parking_lot",
- "phf_shared",
+ "phf_shared 0.13.1",
  "precomputed-hash",
 ]
 
@@ -4928,8 +5121,8 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "585635e46db231059f76c5849798146164652513eb9e8ab2685939dd90f29b69"
 dependencies = [
- "phf_generator",
- "phf_shared",
+ "phf_generator 0.13.1",
+ "phf_shared 0.13.1",
  "proc-macro2",
  "quote",
 ]
@@ -5378,7 +5571,7 @@ dependencies = [
  "json-patch",
  "log",
  "memchr",
- "phf",
+ "phf 0.13.1",
  "plist",
  "proc-macro2",
  "quote",
@@ -5450,6 +5643,18 @@ checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.16.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ecfad6c3abc80a577f2b91c1e412ee57e7a060d430b553c1b0c940974ebcd49"
+dependencies = [
+ "icu_segmenter",
+ "smawk",
+ "terminal_size",
+ "unicode-width 0.2.2",
 ]
 
 [[package]]
@@ -5960,7 +6165,7 @@ dependencies = [
  "clap",
  "fluent",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -5972,7 +6177,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_base32",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -5983,7 +6188,7 @@ checksum = "b29c8c798465d8001a90b6231554f8e00e9c4cf781a9f7d0b96224dcaac77ecd"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -5997,7 +6202,7 @@ dependencies = [
  "memchr",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6009,7 +6214,7 @@ checksum = "0475c8f9e5873fb5fc87ff796e07b39b309f64a553232172242014d2208bfe8d"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6021,7 +6226,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_checksum_common",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6032,7 +6237,7 @@ checksum = "ce0974ee091b6dce8b4db465da4869c80dd1208cd38e9ab9f567c03929a25283"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6049,7 +6254,7 @@ dependencies = [
  "nix 0.31.3",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "walkdir",
  "windows-sys 0.61.2",
 ]
@@ -6064,7 +6269,7 @@ dependencies = [
  "clap",
  "fluent",
  "memchr",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6084,7 +6289,7 @@ dependencies = [
  "parse_datetime",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6100,7 +6305,7 @@ dependencies = [
  "libc",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6114,7 +6319,7 @@ dependencies = [
  "rustix",
  "thiserror 2.0.20",
  "unicode-width 0.2.2",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6125,7 +6330,7 @@ checksum = "a2affe4ee8747234885830bd8269d747bab7e78d730c0e360920663e5c72fe75"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6139,7 +6344,7 @@ dependencies = [
  "glob",
  "rustc-hash",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6151,7 +6356,7 @@ checksum = "46f9afb484c165b55a3fee0d17e18921865dc2914feccd5eaed9298810e3e446"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6165,7 +6370,7 @@ dependencies = [
  "nix 0.31.3",
  "rust-ini",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6178,7 +6383,7 @@ dependencies = [
  "fluent",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6188,12 +6393,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "601663e752b83657be04ec8c54838310a516dd66d30affc36f02f3cc71f26199"
 dependencies = [
  "clap",
- "fancy-regex",
+ "fancy-regex 0.19.2",
  "fluent",
  "num-bigint",
  "num-traits",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6204,7 +6409,7 @@ checksum = "4dee4cf0e44a93aceab88533e274fa3fac69ed9608a6be564066f298483187b9"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6216,7 +6421,7 @@ dependencies = [
  "clap",
  "fluent",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6228,7 +6433,7 @@ dependencies = [
  "clap",
  "fluent",
  "unicode-width 0.2.2",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6241,7 +6446,7 @@ dependencies = [
  "fluent",
  "memchr",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6253,7 +6458,7 @@ dependencies = [
  "clap",
  "fluent",
  "hostname",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6266,7 +6471,7 @@ dependencies = [
  "fluent",
  "memchr",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6279,7 +6484,7 @@ dependencies = [
  "fluent",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6297,7 +6502,7 @@ dependencies = [
  "rustc-hash",
  "terminal_size",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "uutils_term_grid",
 ]
 
@@ -6310,7 +6515,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_checksum_common",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6322,7 +6527,7 @@ dependencies = [
  "clap",
  "fluent",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6336,7 +6541,7 @@ dependencies = [
  "rand 0.10.3",
  "tempfile",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6348,7 +6553,7 @@ dependencies = [
  "clap",
  "crossterm",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6365,7 +6570,7 @@ dependencies = [
  "rustc-hash",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6379,7 +6584,7 @@ dependencies = [
  "fluent",
  "itoa",
  "regex",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6392,7 +6597,7 @@ dependencies = [
  "fluent",
  "libc",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6405,7 +6610,7 @@ dependencies = [
  "fluent",
  "memchr",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6419,7 +6624,7 @@ dependencies = [
  "half",
  "libc",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6430,7 +6635,7 @@ checksum = "edddacb62a1b7058ec9f33974cb4dbf677171b83d710e153764e6e5995fffaeb"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6441,7 +6646,7 @@ checksum = "ff7f1090fe0d0ac3e8b7a79cd48830f2f93577329d2ee739d84bb0d893889ccc"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6452,7 +6657,7 @@ checksum = "8ad2cacf36fe7936f5bda5a4c259f6961e3e5f77cf04db26e1922ea7dffad195"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6463,7 +6668,7 @@ checksum = "905aa087f76dcfbd22cf9549f56d2713be97f80d68a7638334c8afc91ae528f9"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6474,7 +6679,7 @@ checksum = "4390796d1f70cfd2393ce3d6c8ba855352d5057e57f6527bca80a8638dd37d07"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6485,7 +6690,7 @@ checksum = "3bf967086871590e1d92d32e402b152045cd2c09156cbd877c97b6a7d82aabf0"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6499,7 +6704,7 @@ dependencies = [
  "indicatif",
  "libc",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6511,7 +6716,7 @@ dependencies = [
  "clap",
  "fluent",
  "libc",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6526,7 +6731,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6538,7 +6743,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_checksum_common",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6550,7 +6755,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_checksum_common",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6562,7 +6767,7 @@ dependencies = [
  "clap",
  "fluent",
  "uu_checksum_common",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6578,7 +6783,7 @@ dependencies = [
  "rand_chacha 0.10.0",
  "rustc-hash",
  "sha3",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6589,7 +6794,7 @@ checksum = "015cf50857143f9a946e9194960cdba7da0b4a17cdfae0bec1128b84e6cdb552"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6612,7 +6817,7 @@ dependencies = [
  "self_cell",
  "tempfile",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6626,7 +6831,7 @@ dependencies = [
  "memchr",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6643,7 +6848,7 @@ dependencies = [
  "regex",
  "tempfile",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6658,7 +6863,7 @@ dependencies = [
  "memchr",
  "notify",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6671,7 +6876,7 @@ dependencies = [
  "clap",
  "fluent",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6685,7 +6890,7 @@ dependencies = [
  "libc",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6703,7 +6908,7 @@ dependencies = [
  "parse_datetime",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6717,7 +6922,7 @@ dependencies = [
  "clap",
  "fluent",
  "nom",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6728,7 +6933,7 @@ checksum = "eb7a03ae2661faa57115019fe88ce91b6d8143c6b76930460b06a949de8f8aaa"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6739,7 +6944,7 @@ checksum = "1991acfea078be5657c18bab731d77d083bb7facf5157c2567e53f2a6d0b9727"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6751,7 +6956,7 @@ dependencies = [
  "clap",
  "fluent",
  "platform-info",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6764,7 +6969,7 @@ dependencies = [
  "fluent",
  "rustix",
  "thiserror 2.0.20",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6775,7 +6980,7 @@ checksum = "53c59563ff6419f674e2cd5b50cef9f3a0f0e73a06291dd635c006fc253ad268"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6786,7 +6991,7 @@ checksum = "3e3ca22bbb2d23bdd136ec8a6260c12c2550f9ae44c679323bee246bf460494b"
 dependencies = [
  "clap",
  "fluent",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6802,7 +7007,7 @@ dependencies = [
  "rustix",
  "thiserror 2.0.20",
  "unicode-width 0.2.2",
- "uucore",
+ "uucore 0.12.0",
 ]
 
 [[package]]
@@ -6814,7 +7019,7 @@ dependencies = [
  "clap",
  "fluent",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6828,7 +7033,28 @@ dependencies = [
  "fluent",
  "itertools",
  "rustix",
- "uucore",
+ "uucore 0.12.0",
+]
+
+[[package]]
+name = "uucore"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e97dd0fd8bb2ed12affba9f956c3b94b8ad3f9432746717475420e916ae0b8d4"
+dependencies = [
+ "clap",
+ "fluent",
+ "fluent-syntax",
+ "libc",
+ "nix 0.31.3",
+ "os_display",
+ "rustc-hash",
+ "rustix",
+ "thiserror 2.0.20",
+ "unic-langid",
+ "unicode-width 0.2.2",
+ "uucore_procs 0.10.0",
+ "wild",
 ]
 
 [[package]]
@@ -6879,12 +7105,22 @@ dependencies = [
  "unic-langid",
  "unicode-width 0.2.2",
  "unit-prefix",
- "uucore_procs",
+ "uucore_procs 0.12.0",
  "walkdir",
  "wild",
  "windows-sys 0.61.2",
  "xattr",
  "z85",
+]
+
+[[package]]
+name = "uucore_procs"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "907f1b828046ea42cdb4bd898f05b48ab873a41937bf75ebe12f09a5bf411f58"
+dependencies = [
+ "proc-macro2",
+ "quote",
 ]
 
 [[package]]
@@ -7093,8 +7329,8 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba8b815c1b593dc0baf78dd0f4fc8fdb2de53198fb1163738093e9a311c33fb3"
 dependencies = [
- "phf",
- "phf_codegen",
+ "phf 0.13.1",
+ "phf_codegen 0.13.1",
  "string_cache",
  "string_cache_codegen",
 ]

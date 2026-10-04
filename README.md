@@ -34,14 +34,15 @@ Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships
 
 ## Nebula, the built-in interpreter
 
-If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`, `grep`, `find`, `head`, `tail`, `sort`, `wc`, `tree`, `ps`, `kill` and about 70 more commands work on Windows with the options you're used to. Windows programs like `git`, `node`, `python` or `code` run as usual.
+If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`, `grep`, `find`, `sed`, `awk`, `diff`, `head`, `tail`, `sort`, `wc`, `tree`, `ps`, `kill` and about 70 more commands work on Windows with the options you're used to. Windows programs like `git`, `node`, `python` or `code` run as usual.
 
 ```text
 ~/projects/app on  main !1 ?1
 ❯ grep -rn TODO src | head -5
 ```
 
-- **The real GNU behaviour.** The core commands come from [uutils coreutils](https://github.com/uutils/coreutils), a faithful MIT-licensed rewrite of GNU coreutils. `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open` are written for Nebula.
+- **The real GNU behaviour.** The core commands come from [uutils coreutils](https://github.com/uutils/coreutils), a faithful MIT-licensed rewrite of GNU coreutils, and `sed`, `diff` and `cmp` from the uutils [sed](https://github.com/uutils/sed) and [diffutils](https://github.com/uutils/diffutils). `grep`, `find`, `tree`, `ps`, `kill`, `xargs` and `open` are written for Nebula.
+- **A real `awk`.** The POSIX language (patterns, fields, arrays, functions, `printf`, `getline`, pipes to and from commands) and the gawk functions people reach for: `gensub`, `strftime`, `asort`, `match` with groups. It was checked line by line against GNU awk.
 - **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
 - **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, `$((…))`, `[[ … ]]`, `read`, `${name%.txt}` and the other `${…}` forms, `set -e`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
 - **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
@@ -136,4 +137,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the checks CI runs and [docs/architec
 
 [PolyForm Shield 1.0.0](LICENSE). Use Nebula Terminal for anything, including at work, read the code and send pull requests; just don't use the code to build a product that competes with it. Versions up to 1.1.0 were released under the MIT License and stay under it.
 
-Nebula ships [uutils coreutils](https://github.com/uutils/coreutils) (MIT) and icons from [Nerd Fonts](https://www.nerdfonts.com) (MIT, see `src/assets/fonts/LICENSE-nerd-fonts.txt`).
+Nebula ships [uutils coreutils](https://github.com/uutils/coreutils) and [sed](https://github.com/uutils/sed) (MIT), [uutils diffutils](https://github.com/uutils/diffutils) (MIT or Apache 2.0) and icons from [Nerd Fonts](https://www.nerdfonts.com) (MIT, see `src/assets/fonts/LICENSE-nerd-fonts.txt`).
