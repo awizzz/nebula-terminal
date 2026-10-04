@@ -110,6 +110,11 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSignal, setSearchSignal] = useState({ nonce: 0, backwards: false });
   const [searchResult, setSearchResult] = useState<{ index: number; count: number } | null>(null);
+  const searchOptions = useMemo(() => ({
+    caseSensitive: preferences.searchCaseSensitive,
+    wholeWord: preferences.searchWholeWord,
+    regex: preferences.searchRegex,
+  }), [preferences.searchCaseSensitive, preferences.searchRegex, preferences.searchWholeWord]);
   const [activity, setActivity] = useState<ReadonlySet<string>>(() => new Set());
   const [finished, setFinished] = useState<ReadonlyMap<string, boolean>>(() => new Map());
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
@@ -803,7 +808,7 @@ export default function App() {
                         preferences={preferences}
                         focused={focused}
                         visible={visible}
-                        searchRequest={visible && pane.id === tab.activePaneId && searchOpen ? { query: searchQuery, nonce: searchSignal.nonce, backwards: searchSignal.backwards } : undefined}
+                        searchRequest={visible && pane.id === tab.activePaneId && searchOpen ? { query: searchQuery, nonce: searchSignal.nonce, backwards: searchSignal.backwards, ...searchOptions } : undefined}
                         onFocus={() => setActivePane(tab.id, pane.id)}
                         onFontSizeDelta={adjustFontSize}
                         onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
@@ -848,6 +853,11 @@ export default function App() {
         <SearchBar
           open={searchOpen}
           query={searchQuery}
+          options={searchOptions}
+          onOptionsChange={(options) => {
+            setPreferences((current) => ({ ...current, searchCaseSensitive: options.caseSensitive, searchWholeWord: options.wholeWord, searchRegex: options.regex }));
+            setSearchSignal((current) => ({ nonce: current.nonce + 1, backwards: false }));
+          }}
           result={searchResult}
           onQueryChange={(query) => { setSearchQuery(query); if (!query) setSearchResult(null); setSearchSignal((current) => ({ nonce: current.nonce + 1, backwards: false })); }}
           onNext={() => requestSearch(false)}

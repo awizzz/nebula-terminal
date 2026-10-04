@@ -21,7 +21,6 @@ Installing and updating the way Windows users expect.
 - **Theme editor**, and import of Windows Terminal and iTerm2 color schemes.
 - **Images in the terminal** (Sixel and the iTerm2 protocol), for tools like `chafa` or `viu`.
 - **Font ligatures** for fonts that have them (Cascadia Code, Fira Code, JetBrains Mono).
-- **Better search:** regular expressions, match case and whole word, and results highlighted in the scrollbar.
 
 ### Nebula
 

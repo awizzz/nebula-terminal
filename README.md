@@ -106,7 +106,7 @@ Not supported yet: `getopts`, `**` globs, and pausing a job with Ctrl+Z. For scr
 | Split right / down | `Ctrl+Shift+D` / `Ctrl+Shift+E` |
 | Move to the pane left, right, above or below | `Alt+Arrow` |
 | Close pane | `Ctrl+Shift+Q` |
-| Find | `Ctrl+Shift+F` |
+| Find (`Alt+C` match case, `Alt+W` whole word, `Alt+R` regex) | `Ctrl+Shift+F` |
 | Previous / next command | `Ctrl+↑` / `Ctrl+↓` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |

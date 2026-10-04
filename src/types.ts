@@ -104,6 +104,10 @@ export interface AppearancePreferences {
   /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
   pathCommand: boolean | null;
   copyOnSelect: boolean;
+  /** Find options, kept from one search to the next. */
+  searchCaseSensitive: boolean;
+  searchWholeWord: boolean;
+  searchRegex: boolean;
   confirmMultilinePaste: boolean;
   confirmCloseMultipleTabs: boolean;
   scrollback: number;
