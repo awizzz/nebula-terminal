@@ -315,3 +315,95 @@ fn pipelines_do_not_deadlock_on_aliases() {
     assert_eq!(run("alias ls='ls -a'; ls -d /").1.trim(), "/");
     assert_eq!(run("yes | grep y | head -2").1, "y\ny\n");
 }
+
+#[test]
+fn awk_reads_columns_and_runs_programs() {
+    let dir = scratch("awk");
+    std::fs::write(
+        dir.join("people.txt"),
+        "alice 30 paris\nbob 25 lyon\ncarol 35 paris\n",
+    )
+    .unwrap();
+    assert_eq!(
+        run_in(&dir, "awk '{print $1}' people.txt").1,
+        "alice\nbob\ncarol\n"
+    );
+    assert_eq!(
+        run_in(
+            &dir,
+            "awk '$3 == \"paris\" {s += $2} END {print s}' people.txt"
+        )
+        .1,
+        "65\n"
+    );
+    assert_eq!(
+        run_in(
+            &dir,
+            "printf 'a,b\\n' | awk -F, -v OFS=';' '{$1=$1; print}'"
+        )
+        .1,
+        "a;b\n"
+    );
+    assert_eq!(
+        run_in(&dir, "printf 'x\\ny\\nx\\n' | awk '!seen[$0]++'").1,
+        "x\ny\n"
+    );
+    assert_eq!(
+        run_in(
+            &dir,
+            "awk 'BEGIN { printf \"%05.1f|%-4s|\\n\", 3.14159, \"ab\" }'"
+        )
+        .1,
+        "003.1|ab  |\n"
+    );
+    assert_eq!(
+        run_in(&dir, "awk 'function fib(n) { return n < 2 ? n : fib(n-1) + fib(n-2) } BEGIN { print fib(15) }'").1,
+        "610\n"
+    );
+    // Output to a command, and a line ending in CRLF read without its CR.
+    assert_eq!(
+        run_in(&dir, "awk 'BEGIN { print \"b\\na\" | \"sort\" }'").1,
+        "a\nb\n"
+    );
+    assert_eq!(
+        run_in(&dir, "printf 'a b\\r\\n' | awk '{print $2 \"|\"}'").1,
+        "b|\n"
+    );
+    let (code, _, err) = run_in(&dir, "awk 'BEGIN { x = '");
+    assert_eq!(code, 2);
+    assert!(err.contains("syntax error"), "{err}");
+}
+
+#[test]
+fn sed_diff_and_cmp() {
+    let dir = scratch("sed-diff");
+    std::fs::write(dir.join("people.txt"), "alice 30 paris\nbob 25 lyon\n").unwrap();
+    std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    std::fs::write(dir.join("b.txt"), "one\n2\nthree\n").unwrap();
+    assert_eq!(
+        run_in(&dir, "sed 's/a/A/g; 2d' people.txt").1,
+        "Alice 30 pAris\n"
+    );
+    assert_eq!(
+        run_in(&dir, "sed -n '/lyon/p' people.txt").1,
+        "bob 25 lyon\n"
+    );
+
+    let (code, out, _) = run_in(&dir, "diff a.txt b.txt");
+    assert_eq!((code, out.as_str()), (1, "2c2\n< two\n---\n> 2\n"));
+    assert_eq!(run_in(&dir, "diff a.txt a.txt").0, 0);
+    assert!(run_in(&dir, "diff -u a.txt b.txt").1.contains("-two\n+2\n"));
+    assert_eq!(run_in(&dir, "cmp -s a.txt b.txt; echo $?").1, "1\n");
+
+    // -i edits in place; the suffix only counts when attached.
+    run_in(&dir, "sed -i 's/one/1/' a.txt");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt")).unwrap(),
+        "1\ntwo\nthree\n"
+    );
+    run_in(&dir, "sed -i.bak 's/two/2/' a.txt");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("a.txt.bak")).unwrap(),
+        "1\ntwo\nthree\n"
+    );
+}

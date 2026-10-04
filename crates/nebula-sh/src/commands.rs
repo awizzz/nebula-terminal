@@ -17,8 +17,8 @@ pub fn runs_code(name: &str) -> bool {
 
 /// Commands implemented by Nebula on top of coreutils.
 pub const EXTRAS: &[&str] = &[
-    "find", "grep", "kill", "killall", "less", "ls", "open", "pkill", "ps", "tree", "xargs",
-    "xdg-open",
+    "awk", "cmp", "diff", "find", "grep", "kill", "killall", "less", "ls", "open", "pkill", "ps",
+    "sed", "tree", "xargs", "xdg-open",
 ];
 
 pub fn is_builtin(name: &str) -> bool {
@@ -111,7 +111,10 @@ pub fn describe(name: &str) -> Option<&'static str> {
         "uname" => "system information",
         "sha256sum" | "sha1sum" | "sha512sum" | "md5sum" | "cksum" => "checksums",
         "base64" => "encode or decode base64",
-        "diff" => "compare files",
+        "diff" => "compare files line by line",
+        "cmp" => "compare files byte by byte",
+        "sed" => "edit text with a script",
+        "awk" => "process text by columns",
         _ => return None,
     })
 }
@@ -128,6 +131,7 @@ pub fn windows_equivalent(name: &str) -> Option<&'static str> {
         "md" => "mkdir",
         "rd" => "rmdir",
         "findstr" => "grep",
+        "fc" | "comp" => "diff",
         "where" => "which",
         "tasklist" => "ps",
         "taskkill" => "kill",

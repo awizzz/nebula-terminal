@@ -4,6 +4,9 @@
 
 ### Added
 
+- `awk` in Nebula: the POSIX language (patterns, fields, arrays, functions, `printf`, `getline`, pipes) and the gawk functions people use most (`gensub`, `strftime`, `systime`, `asort`, `asorti`, `match` with groups). Checked side by side with GNU awk
+- `sed`, from the uutils project. `-i` edits in place, and `-i.bak` keeps a copy
+- `diff` (normal, `-u`, `-c`, `-y`, `-q`) and `cmp`, from uutils diffutils. `fc` and `comp` point to `diff`
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 
 ## 1.2.0
