@@ -68,6 +68,8 @@ export interface KeybindingPreferences {
   zoomIn: string;
   zoomOut: string;
   zoomReset: string;
+  previousCommand: string;
+  nextCommand: string;
 }
 
 /** Where new shells start when they have no folder of their own. */

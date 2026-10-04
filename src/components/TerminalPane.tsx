@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
-import { Terminal } from "@xterm/xterm";
+import { Terminal, type IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { adjacentPrompt, joinLines } from "../commandMarks";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { registerPane } from "../paneRegistry";
@@ -43,6 +44,18 @@ export interface FinishedCommand {
 }
 
 type ConnectionState = "starting" | "ready" | "closed" | "preview";
+
+/** One command as the shell marked it: its prompt, where its output starts, and where it ended. */
+interface MarkedCommand {
+  prompt?: IMarker;
+  output?: IMarker;
+  end?: IMarker;
+  /** The output stopped mid-line, so the end mark's line is part of it. */
+  endsMidLine?: boolean;
+}
+
+/** Commands kept per pane; older ones are forgotten (their lines usually left the scrollback too). */
+const MAX_MARKED_COMMANDS = 500;
 
 /** Falls back to the bundled Nerd Font icons for glyphs the user's font lacks. */
 function withSymbols(fontFamily: string): string {
@@ -84,11 +97,13 @@ function writePreview(terminal: Terminal, profile: TerminalProfile) {
     terminal.writeln("");
   }
   if (profile.kind === "nebula") {
+    // Marked like the real shell, so command jumps work in the preview too.
     for (const { command, output } of previewSession) {
-      terminal.write(`${NEBULA_PROMPT}${highlightCommand(command)}\r\n`);
+      terminal.write(`\x1b]133;A\x07${NEBULA_PROMPT}${highlightCommand(command)}\r\n\x1b]133;C\x07`);
       terminal.write(output.replace(/\n/g, "\r\n"));
-      terminal.write("\r\n");
+      terminal.write("\x1b]133;D;0\x07\r\n");
     }
+    terminal.write("\x1b]133;A\x07");
   }
   terminal.write(previewPrompt(profile));
 }
@@ -142,6 +157,8 @@ export default function TerminalPane({
     const base = xtermTheme(theme, preferences.accent);
     return translucent ? { ...base, background: "#00000000" } : base;
   }, [preferences.accent, theme, translucent]);
+  const colorsRef = useRef(colors);
+  colorsRef.current = colors;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -159,6 +176,8 @@ export default function TerminalPane({
       lineHeight: preferencesRef.current.lineHeight,
       scrollback: preferencesRef.current.scrollback,
       smoothScrollDuration: preferencesRef.current.animationLevel === "full" ? 80 : 0,
+      // Failed commands and search results are marked along the scroll bar.
+      overviewRuler: { width: 8 },
       drawBoldTextInBrightColors: false,
       minimumContrastRatio: 1,
       theme: colors,
@@ -215,23 +234,94 @@ export default function TerminalPane({
       callbacksRef.current.onTitleChange(clean);
     });
 
-    // Shell integration: Nebula marks where each command starts and ends.
+    // Shell integration (OSC 133): A starts a prompt, C the command's output, D;code its end.
     let running: { command: string; startedAt: number } | null = null;
+    const commands: MarkedCommand[] = [];
+    const remember = (command: MarkedCommand) => {
+      commands.push(command);
+      for (const old of commands.splice(0, Math.max(0, commands.length - MAX_MARKED_COMMANDS))) {
+        old.prompt?.dispose();
+        old.output?.dispose();
+        old.end?.dispose();
+      }
+    };
     const integration = terminal.parser.registerOscHandler(133, (data) => {
       const [mark, code] = data.split(";");
-      if (mark === "C") {
+      const cursorMarker = () => terminal.registerMarker(0);
+      if (mark === "A") {
+        remember({ prompt: cursorMarker() });
+      } else if (mark === "C") {
         running = { command: lastTitle, startedAt: Date.now() };
-      } else if (mark === "D" && running) {
+        const current = commands.at(-1);
+        if (current && !current.output && !current.end) current.output = cursorMarker();
+        else remember({ output: cursorMarker() });
+      } else if (mark === "D") {
         const parsed = code === undefined ? Number.NaN : Number.parseInt(code, 10);
-        callbacksRef.current.onCommandFinished({
-          command: running.command,
-          code: Number.isFinite(parsed) ? parsed : null,
-          seconds: (Date.now() - running.startedAt) / 1000,
-        });
-        running = null;
+        const current = commands.at(-1);
+        if (current?.output && !current.end) {
+          current.end = cursorMarker();
+          current.endsMidLine = terminal.buffer.active.cursorX > 0;
+          const anchor = current.prompt ?? current.output;
+          if (Number.isFinite(parsed) && parsed !== 0 && !anchor.isDisposed) {
+            terminal.registerDecoration({ marker: anchor, overviewRulerOptions: { color: colorsRef.current.red ?? "#ee6f78", position: "full" } });
+          }
+        }
+        if (running) {
+          callbacksRef.current.onCommandFinished({
+            command: running.command,
+            code: Number.isFinite(parsed) ? parsed : null,
+            seconds: (Date.now() - running.startedAt) / 1000,
+          });
+          running = null;
+        }
       }
       return true;
     });
+    const liveCommands = () => commands.filter((command) => !(command.prompt ?? command.output)?.isDisposed);
+    const outputLines = (command: MarkedCommand): [number, number] | null => {
+      if (!command.output || !command.end || command.output.isDisposed || command.end.isDisposed) return null;
+      const last = command.endsMidLine ? command.end.line : command.end.line - 1;
+      return last >= command.output.line ? [command.output.line, last] : null;
+    };
+    const jumpToCommand = (direction: -1 | 1) => {
+      const buffer = terminal.buffer.active;
+      if (buffer.type !== "normal") return false;
+      const prompts = liveCommands().map((command) => (command.prompt ?? command.output)!.line);
+      if (prompts.length === 0) return false;
+      const target = adjacentPrompt(prompts, buffer.viewportY, direction);
+      if (target !== undefined) terminal.scrollToLine(target);
+      return true;
+    };
+    const lastOutputLines = () => liveCommands().reverse().map(outputLines).find((range) => range !== null);
+    const copyLastOutput = () => {
+      const lines = lastOutputLines();
+      if (!lines) return false;
+      const buffer = terminal.buffer.active;
+      const text = joinLines(Array.from({ length: lines[1] - lines[0] + 1 }, (_, index) => {
+        const line = buffer.getLine(lines[0] + index);
+        return { text: line?.translateToString(true) ?? "", wrapped: line?.isWrapped ?? false };
+      }));
+      void navigator.clipboard?.writeText(text).catch(() => undefined);
+      return true;
+    };
+    // A click on a prompt or on the command typed after it selects that command's output,
+    // unless the click only clears a selection.
+    let hadSelection = false;
+    const noteSelection = () => { hadSelection = terminal.hasSelection(); };
+    const selectOutputAt = (event: MouseEvent) => {
+      if (event.button !== 0 || event.detail !== 1 || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (hadSelection || terminal.hasSelection() || terminal.modes.mouseTrackingMode !== "none" || terminal.buffer.active.type !== "normal") return;
+      const screen = host.querySelector<HTMLElement>(".xterm-screen")?.getBoundingClientRect();
+      if (!screen || screen.height === 0) return;
+      const row = Math.floor((event.clientY - screen.top) / (screen.height / terminal.rows));
+      const line = terminal.buffer.active.viewportY + row;
+      const command = liveCommands().find(({ prompt, output }) => prompt && !prompt.isDisposed
+        && (line === prompt.line || (output !== undefined && !output.isDisposed && line > prompt.line && line < output.line)));
+      const lines = command && outputLines(command);
+      if (lines) terminal.selectLines(lines[0], lines[1]);
+    };
+    host.addEventListener("mousedown", noteSelection, true);
+    host.addEventListener("click", selectOutputAt);
     // Programs can ask for a notification: OSC 9;text (iTerm2) and OSC 777;notify;title;body.
     const notification = terminal.parser.registerOscHandler(9, (data) => {
       // OSC 9;4;… is a progress report (ConEmu, Windows Terminal), not a message.
@@ -409,6 +499,9 @@ export default function TerminalPane({
       clear: () => terminal.clear(),
       hasSelection: () => terminal.hasSelection(),
       focus: () => terminal.focus(),
+      jumpToCommand,
+      copyLastOutput,
+      hasCommandOutput: () => lastOutputLines() !== undefined,
     });
 
     return () => {
@@ -426,6 +519,8 @@ export default function TerminalPane({
       selectionDisposable.dispose();
       host.removeEventListener("wheel", handleWheel, { capture: true });
       host.removeEventListener("contextmenu", handleContextMenu);
+      host.removeEventListener("click", selectOutputAt);
+      host.removeEventListener("mousedown", noteSelection, true);
       window.removeEventListener("nebula:insert-paths", insertDropped);
       const sessionId = sessionRef.current;
       sessionRef.current = null;

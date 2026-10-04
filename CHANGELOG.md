@@ -6,6 +6,8 @@
 
 - new tabs and splits open in the folder of the shell you're in (Nebula reports it with OSC 7), and restored tabs reopen in the folder they were in
 - a choice of starting folder in Settings → Profiles: your user folder (still the default), Desktop, Documents or a folder you type. Desktop and Documents follow OneDrive and other redirections
+- `Ctrl+↑` and `Ctrl+↓` jump between commands in the history, and click a prompt to select that command's output. Failed commands get a red mark next to the scrollbar. This works in Nebula and in any shell that marks its commands (OSC 133); in other shells the keys reach the shell as before
+- a Copy last command output action, in the command palette and the terminal's right-click menu
 
 ## 1.1.1
 

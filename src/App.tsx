@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowLeftRight, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -497,6 +497,14 @@ export default function App() {
     setSearchResult(null);
   }, []);
 
+  const jumpToCommand = useCallback((direction: -1 | 1) => {
+    if (!getPane(activePane?.id)?.jumpToCommand(direction)) setNotice("This shell doesn't mark its commands");
+  }, [activePane?.id]);
+
+  const copyLastOutput = useCallback(() => {
+    setNotice(getPane(activePane?.id)?.copyLastOutput() ? "Output copied" : "No command output to copy yet");
+  }, [activePane?.id]);
+
   const keys = preferences.keybindings;
   const commands = useMemo<PaletteCommand[]>(() => {
     const defaultProfile = resolveProfile();
@@ -525,6 +533,9 @@ export default function App() {
       { id: "paste", group: "Terminal", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => getPane(activePane?.id)?.paste() },
       { id: "select-all", group: "Terminal", label: "Select all", icon: <TextSelect size={15} />, run: () => getPane(activePane?.id)?.selectAll() },
       { id: "clear", group: "Terminal", label: "Clear scrollback", icon: <Eraser size={15} />, run: () => getPane(activePane?.id)?.clear() },
+      { id: "previous-command", group: "Terminal", label: "Previous command", icon: <ArrowUpToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.previousCommand, run: () => jumpToCommand(-1) },
+      { id: "next-command", group: "Terminal", label: "Next command", icon: <ArrowDownToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.nextCommand, run: () => jumpToCommand(1) },
+      { id: "copy-output", group: "Terminal", label: "Copy last command output", icon: <ClipboardCheck size={15} />, keywords: "result", run: copyLastOutput },
       { id: "zoom-in", group: "View", label: "Zoom in", icon: <ZoomIn size={15} />, shortcut: keys.zoomIn, run: () => adjustFontSize(1) },
       { id: "zoom-out", group: "View", label: "Zoom out", icon: <Minus size={15} />, shortcut: keys.zoomOut, run: () => adjustFontSize(-1) },
       { id: "zoom-reset", group: "View", label: "Reset zoom", shortcut: keys.zoomReset, run: () => setPreferences((current) => ({ ...current, fontSize: defaultPreferences.fontSize })) },
@@ -539,7 +550,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, duplicateTab, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openNewTab, openSearch, openSettings, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -568,6 +579,14 @@ export default function App() {
       if (action(keys.zoomOut, () => adjustFontSize(-1))) return;
       if (action(keys.zoomReset, () => setPreferences((current) => ({ ...current, fontSize: defaultPreferences.fontSize })))) return;
       if (activeTab && action(keys.closeTab, () => closeTab(activeTab.id))) return;
+      // A shell that marks no commands keeps these keys: editors and TUIs use Ctrl+Up and Ctrl+Down.
+      const jump = (shortcut: string, direction: -1 | 1) => {
+        if (!matchesShortcut(event, shortcut) || !getPane(activeTab?.activePaneId)?.jumpToCommand(direction)) return false;
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      };
+      if (jump(keys.previousCommand, -1) || jump(keys.nextCommand, 1)) return;
       if (event.altKey && !event.ctrlKey && !event.shiftKey && focusNeighborPane(event.key)) {
         event.preventDefault();
         event.stopPropagation();
@@ -645,6 +664,7 @@ export default function App() {
       { id: "copy", label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", disabled: !pane?.hasSelection(), run: () => pane?.copy() },
       { id: "paste", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => pane?.paste() },
       { id: "select-all", label: "Select all", icon: <TextSelect size={15} />, run: () => pane?.selectAll() },
+      { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, disabled: full, run: () => splitActive("vertical") },

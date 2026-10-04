@@ -60,5 +60,6 @@ describe("matchesShortcut", () => {
 describe("shortcutKeys", () => {
   it("splits into keycaps", () => {
     expect(shortcutKeys("Ctrl+Shift+P")).toEqual(["Ctrl", "Shift", "P"]);
+    expect(shortcutKeys("Ctrl+ArrowUp")).toEqual(["Ctrl", "↑"]);
   });
 });

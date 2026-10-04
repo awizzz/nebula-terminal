@@ -49,7 +49,9 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean
     && event.metaKey === (parts.includes("meta") || parts.includes("win"));
 }
 
+const KEYCAP_LABELS: Record<string, string> = { ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→" };
+
 /** Splits a shortcut into keycaps for display. */
 export function shortcutKeys(shortcut: string): string[] {
-  return shortcut.split("+").map((part) => part.trim()).filter(Boolean);
+  return shortcut.split("+").map((part) => part.trim()).filter(Boolean).map((part) => KEYCAP_LABELS[part] ?? part);
 }

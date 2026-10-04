@@ -15,6 +15,8 @@ export const defaultKeybindings: KeybindingPreferences = {
   zoomIn: "Ctrl+=",
   zoomOut: "Ctrl+-",
   zoomReset: "Ctrl+0",
+  previousCommand: "Ctrl+ArrowUp",
+  nextCommand: "Ctrl+ArrowDown",
 };
 
 export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
@@ -31,6 +33,8 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   zoomIn: "Zoom in",
   zoomOut: "Zoom out",
   zoomReset: "Reset zoom",
+  previousCommand: "Previous command",
+  nextCommand: "Next command",
 };
 
 export const defaultFontFamily = '"Cascadia Mono", "Cascadia Code", Consolas, monospace';
