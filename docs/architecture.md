@@ -84,7 +84,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | File | Responsibility |
 | --- | --- |
 | `App.tsx` | Workspace state: tabs, panes, menus, overlays, global shortcuts, persistence. |
-| `components/TerminalPane.tsx` | One xterm.js instance bound to one PTY session: input, clipboard, paste guard, search, exit state, and the OSC 133 / 9 / 777 sequences behind notifications. |
+| `components/TerminalPane.tsx` | One xterm.js instance bound to one PTY session: input, clipboard, paste guard, search, exit state, the OSC 133 marks behind notifications and command jumps, OSC 7 folders, and OSC 9 / 777 notifications. |
 | `components/UpdateBanner.tsx` | The card that offers a new version. |
 | `components/Titlebar.tsx` | Tabs, new-tab button, caption buttons. |
 | `components/SettingsPanel.tsx` | Every setting, grouped by page, including the custom profile editor. |
@@ -97,6 +97,8 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
 | `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
+| `commandMarks.ts` | Finding the next prompt for command jumps, and joining wrapped lines of a command's output. |
+| `folders.ts` | Reading the folder a shell reports (OSC 7) and checking a folder before a new shell starts in it. |
 | `terminalInput.ts` | Quoting dropped paths for each shell, and telling pastes from typing. |
 | `notify.ts` | Windows notifications, and the text for a finished command. |
 | `updates.ts` | Update checks: when to check, which version was put off. |
