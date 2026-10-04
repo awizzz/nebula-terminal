@@ -473,6 +473,7 @@ pub fn interactive(shell: &mut Shell) -> i32 {
     let mut last_duration = None;
     let mut first = true;
     loop {
+        shell.reap_jobs(&mut std::io::stderr());
         let cwd = std::env::current_dir().unwrap_or_default();
         set_title(&sys::display_path(&cwd));
         if !first {

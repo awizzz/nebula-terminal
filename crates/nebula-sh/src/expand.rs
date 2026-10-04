@@ -22,6 +22,41 @@ pub trait Context {
     fn required(&mut self, message: String) {
         self.fail(message);
     }
+    /// Every element of an array, for `name[@]` and `name[*]`. A plain variable is an
+    /// array of one; an unset one has none.
+    fn elements(&mut self, _name: &str) -> Vec<String> {
+        Vec::new()
+    }
+    /// The indices or keys of an array (`${!name[@]}`).
+    fn keys(&mut self, _name: &str) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+/// `name[@]` or `name[*]`: all the elements of an array.
+fn all_elements(name: &str) -> bool {
+    matches!(crate::parse::split_subscript(name), Some((_, "@" | "*")))
+}
+
+/// Adds the elements of an array. Quoted `[@]` gives each element its own field,
+/// like `"$@"`; `[*]` joins them with spaces.
+fn push_elements(fields: &mut Vec<Field>, values: &[String], quoted: bool, separate: bool) {
+    if !separate {
+        push_value(fields, &values.join(" "), quoted);
+        return;
+    }
+    for (index, value) in values.iter().enumerate() {
+        if index > 0 {
+            fields.push(Field::default());
+        }
+        if quoted {
+            let field = fields.last_mut().expect("field");
+            field.push(value, false);
+            field.quoted = true;
+        } else {
+            push_value(fields, value, false);
+        }
+    }
 }
 
 /// One output field made of segments; `true` marks text that may be treated as a glob.
@@ -323,6 +358,12 @@ fn lookup_used(name: &str, context: &mut impl Context) -> String {
 /// Expands `${name<op>…}` to a single value.
 fn parameter(name: &str, op: &ParamOp, context: &mut impl Context) -> String {
     let value = lookup(name, context);
+    apply_op(name, value, op, context)
+}
+
+/// The operator of `${name<op>…}` applied to `value`, the value of `name` (or one of
+/// its elements).
+fn apply_op(name: &str, value: Option<String>, op: &ParamOp, context: &mut impl Context) -> String {
     let unset_or_null = |colon: bool| match &value {
         None => true,
         Some(text) => colon && text.is_empty(),
@@ -331,10 +372,26 @@ fn parameter(name: &str, op: &ParamOp, context: &mut impl Context) -> String {
         ParamOp::Length => {
             if name == "@" || name == "*" {
                 context.positional().len().to_string()
+            } else if all_elements(name) {
+                context.elements(name).len().to_string()
             } else {
                 lookup_used(name, context).chars().count().to_string()
             }
         }
+        ParamOp::Keys => context.keys(name).join(" "),
+        ParamOp::Indirect => match value {
+            Some(target)
+                if crate::parse::is_name(&target)
+                    || crate::parse::split_subscript(&target).is_some() =>
+            {
+                lookup(&target, context).unwrap_or_default()
+            }
+            Some(target) if !target.is_empty() => {
+                context.fail(format!("{target}: invalid variable name"));
+                String::new()
+            }
+            _ => String::new(),
+        },
         ParamOp::Default { colon, word } => {
             if unset_or_null(*colon) {
                 expand_single(word, context)
@@ -423,6 +480,241 @@ fn parameter(name: &str, op: &ParamOp, context: &mut impl Context) -> String {
     }
 }
 
+/// One piece of a word during brace expansion: a character of unquoted text, or a
+/// part (quoted text, a variable…) that braces can't reach into.
+#[derive(Clone)]
+enum Bit {
+    Char(char),
+    Part(Part),
+}
+
+fn bits(word: &Word) -> Vec<Bit> {
+    let mut out = Vec::new();
+    for part in &word.0 {
+        match part {
+            Part::Lit(text) => out.extend(text.chars().map(Bit::Char)),
+            other => out.push(Bit::Part(other.clone())),
+        }
+    }
+    out
+}
+
+fn rebuild(bits: &[Bit]) -> Word {
+    let mut parts = Vec::new();
+    let mut literal = String::new();
+    for bit in bits {
+        match bit {
+            Bit::Char(c) => literal.push(*c),
+            Bit::Part(part) => {
+                if !literal.is_empty() {
+                    parts.push(Part::Lit(std::mem::take(&mut literal)));
+                }
+                parts.push(part.clone());
+            }
+        }
+    }
+    if !literal.is_empty() {
+        parts.push(Part::Lit(literal));
+    }
+    Word(parts)
+}
+
+/// More would be a mistake rather than a wish (`{1..100000000}`); such a sequence stays
+/// as typed.
+const MAX_SEQUENCE: i64 = 100_000;
+
+/// `1..5`, `05..10`, `10..1..3`, `a..e`: the words of a brace sequence.
+fn sequence(text: &str) -> Option<Vec<String>> {
+    let pieces: Vec<&str> = text.split("..").collect();
+    if pieces.len() != 2 && pieces.len() != 3 {
+        return None;
+    }
+    let step = match pieces.get(2) {
+        Some(step) => step.parse::<i64>().ok()?.checked_abs()?.max(1),
+        None => 1,
+    };
+    if let (Ok(start), Ok(end)) = (pieces[0].parse::<i64>(), pieces[1].parse::<i64>()) {
+        if (end - start).abs() / step >= MAX_SEQUENCE {
+            return None;
+        }
+        let padded = |text: &str| {
+            let digits = text.trim_start_matches('-');
+            digits.len() > 1 && digits.starts_with('0')
+        };
+        let width = if padded(pieces[0]) || padded(pieces[1]) {
+            pieces[0].len().max(pieces[1].len())
+        } else {
+            0
+        };
+        let mut out = Vec::new();
+        let mut value = start;
+        loop {
+            out.push(if value < 0 {
+                format!("-{:0>width$}", -value, width = width.saturating_sub(1))
+            } else {
+                format!("{value:0>width$}")
+            });
+            if value == end {
+                break;
+            }
+            let next = if end > start {
+                value + step
+            } else {
+                value - step
+            };
+            if (end > start && next > end) || (end < start && next < end) {
+                break;
+            }
+            value = next;
+        }
+        return Some(out);
+    }
+    let mut first = pieces[0].chars();
+    let mut last = pieces[1].chars();
+    match (first.next(), first.next(), last.next(), last.next()) {
+        (Some(start), None, Some(end), None)
+            if start.is_ascii_alphabetic() && end.is_ascii_alphabetic() =>
+        {
+            let (start, end) = (start as i64, end as i64);
+            let mut out = Vec::new();
+            let mut value = start;
+            loop {
+                out.push(char::from_u32(value as u32)?.to_string());
+                let next = if end >= start {
+                    value + step
+                } else {
+                    value - step
+                };
+                if (end >= start && next > end) || (end < start && next < end) {
+                    break;
+                }
+                value = next;
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// The alternatives of the brace group that opens at `open`, or `None` when it isn't
+/// one: no closing brace, or neither a comma nor a sequence inside.
+fn brace_group(bits: &[Bit], open: usize) -> Option<(usize, Vec<Vec<Bit>>)> {
+    let mut depth = 0;
+    let mut commas = Vec::new();
+    for (index, bit) in bits.iter().enumerate().skip(open) {
+        match bit {
+            Bit::Char('{') => depth += 1,
+            Bit::Char('}') => {
+                depth -= 1;
+                if depth == 0 {
+                    let inner = &bits[open + 1..index];
+                    if !commas.is_empty() {
+                        let mut alternatives = Vec::new();
+                        let mut start = open + 1;
+                        for comma in commas.iter().copied().chain([index]) {
+                            alternatives.push(bits[start..comma].to_vec());
+                            start = comma + 1;
+                        }
+                        return Some((index, alternatives));
+                    }
+                    let text: Option<String> = inner
+                        .iter()
+                        .map(|bit| match bit {
+                            Bit::Char(c) => Some(*c),
+                            Bit::Part(_) => None,
+                        })
+                        .collect();
+                    let words = sequence(&text?)?;
+                    return Some((
+                        index,
+                        words
+                            .into_iter()
+                            .map(|word| word.chars().map(Bit::Char).collect())
+                            .collect(),
+                    ));
+                }
+            }
+            Bit::Char(',') if depth == 1 => commas.push(index),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn expand_bits(bits: Vec<Bit>, out: &mut Vec<Word>) {
+    for open in 0..bits.len() {
+        if !matches!(bits[open], Bit::Char('{')) {
+            continue;
+        }
+        if let Some((close, alternatives)) = brace_group(&bits, open) {
+            for alternative in alternatives {
+                let mut combined = bits[..open].to_vec();
+                combined.extend(alternative);
+                combined.extend_from_slice(&bits[close + 1..]);
+                expand_bits(combined, out);
+            }
+            return;
+        }
+    }
+    out.push(rebuild(&bits));
+}
+
+/// Brace expansion, which comes before every other one: `{a,b}`, `{1..5}`,
+/// `{01..10}`, `{1..10..3}`, `{a..e}`, nested or several in a word. Only unquoted
+/// braces count, and `{}` or `{x}` stay as they are.
+pub fn braces(word: &Word) -> Vec<Word> {
+    let has_brace = word.0.iter().any(|part| match part {
+        Part::Lit(text) => text.contains('{'),
+        _ => false,
+    });
+    if !has_brace {
+        return vec![word.clone()];
+    }
+    let mut out = Vec::new();
+    expand_bits(bits(word), &mut out);
+    out
+}
+
+/// `${name[@]<op>}`: the operator applied to every element, `${name[@]:1:2}` a slice
+/// of the elements, `${!name[@]}` the keys.
+fn element_values(name: &str, op: &ParamOp, context: &mut impl Context) -> Vec<String> {
+    let values = context.elements(name);
+    match op {
+        ParamOp::Keys => context.keys(name),
+        ParamOp::Substring { offset, length } => {
+            let Some(offset) = context.arith(offset) else {
+                return Vec::new();
+            };
+            let count = values.len() as i64;
+            let start = if offset < 0 {
+                (count + offset).max(0)
+            } else {
+                offset.min(count)
+            };
+            let end = match length {
+                Some(length) => match context.arith(length) {
+                    Some(length) if length < 0 => (count + length).max(start),
+                    Some(length) => (start + length).min(count),
+                    None => return Vec::new(),
+                },
+                None => count,
+            };
+            values[start as usize..end as usize].to_vec()
+        }
+        ParamOp::Default { .. }
+        | ParamOp::Assign { .. }
+        | ParamOp::Alternative { .. }
+        | ParamOp::Error { .. } => {
+            let joined = (!values.is_empty()).then(|| values.join(" "));
+            vec![apply_op(name, joined, op, context)]
+        }
+        _ => values
+            .into_iter()
+            .map(|value| apply_op(name, Some(value), op, context))
+            .collect(),
+    }
+}
+
 /// Expands a word into zero or more arguments.
 pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String> {
     let mut fields = vec![Field::default()];
@@ -449,14 +741,26 @@ pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String
                     field.quoted = true;
                 }
             }
+            Part::Var { name, quoted } if all_elements(name) => {
+                let values = context.elements(name);
+                push_elements(&mut fields, &values, *quoted, name.ends_with("[@]"));
+            }
             Part::Var { name, quoted } => {
                 let value = lookup_used(name, context);
                 push_value(&mut fields, &value, *quoted);
+            }
+            Part::Param { name, op, quoted }
+                if all_elements(name) && !matches!(**op, ParamOp::Length) =>
+            {
+                let values = element_values(name, op, context);
+                push_elements(&mut fields, &values, *quoted, name.ends_with("[@]"));
             }
             Part::Param { name, op, quoted } => {
                 let value = parameter(name, op, context);
                 push_value(&mut fields, &value, *quoted);
             }
+            // Only assignments hold these; anywhere else they mean nothing.
+            Part::ArrayLit(_) => {}
             Part::Subst { source, quoted } => {
                 let value = context.substitute(source);
                 let value = value.trim_end_matches(['\n', '\r']);
@@ -611,6 +915,53 @@ mod tests {
 
     fn run(source: &str) -> Vec<String> {
         run_with(&mut vars(), source)
+    }
+
+    fn brace_words(source: &str) -> Vec<String> {
+        let list = parse(source).unwrap();
+        let Command::Simple(simple) = &list.0[0].1.commands[0] else {
+            panic!("not a simple command")
+        };
+        let mut context = vars();
+        simple
+            .words
+            .iter()
+            .flat_map(braces)
+            .flat_map(|word| expand(&word, &mut context, false))
+            .collect()
+    }
+
+    #[test]
+    fn expands_braces() {
+        assert_eq!(brace_words("echo a{b,c}d"), ["echo", "abd", "acd"]);
+        assert_eq!(
+            brace_words("echo {1..3} {c..a}"),
+            ["echo", "1", "2", "3", "c", "b", "a"]
+        );
+        assert_eq!(
+            brace_words("echo {01..3} {0..10..5}"),
+            ["echo", "01", "02", "03", "0", "5", "10"]
+        );
+        assert_eq!(
+            brace_words("echo {a,b{1,2}}x"),
+            ["echo", "ax", "b1x", "b2x"]
+        );
+        assert_eq!(
+            brace_words("echo {a,b}{1,2}"),
+            ["echo", "a1", "a2", "b1", "b2"]
+        );
+        assert_eq!(
+            brace_words("echo {} {x} {a,b"),
+            ["echo", "{}", "{x}", "{a,b"]
+        );
+        assert_eq!(
+            brace_words("echo '{a,b}' {\"q\",$X}"),
+            ["echo", "{a,b}", "q", "x"]
+        );
+        assert_eq!(
+            brace_words("echo file.{txt,md,}"),
+            ["echo", "file.txt", "file.md", "file."]
+        );
     }
 
     #[test]

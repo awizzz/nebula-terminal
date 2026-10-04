@@ -26,6 +26,15 @@ pub enum Part {
     Arith { source: String, quoted: bool },
     /// A leading unquoted `~`.
     Tilde,
+    /// The list of `name=(…)`, right after the `=`.
+    ArrayLit(Vec<ArrayItem>),
+}
+
+/// One element of `name=(…)`: a value, or `[key]=value`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArrayItem {
+    pub key: Option<Word>,
+    pub value: Word,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +67,10 @@ pub enum ParamOp {
     },
     /// `${name^}`, `${name^^}`, `${name,}`, `${name,,}`
     Case { upper: bool, all: bool },
+    /// `${!name[@]}`: the indices or keys of an array.
+    Keys,
+    /// `${!name}`: the variable whose name is the value of `name`.
+    Indirect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,9 +128,20 @@ pub struct Redirect {
     pub target: RedirectTarget,
 }
 
+/// `name=value`, `name+=value`, `name[index]=value`, `name=(…)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Assignment {
+    pub name: String,
+    pub index: Option<Word>,
+    /// `+=`: add to the value instead of replacing it.
+    pub append: bool,
+    /// For `name=(…)`, a single [`Part::ArrayLit`].
+    pub value: Word,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Simple {
-    pub assignments: Vec<(String, Word)>,
+    pub assignments: Vec<Assignment>,
     pub words: Vec<Word>,
     pub redirects: Vec<Redirect>,
 }
@@ -212,6 +236,8 @@ pub struct Pipeline {
     pub commands: Vec<Command>,
     /// The text of each command, for stages that run in a sub-shell.
     pub sources: Vec<String>,
+    /// Ended with `&`: runs as a job while the shell goes on.
+    pub background: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -917,10 +943,30 @@ impl Lexer {
         let chars: Vec<char> = raw.chars().collect();
         let bad = || error(format!("bad substitution: ${{{raw}}}"));
 
+        // `${!name[@]}` lists the keys of an array, `${!name}` reads indirectly.
+        if chars.len() > 1 && chars[0] == '!' {
+            let name: String = chars[1..].iter().collect();
+            if let Some((_, "@" | "*")) = split_subscript(&name) {
+                return Ok(Part::Param {
+                    name,
+                    op: Box::new(ParamOp::Keys),
+                    quoted,
+                });
+            }
+            if is_name(&name) {
+                return Ok(Part::Param {
+                    name,
+                    op: Box::new(ParamOp::Indirect),
+                    quoted,
+                });
+            }
+        }
+
         // `${#name}` is the length; `${#}` is the number of arguments.
         if chars.len() > 1 && chars[0] == '#' {
             let name: String = chars[1..].iter().collect();
             if is_name(&name)
+                || split_subscript(&name).is_some()
                 || name.chars().all(|c| c.is_ascii_digit())
                 || (name.len() == 1 && name.chars().all(is_special_param))
             {
@@ -936,6 +982,28 @@ impl Lexer {
         let name: String = if chars.first().is_some_and(|c| is_name_start(*c)) {
             while chars.get(index).is_some_and(|c| is_name_char(*c)) {
                 index += 1;
+            }
+            // `${name[subscript]…}`: the subscript belongs to the name.
+            if chars.get(index) == Some(&'[') {
+                let mut depth = 0;
+                let mut end = None;
+                for (offset, c) in chars.iter().enumerate().skip(index) {
+                    match c {
+                        '[' => depth += 1,
+                        ']' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = Some(offset);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                match end {
+                    Some(end) => index = end + 1,
+                    None => return Err(bad()),
+                }
             }
             chars[..index].iter().collect()
         } else if chars.first().is_some_and(char::is_ascii_digit) {
@@ -1249,21 +1317,132 @@ pub fn parse_arith_text(text: &str) -> Result<Word, ParseError> {
     lex_text(text, TextMode::HereDoc)
 }
 
-fn assignment(word: &Word) -> Option<(String, Word)> {
+fn assignment(word: &Word) -> Option<Assignment> {
     let Some(Part::Lit(first)) = word.0.first() else {
         return None;
     };
-    let eq = first.find('=')?;
-    let name = &first[..eq];
+    let name_end = first
+        .char_indices()
+        .find(|(_, c)| !is_name_char(*c))
+        .map_or(first.len(), |(index, _)| index);
+    let name = &first[..name_end];
     if !is_name(name) {
         return None;
     }
-    let mut value = tilde_parts(&first[eq + 1..]);
-    value.extend(word.0[1..].iter().cloned());
+    let rest = &first[name_end..];
+    let (append, value) = if let Some(value) = rest.strip_prefix("+=") {
+        (true, value)
+    } else if let Some(value) = rest.strip_prefix('=') {
+        (false, value)
+    } else if rest.starts_with('[') {
+        return indexed_assignment(word, name);
+    } else {
+        return None;
+    };
+    Some(Assignment {
+        name: name.to_owned(),
+        index: None,
+        append,
+        value: assignment_value(value, &word.0[1..]),
+    })
+}
+
+fn assignment_value(first: &str, rest: &[Part]) -> Word {
+    let mut value = tilde_parts(first);
+    value.extend(rest.iter().cloned());
     if value.is_empty() {
         value.push(Part::Quoted(String::new()));
     }
-    Some((name.to_owned(), Word(value)))
+    Word(value)
+}
+
+/// `name[index]=value`: the index may hold expansions (`a[$i]=x`, `m["$k"]=v`).
+fn indexed_assignment(word: &Word, name: &str) -> Option<Assignment> {
+    let Some(Part::Lit(first)) = word.0.first() else {
+        return None;
+    };
+    let mut pieces = vec![Part::Lit(first[name.len()..].to_owned())];
+    pieces.extend(word.0[1..].iter().cloned());
+    let mut index_parts = Vec::new();
+    let mut literal = String::new();
+    let mut depth = 0;
+    for (position, piece) in pieces.iter().enumerate() {
+        let Part::Lit(text) = piece else {
+            if depth == 0 {
+                return None;
+            }
+            if !literal.is_empty() {
+                index_parts.push(Part::Lit(std::mem::take(&mut literal)));
+            }
+            index_parts.push(piece.clone());
+            continue;
+        };
+        for (offset, c) in text.char_indices() {
+            match c {
+                '[' => {
+                    depth += 1;
+                    if depth == 1 {
+                        continue;
+                    }
+                }
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let after = &text[offset + 1..];
+                        let (append, value) = match after.strip_prefix("+=") {
+                            Some(value) => (true, value),
+                            None => (false, after.strip_prefix('=')?),
+                        };
+                        if !literal.is_empty() {
+                            index_parts.push(Part::Lit(std::mem::take(&mut literal)));
+                        }
+                        return Some(Assignment {
+                            name: name.to_owned(),
+                            index: Some(Word(index_parts)),
+                            append,
+                            value: assignment_value(value, &pieces[position + 1..]),
+                        });
+                    }
+                }
+                _ => {}
+            }
+            if depth == 0 {
+                return None;
+            }
+            literal.push(c);
+        }
+    }
+    None
+}
+
+/// An element of `name=(…)`: `[key]=value` or just a value.
+fn array_item(word: Word) -> ArrayItem {
+    let keyed = matches!(word.0.first(), Some(Part::Lit(first)) if first.starts_with('['));
+    if keyed {
+        if let Some(assignment) = indexed_assignment(&word, "") {
+            return ArrayItem {
+                key: assignment.index,
+                value: assignment.value,
+            };
+        }
+    }
+    ArrayItem {
+        key: None,
+        value: word,
+    }
+}
+
+/// `name[subscript]`, how `${…}` and the expansion code name an array element.
+pub fn split_subscript(name: &str) -> Option<(&str, &str)> {
+    let open = name.find('[')?;
+    let inner = name[open + 1..].strip_suffix(']')?;
+    let base = &name[..open];
+    is_name(base).then_some((base, inner))
+}
+
+/// Parses the text of an array subscript, which may hold quotes and expansions.
+pub fn parse_subscript(text: &str) -> Result<Word, ParseError> {
+    lex_text(text, TextMode::Operand { quoted: false })
 }
 
 /// Splits the start of an assignment value so `~` is expanded after `=` and after
@@ -1413,19 +1592,53 @@ impl Parser {
         let mut list = List::default();
         self.skip_separators();
         while !self.at_list_end() {
+            let first = list.0.len();
+            let start = self.offset();
             self.and_or(&mut list)?;
             match self.peek() {
                 Some(Token::Semi | Token::Newline) => self.skip_separators(),
                 Some(Token::Background) => {
-                    return Err(error(
-                        "background jobs `&` are not supported; open a new tab or pane instead",
-                    ))
+                    let text = self.text(start, self.last_end());
+                    self.pos += 1;
+                    self.background(&mut list, first, text);
+                    self.skip_separators();
                 }
                 _ if self.at_list_end() => break,
                 _ => return Err(self.unexpected()),
             }
         }
         Ok(list)
+    }
+
+    /// `&` sends the whole and-or chain that precedes it to the background. A chain of
+    /// several pipelines (`a && b &`) runs as one sub-shell.
+    fn background(&mut self, list: &mut List, first: usize, text: String) {
+        let mut chain: Vec<(Connector, Pipeline)> = list.0.drain(first..).collect();
+        let connector = chain
+            .first()
+            .map_or(Connector::Seq, |(connector, _)| *connector);
+        let pipeline = if chain.len() == 1 {
+            let (_, mut pipeline) = chain.remove(0);
+            pipeline.background = true;
+            pipeline
+        } else {
+            if let Some((connector, _)) = chain.first_mut() {
+                *connector = Connector::Seq;
+            }
+            Pipeline {
+                negate: false,
+                commands: vec![Command::Compound {
+                    body: Compound::Subshell {
+                        list: List(chain),
+                        source: text.clone(),
+                    },
+                    redirects: Vec::new(),
+                }],
+                sources: vec![text],
+                background: true,
+            }
+        };
+        list.0.push((connector, pipeline));
     }
 
     /// A list that must hold at least one command (`if`, loops, `{ … }`).
@@ -1558,14 +1771,9 @@ impl Parser {
         loop {
             match self.peek() {
                 Some(Token::Word(word)) => {
-                    let word = word.clone();
+                    let mut word = word.clone();
+                    let end = self.tokens[self.pos].end;
                     self.pos += 1;
-                    if command.words.is_empty() {
-                        if let Some(assign) = assignment(&word) {
-                            command.assignments.push(assign);
-                            continue;
-                        }
-                    }
                     let declaration =
                         command
                             .words
@@ -1577,6 +1785,23 @@ impl Parser {
                                     "export" | "local" | "declare" | "typeset" | "readonly"
                                 )
                             });
+                    // `name=(…)`: the parenthesis must touch the `=`.
+                    let ends_with_equals =
+                        matches!(word.0.last(), Some(Part::Lit(text)) if text.ends_with('='));
+                    if (command.words.is_empty() || declaration)
+                        && ends_with_equals
+                        && self.peek() == Some(&Token::Open)
+                        && self.tokens[self.pos].start == end
+                    {
+                        self.pos += 1;
+                        word.0.push(Part::ArrayLit(self.array_items()?));
+                    }
+                    if command.words.is_empty() {
+                        if let Some(assign) = assignment(&word) {
+                            command.assignments.push(assign);
+                            continue;
+                        }
+                    }
                     command.words.push(if declaration {
                         declaration_word(word)
                     } else {
@@ -1600,6 +1825,25 @@ impl Parser {
             });
         }
         Ok(Command::Simple(command))
+    }
+
+    /// The elements of `name=(…)`, up to the closing parenthesis; newlines are spaces.
+    fn array_items(&mut self) -> Result<Vec<ArrayItem>, ParseError> {
+        let mut items = Vec::new();
+        loop {
+            match self.next() {
+                Some(Token::Close) => return Ok(items),
+                Some(Token::Newline) => {}
+                Some(Token::Word(word)) => items.push(array_item(word)),
+                None => return Err(incomplete("`)` expected to end the array")),
+                Some(token) => {
+                    return Err(error(format!(
+                        "syntax error in an array near {}",
+                        describe(&token)
+                    )))
+                }
+            }
+        }
     }
 
     fn redirect(&mut self, token: Token, redirects: &mut Vec<Redirect>) -> Result<(), ParseError> {
@@ -2302,7 +2546,7 @@ mod tests {
         let command = first("P=~/bin:~/tools:/usr X=a~b");
         let assignments = &simple(&command).assignments;
         assert_eq!(
-            assignments[0].1 .0,
+            assignments[0].value.0,
             vec![
                 Part::Tilde,
                 Part::Lit("/bin:".into()),
@@ -2310,7 +2554,7 @@ mod tests {
                 Part::Lit("/tools:/usr".into())
             ]
         );
-        assert_eq!(assignments[1].1 .0, vec![Part::Lit("a~b".into())]);
+        assert_eq!(assignments[1].value.0, vec![Part::Lit("a~b".into())]);
         let command = first("export H=~");
         assert_eq!(
             simple(&command).words[1].0,

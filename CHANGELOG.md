@@ -7,6 +7,10 @@
 - `awk` in Nebula: the POSIX language (patterns, fields, arrays, functions, `printf`, `getline`, pipes) and the gawk functions people use most (`gensub`, `strftime`, `systime`, `asort`, `asorti`, `match` with groups). Checked side by side with GNU awk
 - `sed`, from the uutils project. `-i` edits in place, and `-i.bak` keeps a copy
 - `diff` (normal, `-u`, `-c`, `-y`, `-q`) and `cmp`, from uutils diffutils. `fc` and `comp` point to `diff`
+- brace expansion in Nebula: `{a,b}`, `{1..10}`, `{01..10}`, `{a..e}`, nested or several in a word
+- arrays and associative arrays: `a=(x y)`, `a[3]=z`, `a+=(w)`, `"${a[@]}"`, `${#a[@]}`, `${!a[@]}`, slices, `declare -A`, `local -a`, `read -a`, `mapfile`, plus `${!name}`
+- background jobs: `cmd &`, `jobs`, `wait`, `fg`, `kill %1` and `$!`. A job can't take the keyboard, and Ctrl+C doesn't stop it
+- `trap` on EXIT, ERR and INT
 - a Scoop manifest with every release: `scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json`, and `scoop update nebula-terminal` follows new versions
 
 ## 1.2.0

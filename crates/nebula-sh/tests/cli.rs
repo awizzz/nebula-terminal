@@ -407,3 +407,67 @@ fn sed_diff_and_cmp() {
         "1\ntwo\nthree\n"
     );
 }
+
+#[test]
+fn expands_braces() {
+    assert_eq!(
+        run("echo {1..5} x{a,b}y {01..03}").1,
+        "1 2 3 4 5 xay xby 01 02 03\n"
+    );
+    assert_eq!(run("echo {} {x} '{a,b}' a{,b}").1, "{} {x} {a,b} a ab\n");
+    let dir = scratch("braces");
+    run_in(&dir, "mkdir -p tree/{src,docs}/{v1,v2}");
+    assert!(dir.join("tree/docs/v2").is_dir());
+}
+
+#[test]
+fn indexed_and_associative_arrays() {
+    assert_eq!(
+        run("a=(one 'two words' three); echo \"${a[1]}|${#a[@]}|${a[-1]}\"").1,
+        "two words|3|three\n"
+    );
+    assert_eq!(
+        run("a=(x y); a+=(z); for v in \"${a[@]}\"; do printf '[%s]' \"$v\"; done; echo").1,
+        "[x][y][z]\n"
+    );
+    assert_eq!(
+        run("a[3]=d; a[1]=b; echo \"${a[@]}\" \"${!a[@]}\" \"${a[@]:1:1}\"").1,
+        "b d 1 3 d\n"
+    );
+    assert_eq!(
+        run("declare -A m=([apple]=red); m[kiwi]=green; echo \"${m[apple]} ${m[kiwi]} ${#m[@]}\"")
+            .1,
+        "red green 2\n"
+    );
+    assert_eq!(
+        run("f() { local -a l=(1 2 3); echo ${#l[@]}; }; l=(x); f; echo ${l[@]}").1,
+        "3\nx\n"
+    );
+    assert_eq!(
+        run("read -a w <<< 'alpha beta gamma'; echo \"${w[2]}\"; a=(k v); (echo \"${a[1]}\")").1,
+        "gamma\nv\n"
+    );
+    assert_eq!(
+        run("printf 'l1\\nl2\\n' | { mapfile -t lines; echo \"${#lines[@]} ${lines[1]}\"; }").1,
+        "2 l2\n"
+    );
+}
+
+#[test]
+fn background_jobs_and_traps() {
+    assert_eq!(
+        run("(sleep 0.2; echo late) & echo first; wait $!; echo \"status $?\"").1,
+        "first\nlate\nstatus 0\n"
+    );
+    assert_eq!(run("false & wait $!; echo $?").1, "1\n");
+    assert_eq!(run("true && echo chained & wait").1, "chained\n");
+    assert_eq!(run("sleep 5 & kill %1; wait; jobs; echo end").1, "end\n");
+    assert_eq!(run("cd / & wait; pwd").1, run("pwd").1);
+    assert_eq!(run("trap 'echo bye' EXIT; echo hello").1, "hello\nbye\n");
+    let (code, out, _) = run("trap 'echo cleanup $?' EXIT; false; exit 3");
+    assert_eq!((code, out.as_str()), (3, "cleanup 3\n"));
+    assert_eq!(
+        run("trap 'echo failed' ERR; false; true; echo end").1,
+        "failed\nend\n"
+    );
+}
