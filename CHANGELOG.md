@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
+
+Tabs now open where you are. PowerShell, Git Bash and WSL mark their commands like Nebula does, and the app fits into Windows: an entry in File Explorer's menu, a `nebula-terminal` command, and the option to be the default terminal of Windows 11.
 
 ### Added
 
