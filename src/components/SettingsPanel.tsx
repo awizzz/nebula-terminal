@@ -11,7 +11,7 @@ import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, themes, type TerminalTheme } from "../themes";
 import Keys from "./Keys";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, KeybindingPreferences, ProfileFieldError, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -24,6 +24,8 @@ interface SettingsPanelProps {
   onClearSession: () => void;
   /** Called after a custom profile was added, changed or removed. */
   onProfilesChanged: () => Promise<void>;
+  /** What Windows offers to open the app in a folder; null outside the desktop app. */
+  launchers: Launchers | null;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -135,9 +137,9 @@ function UpdateCheck() {
   );
 }
 
-function Switch({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button className="switch" type="button" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)}>
+    <button className="switch" type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}>
       <span className="switch__thumb" />
     </button>
   );
@@ -456,7 +458,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -737,6 +739,14 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <select className="field field--select" value={preferences.longCommandSeconds} disabled={!preferences.notifyLongCommands} onChange={(event) => patch("longCommandSeconds", Number(event.target.value))}>
                       {[5, 10, 30, 60, 300].map((seconds) => <option key={seconds} value={seconds}>{seconds < 60 ? `${seconds} seconds` : `${seconds / 60} minute${seconds > 60 ? "s" : ""}`}</option>)}
                     </select>
+                  </Row>
+                </Group>
+                <Group title="Windows">
+                  <Row label="Open in Nebula Terminal" description="In the right-click menu of folders in File Explorer. On Windows 11, it's under Show more options.">
+                    <Switch label="Open in Nebula Terminal" checked={launchers?.explorerMenu ?? false} disabled={!launchers} onChange={(value) => patch("explorerMenu", value)} />
+                  </Row>
+                  <Row label="nebula-terminal command" description="Type “nebula-terminal .” in a shell to open a tab in its folder. Shells that are already open don't see the change.">
+                    <Switch label="nebula-terminal command" checked={launchers?.command ?? false} disabled={!launchers} onChange={(value) => patch("pathCommand", value)} />
                   </Row>
                 </Group>
                 <Group title="Tabs">

@@ -1,5 +1,6 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
@@ -21,7 +22,7 @@ import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, Launchers, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
@@ -123,33 +124,29 @@ export default function App() {
   const renamingRef = useRef(renaming);
   renamingRef.current = renaming;
 
-  const hydrateWorkspace = useCallback((detected: TerminalProfile[]) => {
+  /** `launchFolder` is the folder the app was started with (`nebula-terminal C:\Projects`). */
+  const hydrateWorkspace = useCallback((detected: TerminalProfile[], launchFolder?: string) => {
     setProfiles(detected);
     if (!hydratedRef.current) {
       hydratedRef.current = true;
       setReady(true);
       const restored = preferencesRef.current.restoreSession ? loadSession(detected) : null;
-      if (restored) {
-        setTabs(restored.tabs);
-        setActiveTabId(restored.activeTabId);
-        return;
-      }
       const first = pickProfile(detected, preferencesRef.current.defaultProfileId);
-      if (first) {
-        const tab = makeTab(first);
-        setTabs([tab]);
-        setActiveTabId(tab.id);
-      }
+      const opened = first && (launchFolder || !restored) ? makeTab(first, launchFolder) : null;
+      const workspace = [...restored?.tabs ?? [], ...opened ? [opened] : []];
+      setTabs(workspace);
+      setActiveTabId(opened?.id ?? restored?.activeTabId ?? "");
       return;
     }
     setTabs((current) => refreshTabProfiles(current, detected));
   }, []);
 
   useEffect(() => {
-    void detectProfiles()
-      .then(hydrateWorkspace)
+    const launchFolder = nativeHost ? invoke<string | null>("launch_folder").catch(() => null) : Promise.resolve(null);
+    void Promise.all([detectProfiles(), launchFolder])
+      .then(([detected, folder]) => hydrateWorkspace(detected, folder ?? undefined))
       .catch(() => hydrateWorkspace([]));
-  }, [hydrateWorkspace]);
+  }, [hydrateWorkspace, nativeHost]);
 
   /** Detects profiles again after custom profiles changed; open panes keep running. */
   const refreshProfiles = useCallback(async () => {
@@ -283,13 +280,30 @@ export default function App() {
     return tab?.panes.find((pane) => pane.id === tab.activePaneId)?.cwd;
   }, []);
 
-  const openNewTab = useCallback((profileId?: string) => {
+  const openNewTab = useCallback((profileId?: string, folder?: string) => {
     const profile = resolveProfile(profileId);
     if (!profile) return;
-    const next = makeTab(profile, currentFolder());
+    const next = makeTab(profile, folder ?? currentFolder());
     setTabs((current) => [...current, next]);
     setActiveTabId(next.id);
   }, [currentFolder, resolveProfile]);
+
+  // A second launch (Explorer's "Open in Nebula Terminal") lands here as a new tab.
+  const openNewTabRef = useRef(openNewTab);
+  openNewTabRef.current = openNewTab;
+  useEffect(() => {
+    if (!nativeHost) return;
+    const stop = listen<string | null>("open-tab", (event) => openNewTabRef.current(undefined, event.payload ?? undefined));
+    return () => void stop.then((unlisten) => unlisten());
+  }, [nativeHost]);
+
+  const [launchers, setLaunchers] = useState<Launchers | null>(null);
+  useEffect(() => {
+    if (!nativeHost) return;
+    invoke<Launchers>("sync_launchers", { explorerMenu: preferences.explorerMenu, command: preferences.pathCommand })
+      .then(setLaunchers)
+      .catch((error) => setNotice(String(error)));
+  }, [nativeHost, preferences.explorerMenu, preferences.pathCommand]);
 
   const removeTabs = useCallback((ids: string[]) => {
     const closingIds = closingRef.current;
@@ -799,6 +813,7 @@ export default function App() {
           onReset={() => { setPreferences({ ...defaultPreferences, keybindings: { ...defaultKeybindings } }); setNotice("Settings reset"); }}
           onClearSession={clearSession}
           onProfilesChanged={refreshProfiles}
+          launchers={launchers}
         />
         <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
       </Suspense>

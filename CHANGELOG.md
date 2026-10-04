@@ -9,6 +9,13 @@
 - `Ctrl+↑` and `Ctrl+↓` jump between commands in the history, and click a prompt to select that command's output. Failed commands get a red mark next to the scrollbar. This works in Nebula and in any shell that marks its commands (OSC 133); in other shells the keys reach the shell as before
 - a Copy last command output action, in the command palette and the terminal's right-click menu
 - shell integration for PowerShell, Git Bash and WSL: they now mark their commands and report their folder like Nebula, with nothing to set up, so notifications, command jumps and new tabs in the current folder work there too. Your profile and startup files still run first. In WSL this covers bash; other shells start as before. It can be turned off in Settings → Profiles
+- Open in Nebula Terminal, in the right-click menu of folders and drives in File Explorer (under Show more options on Windows 11)
+- a `nebula-terminal` command: `nebula-terminal .` opens a tab in the current folder, from cmd, PowerShell, Nebula, Git Bash or WSL
+- the installed app adds both, and Settings → Behavior turns them off. The portable version only adds them if you turn them on there
+
+### Changed
+
+- starting the app again, from a shortcut, Explorer or the command, opens a tab in the window that's already open instead of a second copy
 
 ## 1.1.1
 

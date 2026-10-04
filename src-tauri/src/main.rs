@@ -3,13 +3,15 @@
 mod cmdline;
 mod custom;
 mod integration;
+mod launcher;
 mod profiles;
 mod pty;
 mod ssh;
 mod updater;
 mod wsl;
 
-use tauri::{Manager, WebviewWindow};
+use std::path::Path;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 #[tauri::command]
 fn set_window_effect(window: WebviewWindow, mode: String, dark: bool) -> Result<(), String> {
@@ -45,8 +47,25 @@ fn windows_build() -> Option<u32> {
     None
 }
 
+/// A second launch (Explorer's "Open in Nebula Terminal", or the app started again)
+/// opens a tab in this window instead of a second copy of the app.
+fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    let folder = launcher::folder_argument(&args, Path::new(&cwd));
+    let _ = app.emit("open-tab", folder.map(|path| path.display().to_string()));
+}
+
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--uninstall") {
+        launcher::uninstall();
+        return;
+    }
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(open_from_second_launch))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
@@ -79,6 +98,8 @@ fn main() {
             windows_build,
             updater::check_for_update,
             updater::install_update,
+            launcher::launch_folder,
+            launcher::sync_launchers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");

@@ -98,7 +98,7 @@ fn newer_version(tag: &str, current: &str) -> Option<semver::Version> {
 
 /// How this copy was installed. The NSIS installer leaves `uninstall.exe` next to
 /// the app; the MSI bundle marks the executable it ships.
-fn install_kind() -> InstallKind {
+pub fn install_kind() -> InstallKind {
     let Some(directory) = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
