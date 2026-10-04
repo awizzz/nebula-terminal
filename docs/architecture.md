@@ -33,6 +33,7 @@ scripts/             sidecar build, icon font subset, preview recording
 | `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entry, and the `nebula-terminal` command on the user's PATH. |
+| `defterm.rs` | Nebula Terminal as the default terminal of Windows 11: the COM class Windows hands consoles to, and the registry values that choose it. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
 | `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. |
@@ -68,6 +69,21 @@ Two things point at the app, and `sync_launchers` adds or removes them when the 
 | `nebula-terminal` command | `%LOCALAPPDATA%\dev.awizz.nebula-terminal\bin`, added to the user's PATH (`HKCU\Environment`). It holds a `.cmd` for cmd, PowerShell and Nebula, and a `sh` script for Git Bash and WSL, like npm's shims. The app's own folder isn't used because it also holds `uninstall.exe`. |
 
 Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes both entries and exits without opening a window. Updates don't run it.
+
+### Default terminal
+
+On Windows 11 22H2 and later, a console program that starts on its own doesn't have to get a conhost window. The console host reads `HKCU\Console\%%Startup`: `DelegationConsole` names the console server that takes over, and `DelegationTerminal` the terminal that shows it. Turning the setting on writes Windows Terminal's OpenConsole (`{2EACA947-7F5F-4CFA-BA87-8F7FBEEFBE69}`, installed with Windows 11) and Nebula's class (`{01EDD6E6-6F42-4E94-910B-C8D5B1F3231C}`), registered as a local server in `HKCU\Software\Classes\CLSID`. Turning it off sets both back to "let Windows decide", unless another terminal took over meanwhile.
+
+OpenConsole creates Nebula's class over COM and calls `ITerminalHandoff3::EstablishPtyHandoff` (or `ITerminalHandoff2` with an older Windows Terminal), from microsoft/terminal's `ITerminalHandoff.idl`. The app registers the class on a thread of its own in the multithreaded apartment, so the call never waits for the UI. If the app isn't running, COM starts it with `-Embedding`, and it opens only the console's tab.
+
+| Handle | Use |
+| --- | --- |
+| input, output | Pipes to the console: what the user types, and its VT output. Nebula creates them for version 3; version 2 passes its own. |
+| signal | Resizes, written as ConPTY does (`PTY_SIGNAL_RESIZE_WINDOW`). Closing it ends the console. |
+| reference, server | Keep the console alive while the tab is open. |
+| client | The program: its exit closes the session with its exit code, and closing the tab terminates it. |
+
+`pty.rs` keeps the console until a tab attaches (`take_handoffs`, then `attach_handoff`), and from there it runs like any other session. A console that asked to start hidden runs without a tab until its program exits. The proxy that carries these calls between processes comes with Windows Terminal, which is why it has to be installed.
 
 ### Shell integration
 

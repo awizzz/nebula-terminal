@@ -11,7 +11,7 @@ import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, themes, type TerminalTheme } from "../themes";
 import Keys from "./Keys";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -26,6 +26,9 @@ interface SettingsPanelProps {
   onProfilesChanged: () => Promise<void>;
   /** What Windows offers to open the app in a folder; null outside the desktop app. */
   launchers: Launchers | null;
+  /** Whether Nebula is the default terminal; null outside the desktop app. */
+  defaultTerminal: DefaultTerminal | null;
+  onDefaultTerminalChange: (enabled: boolean) => void;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -458,7 +461,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -742,6 +745,14 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Windows">
+                  <Row
+                    label="Default terminal"
+                    description={defaultTerminal?.supported === false
+                      ? "Needs Windows 11 version 22H2 or later."
+                      : "Console programs you start from the Start menu, Explorer or Run open in a Nebula tab instead of a window of their own. Windows Terminal's console does the work behind it."}
+                  >
+                    <Switch label="Default terminal" checked={defaultTerminal?.enabled ?? false} disabled={!defaultTerminal?.supported} onChange={onDefaultTerminalChange} />
+                  </Row>
                   <Row label="Open in Nebula Terminal" description="In the right-click menu of folders in File Explorer. On Windows 11, it's under Show more options.">
                     <Switch label="Open in Nebula Terminal" checked={launchers?.explorerMenu ?? false} disabled={!launchers} onChange={(value) => patch("explorerMenu", value)} />
                   </Row>

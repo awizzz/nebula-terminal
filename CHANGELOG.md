@@ -12,6 +12,7 @@
 - Open in Nebula Terminal, in the right-click menu of folders and drives in File Explorer (under Show more options on Windows 11)
 - a `nebula-terminal` command: `nebula-terminal .` opens a tab in the current folder, from cmd, PowerShell, Nebula, Git Bash or WSL
 - the installed app adds both, and Settings → Behavior turns them off. The portable version only adds them if you turn them on there
+- Nebula Terminal can be the default terminal of Windows 11 (version 22H2 and later): console programs started from the Start menu, Explorer or Run open in a tab instead of a window of their own. Turn it on in Settings → Behavior. Like Windows Terminal, it relies on the console that comes with Windows Terminal
 
 ### Changed
 

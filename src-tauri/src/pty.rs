@@ -7,7 +7,7 @@ use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, Pt
 use serde::Serialize;
 use std::{
     collections::HashMap,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -93,12 +93,49 @@ struct SessionHandle {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
 }
 
-/// Owns the PTY's writer and master. It ends when the session is dropped, and the
-/// pseudo-console closes on this thread, never while a lock is held.
+/// The console behind a session, which takes its resizes: the pseudo-console the app
+/// created, or one Windows handed over when Nebula is the default terminal.
+pub trait Console: Send {
+    fn resize(&mut self, size: PtySize) -> io::Result<()>;
+}
+
+impl Console for Box<dyn MasterPty + Send> {
+    fn resize(&mut self, size: PtySize) -> io::Result<()> {
+        MasterPty::resize(&**self, size).map_err(|error| io::Error::other(error.to_string()))
+    }
+}
+
+/// Everything a session runs on, however its console was made.
+pub struct SessionParts {
+    pub reader: Box<dyn Read + Send>,
+    pub writer: Box<dyn Write + Send>,
+    pub console: Box<dyn Console>,
+    pub killer: Box<dyn ChildKiller + Send + Sync>,
+    /// Blocks until the program exits, then gives its exit code.
+    pub wait: Box<dyn FnOnce() -> io::Result<u32> + Send>,
+}
+
+/// A console Windows handed over, waiting for a tab to attach to it.
+struct PendingHandoff {
+    id: String,
+    title: String,
+    announced: bool,
+    parts: SessionParts,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HandoffInfo {
+    id: String,
+    title: String,
+}
+
+/// Owns the session's writer and console. It ends when the session is dropped, and
+/// the console closes on this thread, never while a lock is held.
 fn run_io(
     receiver: mpsc::Receiver<Request>,
     mut writer: Box<dyn Write + Send>,
-    master: Box<dyn MasterPty + Send>,
+    mut console: Box<dyn Console>,
     channel: Channel<PtyEvent>,
     session_id: String,
 ) {
@@ -108,7 +145,7 @@ fn run_io(
                 .write_all(data.as_bytes())
                 .and_then(|_| writer.flush())
                 .map_err(|error| format!("PTY write failed: {error}")),
-            Request::Resize(size) => master
+            Request::Resize(size) => console
                 .resize(size)
                 .map_err(|error| format!("PTY resize failed: {error}")),
         };
@@ -123,6 +160,7 @@ fn run_io(
 
 struct PtyStateInner {
     sessions: Mutex<HashMap<String, Arc<SessionHandle>>>,
+    handoffs: Mutex<Vec<PendingHandoff>>,
     next_id: AtomicU64,
 }
 
@@ -136,6 +174,7 @@ impl Default for PtyState {
         Self {
             inner: Arc::new(PtyStateInner {
                 sessions: Mutex::new(HashMap::new()),
+                handoffs: Mutex::new(Vec::new()),
                 next_id: AtomicU64::new(1),
             }),
         }
@@ -226,7 +265,7 @@ pub async fn start_session(
         .map_err(|error| format!("Unable to start profile '{profile_id}': {error}"))?;
     drop(pair.slave);
 
-    let mut reader = pair
+    let reader = pair
         .master
         .try_clone_reader()
         .map_err(|error| format!("Unable to read PTY output: {error}"))?;
@@ -235,13 +274,35 @@ pub async fn start_session(
         .take_writer()
         .map_err(|error| format!("Unable to open PTY input: {error}"))?;
     let killer = child.clone_killer();
+    let parts = SessionParts {
+        reader,
+        writer,
+        console: Box::new(pair.master),
+        killer,
+        wait: Box::new(move || child.wait().map(|status| status.exit_code())),
+    };
+    spawn_session(&state, parts, on_event)
+}
 
+/// Starts the threads of a session and registers it: one for input and resizes, one
+/// streaming output to the pane, one waiting for the program to exit.
+fn spawn_session(
+    state: &PtyState,
+    parts: SessionParts,
+    on_event: Channel<PtyEvent>,
+) -> Result<String, String> {
+    let SessionParts {
+        mut reader,
+        writer,
+        console,
+        killer,
+        wait,
+    } = parts;
     let session_id = format!("s{}", state.inner.next_id.fetch_add(1, Ordering::Relaxed));
     let (requests, receiver) = mpsc::channel();
     let io_channel = on_event.clone();
     let io_session_id = session_id.clone();
-    let master = pair.master;
-    thread::spawn(move || run_io(receiver, writer, master, io_channel, io_session_id));
+    thread::spawn(move || run_io(receiver, writer, console, io_channel, io_session_id));
     let handle = Arc::new(SessionHandle {
         requests: Mutex::new(requests),
         killer: Mutex::new(killer),
@@ -301,11 +362,8 @@ pub async fn start_session(
     let wait_channel = on_event;
     let wait_session_id = session_id.clone();
     thread::spawn(move || {
-        let result = child.wait();
-        let code = result
-            .as_ref()
-            .map(|status| status.exit_code())
-            .unwrap_or(1);
+        let result = wait();
+        let code = *result.as_ref().unwrap_or(&1);
         if let Err(error) = result {
             let _ = wait_channel.send(PtyEvent::Error {
                 session_id: wait_session_id.clone(),
@@ -316,7 +374,7 @@ pub async fn start_session(
             session_id: wait_session_id.clone(),
             code,
         });
-        // Dropped after the lock is released: the last handle closes the pseudo-console.
+        // Dropped after the lock is released: the last handle closes the console.
         let removed = state_inner
             .sessions
             .lock()
@@ -325,6 +383,80 @@ pub async fn start_session(
         drop(removed);
     });
 
+    Ok(session_id)
+}
+
+impl PtyState {
+    /// Keeps a console Windows handed over until a tab attaches to it. A console that
+    /// asked to be hidden runs without a tab until its program exits.
+    pub fn receive_handoff(&self, title: String, hidden: bool, parts: SessionParts) {
+        if hidden {
+            let _ = spawn_session(self, parts, Channel::new(|_| Ok(())));
+            return;
+        }
+        let id = format!("h{}", self.inner.next_id.fetch_add(1, Ordering::Relaxed));
+        if let Ok(mut handoffs) = self.inner.handoffs.lock() {
+            handoffs.push(PendingHandoff {
+                id,
+                title,
+                announced: false,
+                parts,
+            });
+        }
+    }
+}
+
+/// Consoles handed over since the last call, for the UI to open tabs for.
+#[tauri::command]
+pub fn take_handoffs(state: State<'_, PtyState>) -> Vec<HandoffInfo> {
+    let Ok(mut handoffs) = state.inner.handoffs.lock() else {
+        return Vec::new();
+    };
+    handoffs
+        .iter_mut()
+        .filter(|handoff| !handoff.announced)
+        .map(|handoff| {
+            handoff.announced = true;
+            HandoffInfo {
+                id: handoff.id.clone(),
+                title: handoff.title.clone(),
+            }
+        })
+        .collect()
+}
+
+/// Connects a tab to a console that was handed over, at the tab's size.
+#[tauri::command]
+pub fn attach_handoff(
+    handoff_id: String,
+    cols: u16,
+    rows: u16,
+    on_event: Channel<PtyEvent>,
+    state: State<'_, PtyState>,
+) -> Result<String, String> {
+    let pending = {
+        let mut handoffs = state
+            .inner
+            .handoffs
+            .lock()
+            .map_err(|_| lock_error("handoff"))?;
+        let index = handoffs
+            .iter()
+            .position(|handoff| handoff.id == handoff_id)
+            .ok_or_else(|| "This console is already open or has closed.".to_owned())?;
+        handoffs.remove(index)
+    };
+    let session_id = spawn_session(&state, pending.parts, on_event)?;
+    send(
+        &state,
+        &session_id,
+        Request::Resize(PtySize {
+            rows: rows.max(1),
+            cols: cols.max(1),
+            pixel_width: 0,
+            pixel_height: 0,
+        }),
+    )?;
     Ok(session_id)
 }
 

@@ -3200,6 +3200,8 @@ dependencies = [
  "ureq",
  "uuid",
  "window-vibrancy",
+ "windows",
+ "windows-core",
  "windows-sys 0.61.2",
  "winreg 0.56.0",
 ]

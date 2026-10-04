@@ -119,6 +119,9 @@ export interface TerminalPaneModel {
   profile: TerminalProfile;
   /** The last folder the shell reported, or the one the pane should start in. */
   cwd?: string;
+  /** A console Windows handed over (Nebula as the default terminal). The pane shows it
+   * instead of starting its profile, which only runs if the pane is restarted. */
+  handoffId?: string;
 }
 
 export interface TerminalTab {
@@ -176,4 +179,16 @@ export interface PtyEvent {
 export interface Launchers {
   explorerMenu: boolean;
   command: boolean;
+}
+
+/** A console Windows handed over, waiting for a tab (Rust's `take_handoffs`). */
+export interface HandoffInfo {
+  id: string;
+  title: string;
+}
+
+/** Whether Nebula is the default terminal of Windows (Rust's `default_terminal`). */
+export interface DefaultTerminal {
+  supported: boolean;
+  enabled: boolean;
 }
