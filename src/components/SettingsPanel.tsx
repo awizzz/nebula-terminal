@@ -665,8 +665,24 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       })}
                     </select>
                   </Row>
-                  <Row label="Starting folder" description="Leave empty for your user folder. Accepts ~ and %VARIABLES%." stacked>
-                    <input className="field" value={preferences.workingDirectory} spellCheck={false} placeholder="%USERPROFILE%\Projects" onChange={(event) => patch("workingDirectory", event.target.value)} />
+                  <Row label="Starting folder" description="Where new shells start. A profile with its own folder keeps it." stacked>
+                    <Segmented
+                      label="Starting folder"
+                      value={preferences.startingFolder}
+                      options={[
+                        { value: "home", label: "User folder" },
+                        { value: "desktop", label: "Desktop" },
+                        { value: "documents", label: "Documents" },
+                        { value: "custom", label: "Other" },
+                      ]}
+                      onChange={(value) => patch("startingFolder", value)}
+                    />
+                    {preferences.startingFolder === "custom" && (
+                      <input className="field" value={preferences.workingDirectory} spellCheck={false} aria-label="Folder" placeholder="%USERPROFILE%\Projects" onChange={(event) => patch("workingDirectory", event.target.value)} />
+                    )}
+                  </Row>
+                  <Row label="Open new tabs and splits in the current folder" description="Uses the folder the focused shell is in.">
+                    <Switch label="Open new tabs and splits in the current folder" checked={preferences.openInCurrentFolder} onChange={(value) => patch("openInCurrentFolder", value)} />
                   </Row>
                 </Group>
                 <CustomProfilesGroup profiles={profiles} defaultProfileId={preferences.defaultProfileId} onDefaultRemoved={() => patch("defaultProfileId", "")} onProfilesChanged={onProfilesChanged} />
@@ -721,7 +737,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Tabs">
-                  <Row label="Reopen tabs on launch" description="Restores tabs and splits. Shells start fresh.">
+                  <Row label="Reopen tabs on launch" description="Restores tabs, splits and the folder each one was in. Shells start fresh.">
                     <Switch label="Reopen tabs on launch" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} />
                   </Row>
                   <Row label="Confirm closing several tabs">

@@ -40,6 +40,16 @@ describe("sanitizePreferences", () => {
   });
 });
 
+describe("starting folder", () => {
+  it("keeps a folder typed before 1.2 and defaults to the user folder otherwise", () => {
+    expect(sanitizePreferences({ workingDirectory: "D:\\work" }).startingFolder).toBe("custom");
+    expect(sanitizePreferences({ workingDirectory: "  " }).startingFolder).toBe("home");
+    expect(sanitizePreferences({}).startingFolder).toBe("home");
+    expect(sanitizePreferences({ startingFolder: "desktop", workingDirectory: "D:\\work" }).startingFolder).toBe("desktop");
+    expect(sanitizePreferences({ startingFolder: "downloads" }).startingFolder).toBe("home");
+  });
+});
+
 describe("migrateLegacy", () => {
   it("moves Find off Ctrl+F and drops the Nebula Shell profile", () => {
     const result = sanitizePreferences(migrateLegacy({ defaultProfileId: "nebula", keybindings: { find: "Ctrl+F" } }));

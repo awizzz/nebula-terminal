@@ -354,6 +354,57 @@ pub fn home_directory() -> Option<PathBuf> {
         .filter(|path| path.is_dir())
 }
 
+/// The Desktop or Documents folder where Windows really keeps it, which may be
+/// inside OneDrive or moved by a policy.
+#[cfg(windows)]
+pub fn known_folder(name: &str) -> Option<PathBuf> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::Com::CoTaskMemFree;
+    use windows_sys::Win32::UI::Shell::{
+        FOLDERID_Desktop, FOLDERID_Documents, SHGetKnownFolderPath, KF_FLAG_DEFAULT,
+    };
+
+    let id = match name {
+        "desktop" => &FOLDERID_Desktop,
+        "documents" => &FOLDERID_Documents,
+        _ => return None,
+    };
+    let mut buffer = std::ptr::null_mut();
+    // SAFETY: SHGetKnownFolderPath gives back a NUL-terminated string allocated
+    // with CoTaskMemAlloc (or null), which is read once and then freed.
+    let path = unsafe {
+        let found = SHGetKnownFolderPath(
+            id,
+            KF_FLAG_DEFAULT as u32,
+            std::ptr::null_mut(),
+            &mut buffer,
+        ) == 0
+            && !buffer.is_null();
+        let path = found.then(|| {
+            let length = (0..).take_while(|&index| *buffer.add(index) != 0).count();
+            PathBuf::from(OsString::from_wide(std::slice::from_raw_parts(
+                buffer, length,
+            )))
+        });
+        CoTaskMemFree(buffer.cast());
+        path
+    };
+    path.filter(|path| path.is_dir())
+}
+
+#[cfg(not(windows))]
+pub fn known_folder(name: &str) -> Option<PathBuf> {
+    let folder = match name {
+        "desktop" => "Desktop",
+        "documents" => "Documents",
+        _ => return None,
+    };
+    home_directory()
+        .map(|home| home.join(folder))
+        .filter(|path| path.is_dir())
+}
+
 /// Expands a leading `~` and `%VAR%` references in a user-supplied directory.
 pub fn expand_directory(input: &str) -> PathBuf {
     let trimmed = input.trim();

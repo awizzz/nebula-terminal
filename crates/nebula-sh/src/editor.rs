@@ -363,6 +363,47 @@ fn mark(sequence: &str) {
     let _ = out.flush();
 }
 
+/// Tells the terminal where the shell is (OSC 7), so new tabs and splits can open
+/// in the same folder.
+fn report_folder(cwd: &std::path::Path) {
+    let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "localhost".into());
+    let mut out = std::io::stdout();
+    let _ = write!(
+        out,
+        "\x1b]7;{}\x07",
+        folder_url(&cwd.to_string_lossy(), &host)
+    );
+    let _ = out.flush();
+}
+
+/// `C:\Users\me` becomes `file://host/C:/Users/me`, and `\\server\share\dir`
+/// becomes `file://server/share/dir`, percent-encoded like any URL.
+fn folder_url(path: &str, host: &str) -> String {
+    let path = if let Some(unc) = path.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else {
+        path.strip_prefix(r"\\?\").unwrap_or(path).to_owned()
+    };
+    let path = path.replace('\\', "/");
+    let (host, path) = match path.strip_prefix("//") {
+        Some(unc) => match unc.split_once('/') {
+            Some((server, rest)) => (server.to_owned(), format!("/{rest}")),
+            None => (unc.to_owned(), "/".to_owned()),
+        },
+        None if path.starts_with('/') => (host.to_owned(), path),
+        None => (host.to_owned(), format!("/{path}")),
+    };
+    let mut url = format!("file://{host}");
+    for byte in path.bytes() {
+        if byte.is_ascii_alphanumeric() || b"/:-._~".contains(&byte) {
+            url.push(byte as char);
+        } else {
+            url.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    url
+}
+
 pub fn interactive(shell: &mut Shell) -> i32 {
     shell.interactive = true;
     let integration = shell_integration();
@@ -438,6 +479,10 @@ pub fn interactive(shell: &mut Shell) -> i32 {
             println!();
         }
         first = false;
+        if integration {
+            report_folder(&cwd);
+            mark("A");
+        }
         let prompt = NebulaPrompt::new(shell.last_status, last_duration);
         match editor.read_line(&prompt) {
             Ok(Signal::Success(line)) => {
@@ -489,6 +534,29 @@ pub fn interactive(shell: &mut Shell) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reports_folders_as_file_urls() {
+        assert_eq!(folder_url(r"C:\Users\me", "PC"), "file://PC/C:/Users/me");
+        assert_eq!(
+            folder_url(r"C:\Users\me\My Projects #1", "PC"),
+            "file://PC/C:/Users/me/My%20Projects%20%231"
+        );
+        assert_eq!(
+            folder_url(r"C:\Users\Zoé", "PC"),
+            "file://PC/C:/Users/Zo%C3%A9"
+        );
+        assert_eq!(folder_url(r"\\?\C:\Windows", "PC"), "file://PC/C:/Windows");
+        assert_eq!(
+            folder_url(r"\\server\share\dir", "PC"),
+            "file://server/share/dir"
+        );
+        assert_eq!(
+            folder_url(r"\\?\UNC\server\share", "PC"),
+            "file://server/share"
+        );
+        assert_eq!(folder_url("/home/me", "PC"), "file://PC/home/me");
+    }
 
     #[test]
     fn expands_bang_bang() {

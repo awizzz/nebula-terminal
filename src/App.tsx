@@ -40,12 +40,12 @@ type OpenMenu =
 
 type Confirmation = { title: string; body: string; action: string; run: () => void };
 
-function makePane(profile: TerminalProfile): TerminalPaneModel {
-  return { id: crypto.randomUUID(), profile };
+function makePane(profile: TerminalProfile, cwd?: string): TerminalPaneModel {
+  return { id: crypto.randomUUID(), profile, cwd };
 }
 
-function makeTab(profile: TerminalProfile): TerminalTab {
-  const pane = makePane(profile);
+function makeTab(profile: TerminalProfile, cwd?: string): TerminalTab {
+  const pane = makePane(profile, cwd);
   return { id: crypto.randomUUID(), title: profile.name, panes: [pane], layout: paneLeaf(pane.id), activePaneId: pane.id };
 }
 
@@ -276,13 +276,20 @@ export default function App() {
 
   const resolveProfile = useCallback((profileId?: string) => pickProfile(profiles, profileId ?? preferences.defaultProfileId), [preferences.defaultProfileId, profiles]);
 
+  /** The focused pane's folder, when new tabs and splits should open there. */
+  const currentFolder = useCallback(() => {
+    if (!preferencesRef.current.openInCurrentFolder) return undefined;
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    return tab?.panes.find((pane) => pane.id === tab.activePaneId)?.cwd;
+  }, []);
+
   const openNewTab = useCallback((profileId?: string) => {
     const profile = resolveProfile(profileId);
     if (!profile) return;
-    const next = makeTab(profile);
+    const next = makeTab(profile, currentFolder());
     setTabs((current) => [...current, next]);
     setActiveTabId(next.id);
-  }, [resolveProfile]);
+  }, [currentFolder, resolveProfile]);
 
   const removeTabs = useCallback((ids: string[]) => {
     const closingIds = closingRef.current;
@@ -354,6 +361,12 @@ export default function App() {
     setTabs((current) => current.map((tab) => tab.id === tabId && tab.activePaneId === pane.id && tab.title !== clean ? { ...tab, title: clean } : tab));
   }, []);
 
+  const setPaneFolder = useCallback((tabId: string, paneId: string, cwd: string) => {
+    setTabs((current) => current.map((tab) => tab.id !== tabId || !tab.panes.some((pane) => pane.id === paneId && pane.cwd !== cwd)
+      ? tab
+      : { ...tab, panes: tab.panes.map((pane) => pane.id === paneId ? { ...pane, cwd } : pane) }));
+  }, []);
+
   const markActivity = useCallback((tabId: string) => {
     if (tabId === activeTabIdRef.current) return;
     setActivity((current) => current.has(tabId) ? current : new Set([...current, tabId]));
@@ -374,12 +387,12 @@ export default function App() {
     }
     const profile = resolveProfile(profileId ?? activePane?.profile.id);
     if (!profile) return;
-    const pane = makePane(profile);
+    const pane = makePane(profile, currentFolder());
     setTabs((current) => current.map((tab) => {
       if (tab.id !== activeTab.id) return tab;
       return { ...tab, panes: [...tab.panes, pane], layout: splitPane(tab.layout, tab.activePaneId, pane.id, direction), activePaneId: pane.id };
     }));
-  }, [activePane?.profile.id, activeTab, resolveProfile]);
+  }, [activePane?.profile.id, activeTab, currentFolder, resolveProfile]);
 
   const closePane = useCallback((tabId: string, paneId: string) => {
     const targetTab = tabsRef.current.find((tab) => tab.id === tabId);
@@ -421,7 +434,7 @@ export default function App() {
     if (!tab || !pane) return;
     const profile = resolveProfile(pane.profile.id);
     if (!profile) return;
-    const next = { ...makeTab(profile), color: tab.color };
+    const next = { ...makeTab(profile, pane.cwd), color: tab.color };
     setTabs((current) => [...current, next]);
     setActiveTabId(next.id);
   }, [resolveProfile]);
@@ -696,6 +709,7 @@ export default function App() {
                       <TerminalPane
                         paneId={pane.id}
                         profile={pane.profile}
+                        startIn={pane.cwd}
                         preferences={preferences}
                         focused={focused}
                         visible={visible}
@@ -706,6 +720,7 @@ export default function App() {
                         onActivity={() => markActivity(tab.id)}
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
+                        onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
                         onSearchResult={setSearchResult}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
                         onClose={() => closePane(tab.id, pane.id)}

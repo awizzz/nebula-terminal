@@ -1,3 +1,4 @@
+import { isStartableFolder } from "./folders";
 import { MAX_PANES, layoutFromFlat, paneIds, paneLeaf, sanitizeLayout, type LayoutNode } from "./layout";
 import { pickProfile } from "./profiles";
 import { isTabColor } from "./themes";
@@ -9,7 +10,10 @@ const MAX_TABS = 20;
 const MAX_TITLE = 120;
 
 function persistLayout(node: LayoutNode, panes: ReadonlyMap<string, TerminalPaneModel>): PersistedLayout {
-  if (node.type === "pane") return { type: "pane", profileId: panes.get(node.id)?.profile.id ?? "" };
+  if (node.type === "pane") {
+    const pane = panes.get(node.id);
+    return { type: "pane", profileId: pane?.profile.id ?? "", cwd: pane?.cwd };
+  }
   return { type: "split", direction: node.direction, sizes: node.sizes, children: node.children.map((child) => persistLayout(child, panes)) };
 }
 
@@ -45,15 +49,19 @@ function readIndex(value: unknown, length: number): number {
 /** Rebuilds one tab. Version 3 saves a layout tree; older versions one row or column of panes. */
 function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, TerminalProfile>, fallback: TerminalProfile): TerminalTab {
   let panes: TerminalPaneModel[] = [];
-  const addPane = (profileId: unknown) => {
-    const pane = { id: crypto.randomUUID(), profile: (typeof profileId === "string" && available.get(profileId)) || fallback };
+  const addPane = (profileId: unknown, cwd?: unknown) => {
+    const pane: TerminalPaneModel = {
+      id: crypto.randomUUID(),
+      profile: (typeof profileId === "string" && available.get(profileId)) || fallback,
+      cwd: isStartableFolder(cwd) ? cwd : undefined,
+    };
     panes.push(pane);
     return pane.id;
   };
 
   let layout: LayoutNode | null = null;
   if (saved.layout !== undefined) {
-    layout = sanitizeLayout(saved.layout, (leaf) => addPane(leaf.profileId));
+    layout = sanitizeLayout(saved.layout, (leaf) => addPane(leaf.profileId, leaf.cwd));
   } else if (Array.isArray(saved.panes)) {
     const ids = saved.panes.slice(0, MAX_PANES).map((pane) => addPane(typeof pane === "object" && pane !== null ? pane.profileId : undefined));
     layout = layoutFromFlat(ids, saved.splitDirection === "horizontal" ? "horizontal" : "vertical", Array.isArray(saved.paneSizes) ? saved.paneSizes : undefined);
