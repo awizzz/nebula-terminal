@@ -49,10 +49,17 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
         "continue" => flow(shell, args, "continue"),
         "shift" => shift(shell, args),
         "set" => set(shell, args, &mut out),
-        "read" => read(args, io, &mut err),
+        "read" => read(shell, args, io, &mut err),
+        "mapfile" | "readarray" => mapfile(shell, args, io),
         "eval" => Ok(shell.run_source(&args.join(" "), io, "eval: ")),
         "command" => command(shell, args, io, &mut out),
         "let" => let_(shell, args),
+        "jobs" => jobs(shell, args, &mut out),
+        "wait" => wait(shell, args),
+        "fg" => fg(shell, args, &mut out),
+        "bg" => bg(shell, args),
+        "disown" => disown(shell, args),
+        "trap" => trap(shell, args, &mut out),
         other => Err(format!("{other}: not a builtin")),
     };
     let _ = out.flush();
@@ -66,6 +73,200 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
 }
 
 type Outcome = Result<i32, String>;
+
+/// `jobs [-l | -p]`: the background jobs, newest last, with `+` on the current one.
+fn jobs(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let long = args.iter().any(|arg| arg == "-l");
+    let pids_only = args.iter().any(|arg| arg == "-p");
+    let pipefail = shell.options.pipefail;
+    let mut index = 0;
+    while index < shell.jobs.len() {
+        let marker = shell.job_marker(index);
+        let job = &mut shell.jobs[index];
+        let state = job.state(pipefail);
+        if pids_only {
+            for pid in &job.pids {
+                let _ = writeln!(out, "{pid}");
+            }
+        } else if long {
+            let pid = job
+                .pids
+                .last()
+                .map_or(String::new(), |pid| format!("{pid} "));
+            let _ = writeln!(out, "[{}]{marker} {pid}{state:<24}{} &", job.id, job.text);
+        } else {
+            let _ = writeln!(out, "[{}]{marker}  {state:<24}{} &", job.id, job.text);
+        }
+        // A finished job is shown once, then forgotten.
+        if state == "Running" {
+            index += 1;
+        } else {
+            shell.jobs.remove(index);
+        }
+    }
+    Ok(0)
+}
+
+/// `wait [-n] [%job | pid]...`: without operands, waits for every job and returns 0.
+fn wait(shell: &mut Shell, args: &[String]) -> Outcome {
+    if args.first().is_some_and(|arg| arg == "-n") {
+        // The next job to finish, whichever it is.
+        loop {
+            if shell.jobs.is_empty() {
+                return Ok(127);
+            }
+            for index in 0..shell.jobs.len() {
+                if let Some(status) = shell.poll_job(index) {
+                    shell.jobs.remove(index);
+                    return Ok(status);
+                }
+            }
+            if shell.interrupted.load(std::sync::atomic::Ordering::SeqCst) {
+                return Ok(130);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+    if args.is_empty() {
+        while !shell.jobs.is_empty() {
+            if shell.wait_job(0, false) == 130
+                && shell.interrupted.load(std::sync::atomic::Ordering::SeqCst)
+            {
+                return Ok(130);
+            }
+        }
+        return Ok(0);
+    }
+    let mut status = 0;
+    for spec in args {
+        match shell.find_job(spec) {
+            Some(index) => status = shell.wait_job(index, false),
+            None if spec.starts_with('%') => return Err(format!("{spec}: no such job")),
+            None => {
+                eprintln!("wait: pid {spec} is not a child of this shell");
+                status = 127;
+            }
+        }
+    }
+    Ok(status)
+}
+
+fn job_index(shell: &Shell, args: &[String]) -> Result<usize, String> {
+    let spec = args.first().map_or("%+", String::as_str);
+    shell.find_job(spec).ok_or_else(|| {
+        if args.is_empty() {
+            "no current job".to_owned()
+        } else {
+            format!("{spec}: no such job")
+        }
+    })
+}
+
+/// `fg [%job]`: waits for the job as if it ran in the foreground; Ctrl+C stops it.
+fn fg(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let index = job_index(shell, args)?;
+    let _ = writeln!(out, "{}", shell.jobs[index].text);
+    let _ = out.flush();
+    Ok(shell.wait_job(index, true))
+}
+
+/// Jobs never stop in Nebula, so there is nothing to resume.
+fn bg(shell: &mut Shell, args: &[String]) -> Outcome {
+    let index = job_index(shell, args)?;
+    let job = &shell.jobs[index];
+    Err(format!(
+        "job {} is already running in the background",
+        job.id
+    ))
+}
+
+/// `disown [%job]`: lets the job run on, out of the job list.
+fn disown(shell: &mut Shell, args: &[String]) -> Outcome {
+    if args.first().is_some_and(|arg| arg == "-a") {
+        shell.jobs.clear();
+        return Ok(0);
+    }
+    let index = job_index(shell, args)?;
+    shell.jobs.remove(index);
+    Ok(0)
+}
+
+/// The conditions `trap` knows, by the names and numbers scripts use.
+fn trap_condition(name: &str) -> Option<&'static str> {
+    let upper = name.to_ascii_uppercase();
+    let bare = upper.strip_prefix("SIG").unwrap_or(&upper);
+    Some(match bare {
+        "0" | "EXIT" => "EXIT",
+        "ERR" => "ERR",
+        "1" | "HUP" => "HUP",
+        "2" | "INT" => "INT",
+        "3" | "QUIT" => "QUIT",
+        "15" | "TERM" => "TERM",
+        _ => return None,
+    })
+}
+
+/// `trap [action] condition...`, `trap - condition...`, `trap -p`, `trap -l`.
+/// EXIT runs when the shell ends, ERR after a command fails, INT on Ctrl+C. HUP,
+/// QUIT and TERM are accepted for scripts written for Linux but never happen here.
+fn trap(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
+    let args: Vec<&str> = args
+        .iter()
+        .map(String::as_str)
+        .skip_while(|arg| *arg == "--")
+        .collect();
+    let print = |shell: &Shell, out: &mut dyn Write, only: &[&str]| {
+        for (condition, action) in &shell.traps {
+            if only.is_empty() || only.contains(&condition.as_str()) {
+                let _ = writeln!(out, "trap -- {} {condition}", parse::quote(action));
+            }
+        }
+    };
+    match args.first().copied() {
+        None => {
+            print(shell, out, &[]);
+            Ok(0)
+        }
+        Some("-l") => {
+            let _ = writeln!(out, " 0) EXIT	 1) HUP	 2) INT	 3) QUIT	15) TERM	ERR");
+            Ok(0)
+        }
+        Some("-p") => {
+            let mut only = Vec::new();
+            for name in &args[1..] {
+                only.push(
+                    trap_condition(name).ok_or_else(|| format!("{name}: unknown condition"))?,
+                );
+            }
+            print(shell, out, &only);
+            Ok(0)
+        }
+        Some(first) => {
+            // `trap INT` alone resets, like `trap - INT`.
+            let (action, conditions) = if args.len() == 1 || first == "-" {
+                (None, if first == "-" { &args[1..] } else { &args[..] })
+            } else {
+                (Some(first), &args[1..])
+            };
+            for name in conditions {
+                let condition = trap_condition(name).ok_or_else(|| {
+                    format!(
+                        "{name}: not a condition Nebula can trap (EXIT, ERR, INT, TERM, HUP, QUIT)"
+                    )
+                })?;
+                match action {
+                    Some(action) => {
+                        shell.traps.insert(condition.to_owned(), action.to_owned());
+                    }
+                    None => {
+                        shell.traps.remove(condition);
+                    }
+                }
+            }
+            Ok(0)
+        }
+    }
+}
 
 fn resolve_dir(target: &str) -> PathBuf {
     let translated = sys::translate_path(target);
@@ -185,6 +386,13 @@ fn unset(shell: &mut Shell, args: &[String]) -> Outcome {
             "-f" => functions = true,
             "-v" => variables = true,
             name => {
+                if let Some((base, sub)) = parse::split_subscript(name) {
+                    shell.unset_element(base, sub);
+                    continue;
+                }
+                if !functions {
+                    shell.arrays.remove(name);
+                }
                 if functions {
                     shell.functions.remove(name);
                 } else if variables
@@ -469,13 +677,22 @@ fn unescape(text: &str) -> (String, bool) {
 }
 
 fn local(shell: &mut Shell, args: &[String]) -> Outcome {
+    let flags: String = args
+        .iter()
+        .filter_map(|arg| arg.strip_prefix('-'))
+        .collect();
+    let array = flags.contains('a') || flags.contains('A');
     for arg in args.iter().filter(|arg| !arg.starts_with('-')) {
         let (name, value) = match arg.split_once('=') {
             Some((name, value)) => (name, Some(value)),
             None => (arg.as_str(), None),
         };
         valid_name(name)?;
-        shell.declare_local(name, value)?;
+        if array && value.is_none() {
+            shell.declare_local_array(name, flags.contains('A'))?;
+        } else {
+            shell.declare_local(name, value)?;
+        }
     }
     Ok(0)
 }
@@ -483,6 +700,8 @@ fn local(shell: &mut Shell, args: &[String]) -> Outcome {
 fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
     let mut global = false;
     let mut functions = None;
+    let mut array: Option<bool> = None;
+    let mut print = false;
     let mut names = Vec::new();
     for arg in args {
         match arg.strip_prefix('-') {
@@ -492,7 +711,9 @@ fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
                         'g' => global = true,
                         'f' => functions = Some(true),
                         'F' => functions = Some(false),
-                        'a' | 'A' => return Err("arrays are not supported".into()),
+                        'a' => array = Some(false),
+                        'A' => array = Some(true),
+                        'p' => print = true,
                         // -x, -i, -r, -p and the rest: every variable is already exported.
                         _ => {}
                     }
@@ -513,7 +734,19 @@ fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
         }
         return Ok(0);
     }
+    if print {
+        return print_declarations(shell, &names, out);
+    }
     if names.is_empty() {
+        if let Some(assoc) = array {
+            for (name, value) in &shell.arrays {
+                if matches!(value, crate::exec::Array::Assoc(_)) == assoc {
+                    let kind = if assoc { 'A' } else { 'a' };
+                    let _ = writeln!(out, "declare -{kind} {name}={}", value.describe());
+                }
+            }
+            return Ok(0);
+        }
         return set(shell, &[], out);
     }
     for arg in names {
@@ -522,6 +755,31 @@ fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
             None => (arg.as_str(), None),
         };
         valid_name(name)?;
+        if let Some(assoc) = array {
+            let local = shell.in_function() && !global;
+            let exists = match shell.arrays.get(name) {
+                Some(crate::exec::Array::Assoc(_)) => assoc,
+                Some(crate::exec::Array::Indexed(map)) => !assoc || map.is_empty(),
+                None => false,
+            };
+            if local {
+                shell.declare_local_array(name, assoc)?;
+            } else if !exists {
+                let mut created = Shell::empty_array(assoc);
+                // A plain variable becomes element 0 of the new indexed array.
+                if let (false, Some(previous)) = (assoc, env::var_os(name)) {
+                    if let crate::exec::Array::Indexed(map) = &mut created {
+                        map.insert(0, previous.to_string_lossy().into_owned());
+                    }
+                    env::remove_var(name);
+                }
+                shell.arrays.insert(name.to_owned(), created);
+            }
+            if let Some(value) = value {
+                shell.assign_scalar(name, value.to_owned(), false);
+            }
+            continue;
+        }
         if shell.in_function() && !global {
             let value = value.map(str::to_owned).or_else(|| env::var(name).ok());
             shell.declare_local(name, value.as_deref())?;
@@ -530,6 +788,38 @@ fn declare(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
         }
     }
     Ok(0)
+}
+
+/// `declare -p [name...]`: each variable as a `declare` line that recreates it.
+fn print_declarations(shell: &Shell, names: &[&String], out: &mut dyn Write) -> Outcome {
+    let mut status = 0;
+    let all: Vec<String>;
+    let names: Vec<&str> = if names.is_empty() {
+        all = shell.arrays.keys().cloned().collect();
+        all.iter().map(String::as_str).collect()
+    } else {
+        names.iter().map(|name| name.as_str()).collect()
+    };
+    for name in names {
+        match (shell.arrays.get(name), env::var(name)) {
+            (Some(array), _) => {
+                let kind = if matches!(array, crate::exec::Array::Assoc(_)) {
+                    'A'
+                } else {
+                    'a'
+                };
+                let _ = writeln!(out, "declare -{kind} {name}={}", array.describe());
+            }
+            (None, Ok(value)) => {
+                let _ = writeln!(out, "declare -x {name}={}", parse::quote(&value));
+            }
+            (None, Err(_)) => {
+                eprintln!("declare: {name}: not found");
+                status = 1;
+            }
+        }
+    }
+    Ok(status)
 }
 
 fn flow(shell: &mut Shell, args: &[String], which: &str) -> Outcome {
@@ -641,7 +931,7 @@ struct ReadOptions {
     count: Option<usize>,
 }
 
-fn read(args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
+fn read(shell: &mut Shell, args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
     let mut options = ReadOptions {
         raw: false,
         silent: false,
@@ -650,9 +940,15 @@ fn read(args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
         count: None,
     };
     let mut names = Vec::new();
+    let mut array = None;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
+            "-a" => {
+                let name = iter.next().cloned().unwrap_or_default();
+                valid_name(&name)?;
+                array = Some(name);
+            }
             "-r" => options.raw = true,
             "-s" => options.silent = true,
             "-p" => options.prompt = Some(iter.next().cloned().unwrap_or_default()),
@@ -667,13 +963,17 @@ fn read(args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
                         .map_err(|_| format!("{value}: invalid count"))?,
                 );
             }
-            "-a" => return Err("arrays are not supported".into()),
             "-t" | "-u" => return Err(format!("{arg}: unsupported option")),
             flags if flags.starts_with('-') && flags.len() > 1 => {
                 for flag in flags[1..].chars() {
                     match flag {
                         'r' => options.raw = true,
                         's' => options.silent = true,
+                        'a' => {
+                            let name = iter.next().cloned().unwrap_or_default();
+                            valid_name(&name)?;
+                            array = Some(name);
+                        }
                         other => return Err(format!("-{other}: unsupported option")),
                     }
                 }
@@ -706,6 +1006,14 @@ fn read(args: &[String], io: &Io, err: &mut dyn Write) -> Outcome {
         strip_backslashes(&line)
     };
     let ifs = env::var("IFS").unwrap_or_else(|_| " \t\n".to_owned());
+    if let Some(name) = array {
+        let items = split_all(&line, &ifs)
+            .into_iter()
+            .map(|value| (None, value))
+            .collect();
+        shell.assign_list(&name, items, false);
+        return Ok(i32::from(!complete));
+    }
     let values = split_fields(&line, &ifs, names.len());
     for (name, value) in names.iter().zip(values) {
         env::set_var(name, value);
@@ -814,6 +1122,92 @@ fn strip_backslashes(line: &str) -> String {
 
 /// Splits a line for `read` the way bash does with `IFS`: whitespace separators
 /// collapse and are trimmed; the last variable gets the rest of the line.
+/// Every field of a line, as `read -a` splits it.
+fn split_all(line: &str, ifs: &str) -> Vec<String> {
+    if ifs.is_empty() {
+        return vec![line.to_owned()];
+    }
+    let is_space = |c: char| ifs.contains(c) && c.is_whitespace();
+    let mut fields = Vec::new();
+    let mut rest = line.trim_matches(is_space);
+    while !rest.is_empty() {
+        match rest.find(|c: char| ifs.contains(c)) {
+            Some(index) => {
+                fields.push(rest[..index].to_owned());
+                rest = rest[index..].trim_start_matches(is_space);
+                if let Some(c) = rest
+                    .chars()
+                    .next()
+                    .filter(|c| !c.is_whitespace() && ifs.contains(*c))
+                {
+                    rest = rest[c.len_utf8()..].trim_start_matches(is_space);
+                }
+            }
+            None => {
+                fields.push(rest.to_owned());
+                rest = "";
+            }
+        }
+    }
+    fields
+}
+
+/// `mapfile [-t] [-n count] [-s skip] [array]`, also called `readarray`: the lines of
+/// standard input into an array (`MAPFILE` by default).
+fn mapfile(shell: &mut Shell, args: &[String], io: &Io) -> Outcome {
+    let mut trim = false;
+    let mut count: Option<usize> = None;
+    let mut skip = 0;
+    let mut name = "MAPFILE".to_owned();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let number = |value: Option<&String>| -> Result<usize, String> {
+            let value = value.cloned().unwrap_or_default();
+            value
+                .parse()
+                .map_err(|_| format!("{value}: invalid number"))
+        };
+        match arg.as_str() {
+            "-t" => trim = true,
+            "-n" => count = Some(number(iter.next())?).filter(|n| *n > 0),
+            "-s" => skip = number(iter.next())?,
+            flag if flag.starts_with('-') => return Err(format!("{flag}: unsupported option")),
+            other => {
+                valid_name(other)?;
+                name = other.to_owned();
+            }
+        }
+    }
+    let mut reader = io.stdin.reader().map_err(|error| error.to_string())?;
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    let text = String::from_utf8_lossy(&bytes);
+    let mut lines: Vec<String> = text
+        .split_inclusive('\n')
+        .skip(skip)
+        .map(|line| {
+            if trim {
+                line.trim_end_matches('\n')
+                    .trim_end_matches('\r')
+                    .to_owned()
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect();
+    if let Some(count) = count {
+        lines.truncate(count);
+    }
+    shell.assign_list(
+        &name,
+        lines.into_iter().map(|line| (None, line)).collect(),
+        false,
+    );
+    Ok(0)
+}
+
 fn split_fields(line: &str, ifs: &str, count: usize) -> Vec<String> {
     if ifs.is_empty() {
         let mut fields = vec![line.to_owned()];

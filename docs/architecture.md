@@ -102,12 +102,12 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | File | Responsibility |
 | --- | --- |
 | `main.rs` | Entry point: interactive mode, `-c "line"`, a script file with arguments, or `nebula-sh <command> [args]` to run one of its commands directly. The interpreter runs on a thread with a large stack, so deep function recursion is safe. |
-| `parse.rs` | A recursive-descent parser: words, quotes, `$` expansions, pipelines, lists, redirections and here-documents, and the compound commands (`if`, `for`, `while`, `until`, `case`, `{ }`, `( )`, `(( ))`, `[[ ]]`, functions). |
-| `expand.rs` | `~`, parameters and their `${…}` operators, `$(…)`, `$((…))`, `"$@"`, word splitting and globs. |
+| `parse.rs` | A recursive-descent parser: words, quotes, `$` expansions, pipelines, lists (`&` included), redirections and here-documents, assignments to arrays and elements, and the compound commands (`if`, `for`, `while`, `until`, `case`, `{ }`, `( )`, `(( ))`, `[[ ]]`, functions). |
+| `expand.rs` | Brace expansion, `~`, parameters and their `${…}` operators (on array elements too), `$(…)`, `$((…))`, `"$@"` and `"${a[@]}"`, word splitting and globs. |
 | `arith.rs` | Shell arithmetic: 64-bit integers, C operators and precedence, assignments, `++`/`--`. |
 | `test.rs` | Conditional expressions for `test`, `[` and `[[ ]]`. |
-| `exec.rs` | Runs the syntax tree: pipelines with real OS pipes, so stages stream concurrently; redirections; control flow (`break`, `continue`, `return` unwind through a flag); functions with local variables; `set -e`/`-u`/`-x`/`pipefail`. Resolves aliases, functions, builtins, Nebula commands and PATH programs. |
-| `builtins.rs` | Commands that run inside the shell: `cd`, `export`, `alias`, `source`, `echo`, `test`, `read`, `local`, `set`, `eval`, `command`… |
+| `exec.rs` | Runs the syntax tree: pipelines with real OS pipes, so stages stream concurrently; redirections; control flow (`break`, `continue`, `return` unwind through a flag); functions with local variables; `set -e`/`-u`/`-x`/`pipefail`; arrays, which live in the shell rather than the environment; background jobs, started in their own process group with an empty standard input; `trap`. Resolves aliases, functions, builtins, Nebula commands and PATH programs. |
+| `builtins.rs` | Commands that run inside the shell: `cd`, `export`, `alias`, `source`, `echo`, `test`, `read`, `mapfile`, `local`, `declare`, `set`, `eval`, `command`, `jobs`, `wait`, `fg`, `trap`… |
 | `complete.rs` | Tab completion: commands, paths, options read from `--help`, Git subcommands and refs, variables, SSH hosts. |
 | `coreutils.rs` | The uutils coreutils commands, dispatched by name. |
 | `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `awk`, `ps`, `kill`, `open`, `xargs`, `less`; and `sed`, `diff` and `cmp` on top of the uutils libraries. |

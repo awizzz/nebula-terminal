@@ -71,7 +71,8 @@ fn shell_main(args: &[String]) -> ExitCode {
             }
             shell.positional = args.get(4..).map(<[String]>::to_vec).unwrap_or_default();
             let status = shell.run_line(&line);
-            exit(shell.exit_code.unwrap_or(status))
+            let code = shell.exit_code.unwrap_or(status);
+            exit(shell.finish(code))
         }
         // Used by the shell itself to run pipeline stages and `( … )`.
         "--subshell" => {
@@ -83,7 +84,8 @@ fn shell_main(args: &[String]) -> ExitCode {
                 shell.script_name = name.clone();
             }
             let status = shell.run_line(&text);
-            exit(shell.exit_code.unwrap_or(status))
+            let code = shell.exit_code.unwrap_or(status);
+            exit(shell.finish(code))
         }
         "--version" | "-V" => {
             println!("nebula {VERSION}");
@@ -97,14 +99,16 @@ fn shell_main(args: &[String]) -> ExitCode {
         }
         "" => {
             sys::enable_ansi();
-            exit(editor::interactive(&mut shell))
+            let code = editor::interactive(&mut shell);
+            exit(shell.finish(code))
         }
         script => match std::fs::read_to_string(sys::translate_path(script)) {
             Ok(text) => {
                 shell.script_name = script.to_owned();
                 shell.positional = args[2..].to_vec();
                 let status = shell.run_line(&text);
-                exit(shell.exit_code.unwrap_or(status))
+                let code = shell.exit_code.unwrap_or(status);
+                exit(shell.finish(code))
             }
             Err(error) => {
                 eprintln!("nebula: {script}: {}", exec::describe_io_error(&error));

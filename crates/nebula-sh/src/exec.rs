@@ -5,12 +5,14 @@ use crate::arith;
 use crate::commands;
 use crate::expand::{self, Context};
 use crate::parse::{
-    self, CaseEnd, Command, Compound, Connector, Function, List, Pipeline, Redirect, RedirectKind,
-    RedirectTarget, Simple, TestToken,
+    self, ArrayItem, CaseEnd, Command, Compound, Connector, Function, List, Part, Pipeline,
+    Redirect, RedirectKind, RedirectTarget, Simple, TestToken, Word,
 };
 use crate::suggest;
 use crate::sys;
 use crate::test;
+use indexmap::IndexMap;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::env;
 use std::ffi::OsString;
@@ -22,7 +24,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Deep enough for real scripts, shallow enough to stop runaway recursion
 /// before the interpreter's stack runs out.
@@ -30,6 +32,8 @@ const MAX_CALL_DEPTH: usize = 1000;
 
 pub enum Input {
     Inherit,
+    /// Nothing to read: what background jobs get instead of the terminal.
+    Null,
     File(File),
     Pipe(os_pipe::PipeReader),
 }
@@ -47,6 +51,7 @@ impl Input {
     pub fn try_clone(&self) -> io::Result<Input> {
         Ok(match self {
             Input::Inherit => Input::Inherit,
+            Input::Null => Input::Null,
             Input::File(file) => Input::File(file.try_clone()?),
             Input::Pipe(pipe) => Input::Pipe(pipe.try_clone()?),
         })
@@ -55,6 +60,7 @@ impl Input {
     fn into_stdio(self) -> Stdio {
         match self {
             Input::Inherit => Stdio::inherit(),
+            Input::Null => Stdio::null(),
             Input::File(file) => file.into(),
             Input::Pipe(pipe) => pipe.into(),
         }
@@ -77,6 +83,7 @@ impl Input {
                 };
                 Box::new(File::from(handle))
             }
+            Input::Null => Box::new(io::empty()),
             Input::File(file) => Box::new(file.try_clone()?),
             Input::Pipe(pipe) => Box::new(pipe.try_clone()?),
         })
@@ -190,6 +197,189 @@ impl Running {
             Running::Done(code) => code,
         }
     }
+
+    /// The exit status if the stage has finished, without waiting for it.
+    fn poll(&mut self) -> Option<i32> {
+        let code = match self {
+            Running::Done(code) => return Some(*code),
+            Running::Child(child) => match child.try_wait() {
+                Ok(Some(status)) => exit_code(&status),
+                Ok(None) => return None,
+                Err(_) => 1,
+            },
+            Running::Thread(handle) => {
+                if !handle.is_finished() {
+                    return None;
+                }
+                match std::mem::replace(self, Running::Done(0)) {
+                    Running::Thread(handle) => handle.join().unwrap_or(1),
+                    _ => unreachable!("matched above"),
+                }
+            }
+        };
+        *self = Running::Done(code);
+        Some(code)
+    }
+
+    fn pid(&self) -> Option<u32> {
+        match self {
+            Running::Child(child) => Some(child.id()),
+            _ => None,
+        }
+    }
+
+    fn kill(&mut self) {
+        if let Running::Child(child) = self {
+            let _ = child.kill();
+        }
+    }
+}
+
+thread_local! {
+    /// Set while a background job starts: its processes get their own process group,
+    /// so Ctrl+C in the shell doesn't stop them.
+    static BACKGROUND: Cell<bool> = const { Cell::new(false) };
+}
+
+/// An array: indexed by integers, or associative (`declare -A`) with its keys in
+/// the order they were added. Arrays live in the shell, not in the environment.
+#[derive(Debug, Clone)]
+pub enum Array {
+    Indexed(BTreeMap<i64, String>),
+    Assoc(IndexMap<String, String>),
+}
+
+impl Array {
+    pub fn values(&self) -> Vec<String> {
+        match self {
+            Array::Indexed(map) => map.values().cloned().collect(),
+            Array::Assoc(map) => map.values().cloned().collect(),
+        }
+    }
+
+    pub fn keys(&self) -> Vec<String> {
+        match self {
+            Array::Indexed(map) => map.keys().map(i64::to_string).collect(),
+            Array::Assoc(map) => map.keys().cloned().collect(),
+        }
+    }
+
+    /// What `$name` gives for an array: its element 0.
+    fn first(&self) -> Option<String> {
+        match self {
+            Array::Indexed(map) => map.get(&0).cloned(),
+            Array::Assoc(map) => map.get("0").cloned(),
+        }
+    }
+
+    /// As `declare -p` writes it: `([0]="a" [1]="b")`, `([key]="v" )`.
+    pub fn describe(&self) -> String {
+        fn double_quoted(text: &str) -> String {
+            let mut out = String::from("\"");
+            for c in text.chars() {
+                if matches!(c, '"' | '\\' | '$' | '`') {
+                    out.push('\\');
+                }
+                out.push(c);
+            }
+            out.push('"');
+            out
+        }
+        match self {
+            Array::Indexed(map) => {
+                let items: Vec<String> = map
+                    .iter()
+                    .map(|(index, value)| format!("[{index}]={}", double_quoted(value)))
+                    .collect();
+                format!("({})", items.join(" "))
+            }
+            Array::Assoc(map) => {
+                let items: String = map
+                    .iter()
+                    .map(|(key, value)| {
+                        let plain = !key.is_empty()
+                            && key
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c));
+                        let key = if plain {
+                            key.clone()
+                        } else {
+                            double_quoted(key)
+                        };
+                        format!("[{key}]={} ", double_quoted(value))
+                    })
+                    .collect();
+                format!("({items})")
+            }
+        }
+    }
+}
+
+/// An assignment with its words expanded.
+enum Assigned {
+    Scalar {
+        name: String,
+        index: Option<String>,
+        value: String,
+        append: bool,
+    },
+    List {
+        name: String,
+        items: Vec<(Option<String>, String)>,
+        append: bool,
+    },
+}
+
+/// What a function call puts back when it returns: a variable's value and array.
+type LocalFrame = Vec<(String, Option<OsString>, Option<Array>)>;
+
+/// A pipeline started with `&`.
+pub struct Job {
+    pub id: usize,
+    pub text: String,
+    pub pids: Vec<u32>,
+    stages: Vec<Running>,
+    status: Option<i32>,
+}
+
+impl Job {
+    /// The job's exit status once all its stages have finished.
+    fn poll(&mut self, pipefail: bool) -> Option<i32> {
+        if self.status.is_some() {
+            return self.status;
+        }
+        let mut statuses = Vec::with_capacity(self.stages.len());
+        for stage in &mut self.stages {
+            statuses.push(stage.poll()?);
+        }
+        let status = if pipefail {
+            statuses
+                .iter()
+                .rev()
+                .find(|s| **s != 0)
+                .copied()
+                .unwrap_or(0)
+        } else {
+            statuses.last().copied().unwrap_or(0)
+        };
+        self.status = Some(status);
+        self.status
+    }
+
+    fn kill(&mut self) {
+        for stage in &mut self.stages {
+            stage.kill();
+        }
+    }
+
+    /// `Running`, `Done` or `Exit 2`, as `jobs` shows it.
+    pub fn state(&mut self, pipefail: bool) -> String {
+        match self.poll(pipefail) {
+            None => "Running".to_owned(),
+            Some(0) => "Done".to_owned(),
+            Some(code) => format!("Exit {code}"),
+        }
+    }
 }
 
 fn exit_code(status: &std::process::ExitStatus) -> i32 {
@@ -240,6 +430,7 @@ pub enum Flow {
 /// What a command substitution must leave untouched.
 struct SavedState {
     cwd: Option<PathBuf>,
+    arrays: BTreeMap<String, Array>,
     vars: Vec<(OsString, OsString)>,
     aliases: BTreeMap<String, String>,
     functions: BTreeMap<String, Rc<Function>>,
@@ -267,7 +458,8 @@ pub struct Shell {
     dir_stack: Vec<PathBuf>,
     exe: PathBuf,
     expanding_aliases: Vec<String>,
-    local_frames: Vec<Vec<(String, Option<OsString>)>>,
+    local_frames: Vec<LocalFrame>,
+    pub arrays: BTreeMap<String, Array>,
     call_depth: usize,
     condition_depth: usize,
     expansion_failed: bool,
@@ -276,6 +468,14 @@ pub struct Shell {
     subst_stdin: Option<Input>,
     started: Instant,
     random: u64,
+    pub jobs: Vec<Job>,
+    /// `$!`.
+    last_background: Option<u32>,
+    /// Builtins started with `&` run in a sub-shell, never in this one.
+    starting_background: bool,
+    /// `trap` actions by condition: EXIT, ERR, INT… An empty action ignores it.
+    pub traps: BTreeMap<String, String>,
+    in_trap: bool,
 }
 
 impl Shell {
@@ -307,6 +507,7 @@ impl Shell {
             exe,
             expanding_aliases: Vec::new(),
             local_frames: Vec::new(),
+            arrays: BTreeMap::new(),
             call_depth: 0,
             condition_depth: 0,
             expansion_failed: false,
@@ -314,6 +515,11 @@ impl Shell {
             subst_stdin: None,
             started: Instant::now(),
             random: seed | 1,
+            jobs: Vec::new(),
+            last_background: None,
+            starting_background: false,
+            traps: BTreeMap::new(),
+            in_trap: false,
         }
     }
 
@@ -394,11 +600,23 @@ impl Shell {
                     continue;
                 }
             }
+            if self.interrupted() && self.exit_code.is_none() && self.flow.is_none() {
+                // A trap on INT takes Ctrl+C instead of stopping the script.
+                if self.traps.contains_key("INT") && !self.in_trap {
+                    self.interrupted.store(false, Ordering::SeqCst);
+                    self.run_trap("INT");
+                }
+            }
             if self.stopped() {
                 if self.interrupted() && self.exit_code.is_none() && self.flow.is_none() {
                     status = 130;
                 }
                 break;
+            }
+            if pipeline.background {
+                status = self.start_job(pipeline, io);
+                self.last_status = status;
+                continue;
             }
             // The left side of `&&` / `||` may fail without triggering `set -e`.
             let guarded = matches!(
@@ -413,13 +631,12 @@ impl Shell {
                 self.condition_depth -= 1;
             }
             self.last_status = status;
-            if status != 0
-                && self.options.errexit
-                && self.condition_depth == 0
-                && !guarded
-                && !pipeline.negate
-                && !self.stopped()
-            {
+            let failed = status != 0 && self.condition_depth == 0 && !guarded && !pipeline.negate;
+            if failed && !self.stopped() {
+                self.run_trap("ERR");
+                self.last_status = status;
+            }
+            if failed && self.options.errexit && !self.stopped() {
                 self.exit_code = Some(status);
             }
         }
@@ -440,6 +657,26 @@ impl Shell {
     }
 
     fn run_stages(&mut self, pipeline: &Pipeline, io: &Io) -> i32 {
+        let (running, failed) = self.start_stages(pipeline, io);
+        let statuses: Vec<i32> = running.into_iter().map(Running::wait).collect();
+        if failed {
+            return 1;
+        }
+        if self.options.pipefail {
+            statuses
+                .iter()
+                .rev()
+                .find(|s| **s != 0)
+                .copied()
+                .unwrap_or(0)
+        } else {
+            statuses.last().copied().unwrap_or(0)
+        }
+    }
+
+    /// Starts every stage of a pipeline, each reading from the one before. Returns the
+    /// running stages, and whether a pipe couldn't be made (the rest didn't start).
+    fn start_stages(&mut self, pipeline: &Pipeline, io: &Io) -> (Vec<Running>, bool) {
         let count = pipeline.commands.len();
         let mut running = Vec::with_capacity(count);
         let mut previous: Option<os_pipe::PipeReader> = None;
@@ -479,21 +716,143 @@ impl Shell {
             ));
         }
         drop(previous);
+        (running, failed)
+    }
 
-        let statuses: Vec<i32> = running.into_iter().map(Running::wait).collect();
-        if failed {
-            return 1;
+    /// `pipeline &`: starts it and goes on. Standard input from the terminal becomes
+    /// empty, so the job can't take the keyboard away from the shell.
+    fn start_job(&mut self, pipeline: &Pipeline, io: &Io) -> i32 {
+        let stdin = match &io.stdin {
+            Input::Inherit => Input::Null,
+            other => other.try_clone().unwrap_or(Input::Null),
+        };
+        let job_io = Io {
+            stdin,
+            stdout: io.stdout.try_clone().unwrap_or(Output::Stdout),
+            stderr: io.stderr.try_clone().unwrap_or(Output::Stderr),
+        };
+        BACKGROUND.with(|flag| flag.set(true));
+        self.starting_background = true;
+        let (stages, failed) = self.start_stages(pipeline, &job_io);
+        self.starting_background = false;
+        BACKGROUND.with(|flag| flag.set(false));
+        let pids: Vec<u32> = stages.iter().filter_map(Running::pid).collect();
+        if let Some(pid) = pids.last() {
+            self.last_background = Some(*pid);
         }
-        if self.options.pipefail {
-            statuses
-                .iter()
-                .rev()
-                .find(|s| **s != 0)
-                .copied()
-                .unwrap_or(0)
+        let id = self.jobs.iter().map(|job| job.id).max().unwrap_or(0) + 1;
+        if self.interactive {
+            let pid = pids.last().map_or(String::new(), |pid| format!(" {pid}"));
+            let _ = writeln!(io.stderr.writer(), "[{id}]{pid}");
+        }
+        self.jobs.push(Job {
+            id,
+            text: pipeline.sources.join(" | "),
+            pids,
+            stages,
+            status: None,
+        });
+        i32::from(failed)
+    }
+
+    /// The job a `%n`, `%%`, `%+`, `%-`, `%name` or process id refers to.
+    pub fn find_job(&self, spec: &str) -> Option<usize> {
+        let Some(spec) = spec.strip_prefix('%') else {
+            let pid: u32 = spec.parse().ok()?;
+            return self.jobs.iter().position(|job| job.pids.contains(&pid));
+        };
+        match spec {
+            "" | "%" | "+" => self.jobs.len().checked_sub(1),
+            "-" => self.jobs.len().checked_sub(2),
+            _ => match spec.parse::<usize>() {
+                Ok(id) => self.jobs.iter().position(|job| job.id == id),
+                Err(_) => self.jobs.iter().rposition(|job| job.text.starts_with(spec)),
+            },
+        }
+    }
+
+    /// `+` for the current job (the newest), `-` for the one before.
+    pub fn job_marker(&self, index: usize) -> char {
+        let count = self.jobs.len();
+        if index + 1 == count {
+            '+'
+        } else if index + 2 == count {
+            '-'
         } else {
-            statuses.last().copied().unwrap_or(0)
+            ' '
         }
+    }
+
+    pub fn poll_job(&mut self, index: usize) -> Option<i32> {
+        let pipefail = self.options.pipefail;
+        self.jobs[index].poll(pipefail)
+    }
+
+    /// Waits for a job, giving up on Ctrl+C. With `stop`, Ctrl+C also ends the job,
+    /// as it would a program in the foreground.
+    pub fn wait_job(&mut self, index: usize, stop: bool) -> i32 {
+        loop {
+            if let Some(status) = self.poll_job(index) {
+                self.jobs.remove(index);
+                return status;
+            }
+            if self.interrupted() {
+                if !stop {
+                    return 130;
+                }
+                self.jobs[index].kill();
+                let _ = self.poll_job(index);
+                self.jobs.remove(index);
+                return 130;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    /// Reports the jobs that finished since the last prompt, then forgets them.
+    pub fn reap_jobs(&mut self, out: &mut dyn Write) {
+        let mut index = 0;
+        while index < self.jobs.len() {
+            if self.poll_job(index).is_none() {
+                index += 1;
+                continue;
+            }
+            let marker = self.job_marker(index);
+            let pipefail = self.options.pipefail;
+            let job = &mut self.jobs[index];
+            let state = job.state(pipefail);
+            let _ = writeln!(out, "[{}]{marker}  {state:<24}{}", job.id, job.text);
+            self.jobs.remove(index);
+        }
+    }
+
+    /// Runs the action set with `trap` for `condition`, once, without changing `$?`.
+    pub fn run_trap(&mut self, condition: &str) {
+        let Some(action) = self.traps.get(condition).cloned() else {
+            return;
+        };
+        if action.is_empty() || self.in_trap {
+            return;
+        }
+        self.in_trap = true;
+        let status = self.last_status;
+        self.run_source(&action, &Io::standard(), "trap: ");
+        self.last_status = status;
+        self.in_trap = false;
+    }
+
+    /// The end of the shell: runs the EXIT trap, which may change the exit status.
+    pub fn finish(&mut self, code: i32) -> i32 {
+        if !self.traps.contains_key("EXIT") {
+            return code;
+        }
+        self.exit_code = None;
+        self.flow = None;
+        self.interrupted.store(false, Ordering::SeqCst);
+        self.last_status = code;
+        self.run_trap("EXIT");
+        self.traps.remove("EXIT");
+        self.exit_code.unwrap_or(code)
     }
 
     /// Starts one stage of a multi-command pipeline. Everything that would need the
@@ -624,7 +983,9 @@ impl Shell {
                     Some(words) => {
                         let mut values = Vec::new();
                         for word in words {
-                            values.extend(expand::expand(word, self, true));
+                            for word in expand::braces(word) {
+                                values.extend(expand::expand(&word, self, true));
+                            }
                         }
                         values
                     }
@@ -755,16 +1116,81 @@ impl Shell {
         self.expansion_failed = false;
         self.subst_status = None;
         let outer_stdin = std::mem::replace(&mut self.subst_stdin, io.stdin.try_clone().ok());
+        let declaration = simple
+            .words
+            .first()
+            .and_then(Word::keyword)
+            .is_some_and(|name| {
+                matches!(
+                    name,
+                    "local" | "declare" | "typeset" | "readonly" | "export"
+                )
+            });
         let mut argv: Vec<String> = Vec::new();
+        // `declare -A m=(…)`: the builtin declares the name, then the list is assigned.
+        let mut declared_lists = Vec::new();
         for word in &simple.words {
-            argv.extend(expand::expand(word, self, true));
+            if let (true, Some(Part::ArrayLit(items))) = (declaration, word.0.last()) {
+                let prefix = Word(word.0[..word.0.len() - 1].to_vec());
+                let text = expand::expand_single(&prefix, self);
+                let (name, append) = match text.strip_suffix("+=") {
+                    Some(name) => (name.to_owned(), true),
+                    None => (text.trim_end_matches('=').to_owned(), false),
+                };
+                let items = self.expand_items(items);
+                argv.push(name.clone());
+                declared_lists.push(Assigned::List {
+                    name,
+                    items,
+                    append,
+                });
+                continue;
+            }
+            for word in expand::braces(word) {
+                argv.extend(expand::expand(&word, self, true));
+            }
         }
-        let assignments: Vec<(String, String)> = simple
-            .assignments
-            .iter()
-            .map(|(name, value)| (name.clone(), expand::expand_single(value, self)))
-            .collect();
+        let mut evaluated = Vec::with_capacity(simple.assignments.len());
+        for assignment in &simple.assignments {
+            let name = assignment.name.clone();
+            let append = assignment.append;
+            evaluated.push(match assignment.value.0.as_slice() {
+                [Part::ArrayLit(items)] => Assigned::List {
+                    name,
+                    items: self.expand_items(items),
+                    append,
+                },
+                _ => Assigned::Scalar {
+                    name,
+                    index: assignment
+                        .index
+                        .as_ref()
+                        .map(|index| expand::expand_single(index, self)),
+                    value: expand::expand_single(&assignment.value, self),
+                    append,
+                },
+            });
+        }
         self.subst_stdin = outer_stdin;
+        if self.expansion_failed {
+            return Running::Done(1);
+        }
+        // Plain `NAME=value` before a command only lasts for that command; arrays,
+        // elements and `+=` change the shell.
+        let mut assignments: Vec<(String, String)> = Vec::new();
+        for assigned in evaluated {
+            match assigned {
+                Assigned::Scalar {
+                    name,
+                    index: None,
+                    value,
+                    append: false,
+                } if !argv.is_empty() && !self.arrays.contains_key(&name) => {
+                    assignments.push((name, value))
+                }
+                other => self.apply_assigned(other),
+            }
+        }
         if self.expansion_failed {
             return Running::Done(1);
         }
@@ -778,10 +1204,27 @@ impl Shell {
         };
 
         if argv.is_empty() {
-            for (name, value) in assignments {
-                env::set_var(name, value);
-            }
             return Running::Done(self.subst_status.unwrap_or(0));
+        }
+        if argv[0] == "kill" && argv[1..].iter().any(|arg| arg.starts_with('%')) {
+            // Job numbers mean nothing to the kill command: give it the process ids.
+            let mut resolved = vec![argv[0].clone()];
+            for arg in &argv[1..] {
+                if !arg.starts_with('%') {
+                    resolved.push(arg.clone());
+                    continue;
+                }
+                match self.find_job(arg) {
+                    Some(index) => {
+                        resolved.extend(self.jobs[index].pids.iter().map(u32::to_string))
+                    }
+                    None => {
+                        let _ = writeln!(io.stderr.writer(), "kill: {arg}: no such job");
+                        return Running::Done(1);
+                    }
+                }
+            }
+            argv = resolved;
         }
         if self.options.xtrace {
             let words: Vec<String> = assignments
@@ -791,7 +1234,273 @@ impl Shell {
                 .collect();
             let _ = writeln!(io.stderr.writer(), "+ {}", words.join(" "));
         }
-        self.dispatch(argv, assignments, io, stage, false)
+        let running = self.dispatch(argv, assignments, io, stage, false);
+        for list in declared_lists {
+            self.apply_assigned(list);
+        }
+        running
+    }
+
+    /// The elements of `(…)`, expanded: a plain value may become several (`(*.txt)`),
+    /// a `[key]=value` stays one.
+    fn expand_items(&mut self, items: &[ArrayItem]) -> Vec<(Option<String>, String)> {
+        let mut out = Vec::new();
+        for item in items {
+            match &item.key {
+                Some(key) => {
+                    let key = expand::expand_single(key, self);
+                    let value = expand::expand_single(&item.value, self);
+                    out.push((Some(key), value));
+                }
+                None => {
+                    for word in expand::braces(&item.value) {
+                        for value in expand::expand(&word, self, true) {
+                            out.push((None, value));
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    fn apply_assigned(&mut self, assigned: Assigned) {
+        match assigned {
+            Assigned::Scalar {
+                name,
+                index: None,
+                value,
+                append,
+            } => self.assign_scalar(&name, value, append),
+            Assigned::Scalar {
+                name,
+                index: Some(key),
+                value,
+                append,
+            } => self.assign_element(&name, &key, value, append),
+            Assigned::List {
+                name,
+                items,
+                append,
+            } => self.assign_list(&name, items, append),
+        }
+    }
+
+    /// `name=value`: on an array, this sets element 0, as in bash.
+    pub fn assign_scalar(&mut self, name: &str, value: String, append: bool) {
+        match self.arrays.get_mut(name) {
+            Some(Array::Indexed(map)) => {
+                let value = if append {
+                    map.get(&0).cloned().unwrap_or_default() + &value
+                } else {
+                    value
+                };
+                map.insert(0, value);
+            }
+            Some(Array::Assoc(map)) => {
+                let value = if append {
+                    map.get("0").cloned().unwrap_or_default() + &value
+                } else {
+                    value
+                };
+                map.insert("0".to_owned(), value);
+            }
+            None => {
+                let value = if append {
+                    env::var(name).unwrap_or_default() + &value
+                } else {
+                    value
+                };
+                env::set_var(name, value);
+            }
+        }
+    }
+
+    /// An index for an indexed array: an arithmetic expression, counted from the end
+    /// when negative.
+    fn array_index(&mut self, name: &str, text: &str) -> Option<i64> {
+        let index = match arith::eval(text, self) {
+            Ok(index) => index,
+            Err(error) => {
+                self.fail(format!("{name}[{text}]: {error}"));
+                return None;
+            }
+        };
+        if index >= 0 {
+            return Some(index);
+        }
+        let next = match self.arrays.get(name) {
+            Some(Array::Indexed(map)) => map.keys().next_back().map_or(0, |last| last + 1),
+            _ => i64::from(env::var_os(name).is_some()),
+        };
+        let index = next + index;
+        if index < 0 {
+            self.fail(format!("{name}[{text}]: bad array subscript"));
+            return None;
+        }
+        Some(index)
+    }
+
+    /// The indexed array `name`, made from its plain value if it was a variable.
+    fn indexed_array(&mut self, name: &str) -> &mut BTreeMap<i64, String> {
+        if !self.arrays.contains_key(name) {
+            let mut map = BTreeMap::new();
+            if let Some(value) = env::var_os(name) {
+                map.insert(0, value.to_string_lossy().into_owned());
+                env::remove_var(name);
+            }
+            self.arrays.insert(name.to_owned(), Array::Indexed(map));
+        }
+        match self.arrays.get_mut(name) {
+            Some(Array::Indexed(map)) => map,
+            _ => unreachable!("an associative array is handled by the caller"),
+        }
+    }
+
+    /// `name[key]=value`.
+    pub fn assign_element(&mut self, name: &str, key: &str, value: String, append: bool) {
+        if let Some(Array::Assoc(map)) = self.arrays.get_mut(name) {
+            let value = if append {
+                map.get(key).cloned().unwrap_or_default() + &value
+            } else {
+                value
+            };
+            map.insert(key.to_owned(), value);
+            return;
+        }
+        let Some(index) = self.array_index(name, key) else {
+            return;
+        };
+        let map = self.indexed_array(name);
+        let value = if append {
+            map.get(&index).cloned().unwrap_or_default() + &value
+        } else {
+            value
+        };
+        map.insert(index, value);
+    }
+
+    /// `name=(…)` and `name+=(…)`.
+    pub fn assign_list(&mut self, name: &str, items: Vec<(Option<String>, String)>, append: bool) {
+        if let Some(Array::Assoc(existing)) = self.arrays.get(name) {
+            let mut map = if append {
+                existing.clone()
+            } else {
+                IndexMap::new()
+            };
+            for (key, value) in items {
+                match key {
+                    Some(key) => {
+                        map.insert(key, value);
+                    }
+                    None => {
+                        self.fail(format!("{name}: an associative array needs [key]=value"));
+                        return;
+                    }
+                }
+            }
+            self.arrays.insert(name.to_owned(), Array::Assoc(map));
+            return;
+        }
+        let mut map = if append {
+            std::mem::take(self.indexed_array(name))
+        } else {
+            BTreeMap::new()
+        };
+        let mut next = map.keys().next_back().map_or(0, |last| last + 1);
+        for (key, value) in items {
+            let index = match key {
+                Some(key) => match arith::eval(&key, self) {
+                    Ok(index) => index,
+                    Err(error) => {
+                        self.fail(format!("{name}[{key}]: {error}"));
+                        continue;
+                    }
+                },
+                None => next,
+            };
+            map.insert(index, value);
+            next = index + 1;
+        }
+        env::remove_var(name);
+        self.arrays.insert(name.to_owned(), Array::Indexed(map));
+    }
+
+    /// `${name[sub]}`.
+    fn element(&mut self, name: &str, sub: &str) -> Option<String> {
+        if sub == "@" || sub == "*" {
+            let values = self.elements_of(name);
+            return (self.arrays.contains_key(name) || env::var_os(name).is_some())
+                .then(|| values.join(" "));
+        }
+        match self.arrays.get(name) {
+            Some(Array::Assoc(_)) => {
+                let key = self.subscript_key(sub)?;
+                match self.arrays.get(name) {
+                    Some(Array::Assoc(map)) => map.get(&key).cloned(),
+                    _ => None,
+                }
+            }
+            Some(Array::Indexed(_)) => {
+                let index = self.arith(sub)?;
+                let Some(Array::Indexed(map)) = self.arrays.get(name) else {
+                    return None;
+                };
+                let index = if index < 0 {
+                    map.keys().next_back()? + 1 + index
+                } else {
+                    index
+                };
+                map.get(&index).cloned()
+            }
+            // A plain variable is an array of one.
+            None => match self.arith(sub)? {
+                0 | -1 => env::var(name).ok(),
+                _ => None,
+            },
+        }
+    }
+
+    fn subscript_key(&mut self, sub: &str) -> Option<String> {
+        match parse::parse_subscript(sub) {
+            Ok(word) => Some(expand::expand_single(&word, self)),
+            Err(error) => {
+                self.fail(format!("[{sub}]: {error}"));
+                None
+            }
+        }
+    }
+
+    fn elements_of(&self, name: &str) -> Vec<String> {
+        match self.arrays.get(name) {
+            Some(array) => array.values(),
+            None => env::var(name).ok().into_iter().collect(),
+        }
+    }
+
+    /// `unset name[key]`.
+    pub fn unset_element(&mut self, name: &str, sub: &str) {
+        match self.arrays.get(name) {
+            Some(Array::Assoc(_)) => {
+                if let Some(key) = self.subscript_key(sub) {
+                    if let Some(Array::Assoc(map)) = self.arrays.get_mut(name) {
+                        map.shift_remove(&key);
+                    }
+                }
+            }
+            Some(Array::Indexed(_)) => {
+                if let Some(index) = self.array_index(name, sub) {
+                    if let Some(Array::Indexed(map)) = self.arrays.get_mut(name) {
+                        map.remove(&index);
+                    }
+                }
+            }
+            None => {
+                if self.arith(sub) == Some(0) {
+                    env::remove_var(name);
+                }
+            }
+        }
     }
 
     /// Runs an expanded command line.
@@ -831,7 +1540,9 @@ impl Shell {
                 restore_vars(saved);
                 Running::Done(status)
             }
-            Resolution::Builtin if stage && commands::runs_code(&name) => {
+            Resolution::Builtin
+                if stage && (self.starting_background || commands::runs_code(&name)) =>
+            {
                 self.spawn_subshell(&quote_argv(&argv), io)
             }
             Resolution::Builtin if stage => self.buffered_builtin(&argv, &assignments, io),
@@ -934,7 +1645,20 @@ impl Shell {
         let status = self.run_command(&function.body, io);
         self.call_depth -= 1;
         if let Some(frame) = self.local_frames.pop() {
-            restore_vars(frame);
+            for (name, value, array) in frame.into_iter().rev() {
+                match value {
+                    Some(value) => env::set_var(&name, value),
+                    None => env::remove_var(&name),
+                }
+                match array {
+                    Some(array) => {
+                        self.arrays.insert(name, array);
+                    }
+                    None => {
+                        self.arrays.remove(&name);
+                    }
+                }
+            }
         }
         self.loop_depth = saved_loops;
         self.positional = saved_args;
@@ -947,15 +1671,42 @@ impl Shell {
 
     /// `local name[=value]`: the previous value comes back when the function returns.
     pub fn declare_local(&mut self, name: &str, value: Option<&str>) -> Result<(), String> {
-        let Some(frame) = self.local_frames.last_mut() else {
-            return Err("can only be used in a function".to_owned());
-        };
-        if !frame.iter().any(|(saved, _)| saved == name) {
-            frame.push((name.to_owned(), env::var_os(name)));
-        }
+        self.save_local(name)?;
+        self.arrays.remove(name);
         match value {
             Some(value) => env::set_var(name, value),
             None => env::remove_var(name),
+        }
+        Ok(())
+    }
+
+    /// `local -a name` / `local -A name`: an empty array until the function returns.
+    pub fn declare_local_array(&mut self, name: &str, assoc: bool) -> Result<(), String> {
+        self.save_local(name)?;
+        env::remove_var(name);
+        self.arrays
+            .insert(name.to_owned(), Self::empty_array(assoc));
+        Ok(())
+    }
+
+    pub fn empty_array(assoc: bool) -> Array {
+        if assoc {
+            Array::Assoc(IndexMap::new())
+        } else {
+            Array::Indexed(BTreeMap::new())
+        }
+    }
+
+    fn save_local(&mut self, name: &str) -> Result<(), String> {
+        let Some(frame) = self.local_frames.last_mut() else {
+            return Err("can only be used in a function".to_owned());
+        };
+        if !frame.iter().any(|(saved, _, _)| saved == name) {
+            frame.push((
+                name.to_owned(),
+                env::var_os(name),
+                self.arrays.get(name).cloned(),
+            ));
         }
         Ok(())
     }
@@ -1019,6 +1770,14 @@ impl Shell {
         for function in self.functions.values() {
             text.push_str(&function.source);
             text.push('\n');
+        }
+        for (name, array) in &self.arrays {
+            let kind = if matches!(array, Array::Assoc(_)) {
+                "-A"
+            } else {
+                "-a"
+            };
+            text.push_str(&format!("declare {kind} {name}={}\n", array.describe()));
         }
         let flags = self.option_flags();
         if !flags.is_empty() {
@@ -1156,6 +1915,7 @@ impl Shell {
     fn save_state(&self) -> SavedState {
         SavedState {
             cwd: env::current_dir().ok(),
+            arrays: self.arrays.clone(),
             vars: env::vars_os().collect(),
             aliases: self.aliases.clone(),
             functions: self.functions.clone(),
@@ -1186,6 +1946,7 @@ impl Shell {
                 env::set_var(name, value);
             }
         }
+        self.arrays = saved.arrays;
         self.aliases = saved.aliases;
         self.functions = saved.functions;
         self.positional = saved.positional;
@@ -1290,6 +2051,19 @@ fn spawn(
         .stdin(io.stdin.into_stdio())
         .stdout(io.stdout.into_stdio())
         .stderr(io.stderr.into_stdio_for_stderr());
+    if BACKGROUND.with(Cell::get) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            // CREATE_NEW_PROCESS_GROUP: Ctrl+C in the console doesn't reach the job.
+            process.creation_flags(0x0000_0200);
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            process.process_group(0);
+        }
+    }
     match process.spawn() {
         Ok(child) => Running::Child(child),
         Err(error) => {
@@ -1326,7 +2100,7 @@ impl Context for Shell {
                 }
                 Some(flags)
             }
-            "!" => None,
+            "!" => self.last_background.map(|pid| pid.to_string()),
             "RANDOM" => Some((self.next_random() % 32768).to_string()),
             "SECONDS" => Some(self.started.elapsed().as_secs().to_string()),
             _ if name.chars().all(|c| c.is_ascii_digit()) => name
@@ -1334,7 +2108,33 @@ impl Context for Shell {
                 .ok()
                 .and_then(|index| index.checked_sub(1))
                 .and_then(|index| self.positional.get(index).cloned()),
-            _ => env::var(name).ok(),
+            _ => {
+                if let Some((base, sub)) = parse::split_subscript(name) {
+                    return self.element(base, sub);
+                }
+                match self.arrays.get(name) {
+                    Some(array) => array.first(),
+                    None => env::var(name).ok(),
+                }
+            }
+        }
+    }
+
+    fn elements(&mut self, name: &str) -> Vec<String> {
+        match parse::split_subscript(name) {
+            Some((base, _)) => self.elements_of(base),
+            None => Vec::new(),
+        }
+    }
+
+    fn keys(&mut self, name: &str) -> Vec<String> {
+        let Some((base, _)) = parse::split_subscript(name) else {
+            return Vec::new();
+        };
+        match self.arrays.get(base) {
+            Some(array) => array.keys(),
+            None if env::var_os(base).is_some() => vec!["0".to_owned()],
+            None => Vec::new(),
         }
     }
 
