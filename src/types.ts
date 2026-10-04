@@ -99,6 +99,10 @@ export interface AppearancePreferences {
   /** PowerShell, Git Bash and WSL get a script that marks their commands. */
   shellIntegration: boolean;
   restoreSession: boolean;
+  /** "Open in Nebula Terminal" in File Explorer. Null until the user decides: installed copies add it. */
+  explorerMenu: boolean | null;
+  /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
+  pathCommand: boolean | null;
   copyOnSelect: boolean;
   confirmMultilinePaste: boolean;
   confirmCloseMultipleTabs: boolean;
@@ -166,4 +170,10 @@ export interface PtyEvent {
     code?: number;
     message?: string;
   };
+}
+
+/** What Windows offers to open the app in a folder (Rust's `sync_launchers`). */
+export interface Launchers {
+  explorerMenu: boolean;
+  command: boolean;
 }

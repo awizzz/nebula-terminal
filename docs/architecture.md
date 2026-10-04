@@ -32,6 +32,7 @@ scripts/             sidecar build, icon font subset, preview recording
 | `ssh.rs` | `Host` names from `~/.ssh/config` and the files it includes (one level deep, wildcards allowed in file names). Patterns with `*`, `?` or `!` are skipped. |
 | `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
+| `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entry, and the `nebula-terminal` command on the user's PATH. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
 | `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. |
@@ -54,6 +55,19 @@ Detection runs on a blocking thread when the app starts and again after a custom
 Custom profiles are kept in `custom-profiles.json` in the app's config folder (`%APPDATA%\dev.awizz.nebula-terminal`). Only Rust writes that file, through a temporary file so it is never left half written. Saving checks every field: a name of up to 60 characters, a program that is either an absolute path to an existing file or a bare name found on PATH (`%VAR%` and `~` are expanded; relative paths with folders are refused), at most 64 arguments, a starting folder that exists, and a `#rrggbb` color. There can be 50 of them. Entries read back from the file are checked again, and a profile whose program has been uninstalled stays listed as unavailable instead of disappearing.
 
 The editor sends the arguments as one line. Rust splits it with the Windows rules, stores the list, and the editor shows the split result as you type (`split_arguments`). Starting a custom profile uses the stored entry only; the webview never sends a program or arguments to run.
+
+### Opening a folder
+
+The app runs once per user (`tauri-plugin-single-instance`). A second launch hands its arguments and working folder to the running app, which opens a tab and comes to the front. The first launch reads its own arguments with `launch_folder`.
+
+Two things point at the app, and `sync_launchers` adds or removes them when the app starts or the user flips them in Settings → Behavior. Until the user decides, an installed copy adds both and a portable copy adds neither.
+
+| Entry | Where |
+| --- | --- |
+| Open in Nebula Terminal | `HKCU\Software\Classes\{Directory, Directory\Background, Drive}\shell\NebulaTerminal`, running `"nebula-terminal.exe" "%V"`. Explorer writes a drive root as `C:"`, which `folder_argument` repairs. |
+| `nebula-terminal` command | `%LOCALAPPDATA%\dev.awizz.nebula-terminal\bin`, added to the user's PATH (`HKCU\Environment`). It holds a `.cmd` for cmd, PowerShell and Nebula, and a `sh` script for Git Bash and WSL, like npm's shims. The app's own folder isn't used because it also holds `uninstall.exe`. |
+
+Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes both entries and exits without opening a window. Updates don't run it.
 
 ### Shell integration
 

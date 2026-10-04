@@ -45,6 +45,19 @@
     "longDescription": "Nebula Terminal runs Nebula, a Linux-style command interpreter, alongside PowerShell, Command Prompt, Git Bash and WSL, with tabs, split panes and live visual customization.",
     "externalBin": [
       "binaries/nebula-sh"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      },
+      "wix": {
+        "fragmentPaths": [
+          "windows/launchers.wxs"
+        ],
+        "componentRefs": [
+          "LauncherCleanup"
+        ]
+      }
+    }
   }
 }

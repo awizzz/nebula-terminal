@@ -20,10 +20,11 @@ sha2 = "0.11"
 tauri = { version = "2.12.1", features = [] }
 tauri-plugin-notification = "2.5.1"
 tauri-plugin-opener = "2.7.0"
+tauri-plugin-single-instance = "2.5.2"
 ureq = { version = "3.4.2", default-features = false, features = ["rustls", "platform-verifier", "json"] }
 uuid = { version = "1", features = ["v4"] }
 window-vibrancy = "0.8.0"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 winreg = "0.56"
