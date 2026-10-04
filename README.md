@@ -24,11 +24,10 @@ Releases are not code-signed yet, so Windows SmartScreen may warn you the first 
 Get-FileHash '.\Nebula.Terminal_1.2.0_x64-setup.exe' -Algorithm SHA256
 ```
 
-With [Scoop](https://scoop.sh), the repository is its own bucket. Scoop installs the portable version and adds the `nebula-terminal` command:
+With [Scoop](https://scoop.sh), which installs the portable version and adds the `nebula-terminal` command. `scoop update nebula-terminal` follows new releases:
 
 ```powershell
-scoop bucket add nebula-terminal https://github.com/awizzz/nebula-terminal
-scoop install nebula-terminal/nebula-terminal
+scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download/nebula-terminal.json
 ```
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.
