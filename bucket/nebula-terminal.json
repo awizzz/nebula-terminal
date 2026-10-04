@@ -1,0 +1,42 @@
+{
+    "version": "1.2.0",
+    "description": "A fast, good-looking Windows terminal with its own Linux-style shell.",
+    "homepage": "https://nebula.awizz.space",
+    "license": {
+        "identifier": "PolyForm-Shield-1.0.0",
+        "url": "https://github.com/awizzz/nebula-terminal/blob/main/LICENSE"
+    },
+    "notes": "Settings > Behavior can add Open in Nebula Terminal to File Explorer and make it the default terminal of Windows 11.",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/awizzz/nebula-terminal/releases/download/v1.2.0/Nebula-Terminal-1.2.0-windows-x64-portable.zip",
+            "hash": "625409dd58da424030c59298bea6bb51bb03ee296a78754a22106d4414e5f37a"
+        }
+    },
+    "bin": [
+        [
+            "Nebula Terminal.exe",
+            "nebula-terminal"
+        ],
+        "nebula-sh.exe"
+    ],
+    "shortcuts": [
+        [
+            "Nebula Terminal.exe",
+            "Nebula Terminal"
+        ]
+    ],
+    "checkver": {
+        "github": "https://github.com/awizzz/nebula-terminal"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/awizzz/nebula-terminal/releases/download/v$version/Nebula-Terminal-$version-windows-x64-portable.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS.txt"
+        }
+    }
+}
