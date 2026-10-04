@@ -471,3 +471,64 @@ fn background_jobs_and_traps() {
         "failed\nend\n"
     );
 }
+
+#[test]
+fn getopts_parses_options_like_bash() {
+    let script = r#"
+        while getopts ":ve:n:" opt; do
+          case $opt in
+            v) echo verbose ;;
+            e) echo "env=$OPTARG" ;;
+            n) echo "n=$OPTARG" ;;
+            :) echo "-$OPTARG needs a value" ;;
+            \?) echo "unknown -$OPTARG" ;;
+          esac
+        done
+        shift $((OPTIND - 1)); echo "rest=$*""#;
+    let with_args = |args: &str| run(&format!("set -- {args}; {script}")).1;
+    assert_eq!(
+        with_args("-ve prod -n3 -x -- -a b"),
+        "verbose\nenv=prod\nn=3\nunknown -x\nrest=-a b\n"
+    );
+    assert_eq!(with_args("-n"), "-n needs a value\nrest=\n");
+    // Without the leading colon, problems are reported on stderr.
+    let (status, out, err) = run("set -- -q; getopts a opt; echo \"$? $opt ${OPTARG-unset}\"");
+    assert_eq!((status, out.as_str()), (0, "0 ? unset\n"));
+    assert!(err.contains("illegal option -- q"), "{err}");
+    // Setting OPTIND starts over, even in the middle of `-abc`.
+    assert_eq!(
+        run("set -- -abc; getopts abc o; OPTIND=1; getopts abc o; echo $o $OPTIND").1,
+        "a 1\n"
+    );
+    // A script starts at 1 whatever OPTIND the shell that runs it had.
+    let dir = scratch("getopts");
+    std::fs::write(dir.join("s.sh"), "getopts x o -x; echo $o $OPTIND").unwrap();
+    assert_eq!(run_in(&dir, "OPTIND=4 \"$SHELL\" s.sh").1, "x 2\n");
+}
+
+#[test]
+fn globs_reach_into_folders_and_dot_files() {
+    let dir = scratch("globs");
+    for folder in ["src/a/b", "src/.hidden", ".cache"] {
+        std::fs::create_dir_all(dir.join(folder)).unwrap();
+    }
+    for file in [
+        "src/main.rs",
+        "src/a/lib.rs",
+        "src/a/b/deep.rs",
+        "src/.hidden/x.rs",
+        ".env",
+        "top.rs",
+    ] {
+        std::fs::write(dir.join(file), "").unwrap();
+    }
+    assert_eq!(
+        run_in(&dir, "echo **/*.rs").1,
+        "src/a/b/deep.rs src/a/lib.rs src/main.rs top.rs\n"
+    );
+    assert_eq!(run_in(&dir, "echo src/**/").1, "src/ src/a/ src/a/b/\n");
+    assert_eq!(run_in(&dir, "echo .*").1, ".cache .env\n");
+    assert_eq!(run_in(&dir, "echo src/.h*/*.rs").1, "src/.hidden/x.rs\n");
+    assert_eq!(run_in(&dir, "echo */").1, "src/\n");
+    assert_eq!(run_in(&dir, "echo none/**").1, "none/**\n");
+}

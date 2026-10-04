@@ -776,11 +776,6 @@ pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String
         }
     }
 
-    let options = MatchOptions {
-        case_sensitive: !cfg!(windows),
-        require_literal_separator: true,
-        require_literal_leading_dot: true,
-    };
     let mut out = Vec::new();
     for field in fields {
         if field.is_empty() && !field.quoted {
@@ -788,24 +783,11 @@ pub fn expand(word: &Word, context: &mut impl Context, glob: bool) -> Vec<String
         }
         if glob {
             if let Some(pattern) = field.glob_pattern() {
-                if let Ok(paths) = glob::glob_with(&pattern, options) {
-                    let mut matches: Vec<String> = paths
-                        .filter_map(Result::ok)
-                        .map(|path| {
-                            let text = path.to_string_lossy().into_owned();
-                            // Keep the separator the user typed.
-                            if pattern.contains('/') && !pattern.contains('\\') {
-                                text.replace('\\', "/")
-                            } else {
-                                text
-                            }
-                        })
-                        .collect();
-                    if !matches.is_empty() {
-                        matches.sort_by_key(|m| m.to_lowercase());
-                        out.extend(matches);
-                        continue;
-                    }
+                let mut matches = crate::pathnames::expand(&pattern, !cfg!(windows));
+                if !matches.is_empty() {
+                    matches.sort_by_key(|m| m.to_lowercase());
+                    out.extend(matches);
+                    continue;
                 }
             }
         }
