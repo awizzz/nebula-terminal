@@ -2,22 +2,21 @@
 
 Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.3)
+## Next (1.4)
 
-Installing and updating the way Windows users expect.
+Installing in one command, and making the window your own.
 
-- **A winget package:** `winget install Awizz.NebulaTerminal`. (Scoop already works, see the README.)
-- **Signed releases** (Authenticode), so SmartScreen stops warning and updates are checked against a signature as well as a checksum.
+- **A winget package:** `winget install Awizz.NebulaTerminal`. It's waiting for review in the winget repository; Scoop already works (see the README).
+- **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
+- **Theme editor:** change any color of a scheme and keep it as your own.
+- **Per-profile looks:** each profile can have its own theme, font and background.
 
-## Soon (1.4 and 1.5)
+## Soon (1.5 and 1.6)
 
 ### Terminal
 
-- **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
 - **Run a profile as administrator**, in its own clearly marked tab.
 - **Several windows:** drag a tab out to make a new window, or back in to merge.
-- **Per-profile looks:** each profile can have its own theme, font and background.
-- **Theme editor:** change any color of a scheme and keep it as your own.
 - **Images in the terminal** (Sixel and the iTerm2 protocol), for tools like `chafa` or `viu`.
 - **Font ligatures** for fonts that have them (Cascadia Code, Fira Code, JetBrains Mono).
 
@@ -25,9 +24,11 @@ Installing and updating the way Windows users expect.
 
 - **A configurable prompt** in `~/.nebularc`: choose the segments (Git, time, Node or Rust version, battery), their order and colors, or keep using Starship.
 - **Completion for more programs:** kubectl and the rest, and your own completions in a simple file.
+- **Ctrl+Z** to pause the command in front, then `fg` or `bg` to resume it.
 
 ## Later
 
+- **Signed releases** (Authenticode), once a code-signing certificate fits the project's budget. Until then SmartScreen may warn on first run, and every release lists its SHA-256 checksums.
 - ARM64 builds for Windows on Arm laptops.
 - Settings sync through a file you choose (OneDrive, Dropbox, a Git repository), with no account.
 - Saved SSH connections with their own folder, keys and port forwarding, from the profile editor.
