@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
+
+Any shell can now run as administrator, in a window of its own that says so, and the update check gets a security fix.
 
 ### Added
 
