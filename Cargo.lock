@@ -3199,7 +3199,7 @@ dependencies = [
 
 [[package]]
 name = "nebula-sh"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "crossterm",
  "ctrlc",
@@ -3289,7 +3289,7 @@ dependencies = [
 
 [[package]]
 name = "nebula-terminal"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "base64 0.23.1",
  "portable-pty",
