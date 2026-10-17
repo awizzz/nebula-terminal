@@ -38,12 +38,14 @@ export default function ProfileIcon({ kind, accent, size = 16 }: { kind: Profile
   if (kind === "nebula") {
     return (
       <svg {...common}>
-        <rect x="0.5" y="0.5" width="15" height="15" rx="3.5" fill="#1b1c20" />
-        <g transform="translate(8 8) rotate(-24)" fill="none" stroke="#efe8da" strokeWidth="1.1">
-          <ellipse rx="6.2" ry="2.1" strokeOpacity="0.85" />
-          <circle r="3.1" fill="#eea640" stroke="none" />
-          {/* Front half of the orbit, drawn over the planet. */}
-          <path d="M-6.2 0A6.2 2.1 0 0 0 6.2 0" strokeLinecap="round" />
+        <rect width="16" height="16" rx="3" fill="#17181c" />
+        {/* The app icon's dotted prompt, cut down to five dots for this size. */}
+        <g fill="#e9a439">
+          <circle cx="4.6" cy="3.6" r="1.7" />
+          <circle cx="8" cy="5.8" r="1.25" />
+          <circle cx="11.4" cy="8" r="2.05" />
+          <circle cx="8" cy="10.2" r="1.25" />
+          <circle cx="4.6" cy="12.4" r="1.7" />
         </g>
       </svg>
     );

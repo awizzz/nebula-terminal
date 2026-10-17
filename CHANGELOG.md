@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- a new icon: the Nebula prompt `❯` drawn as a cluster of dots, for the app, the installer and Nebula's tabs. Small sizes have a simpler drawing of their own, so the icon stays sharp in the taskbar and in a tab
+
 ## 1.4.0
 
 Any shell can now run as administrator, in a window of its own that says so, and the update check gets a security fix.
