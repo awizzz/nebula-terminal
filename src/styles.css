@@ -310,6 +310,24 @@ kbd { font: inherit; }
 .new-tab button:first-child svg { transition: transform var(--dur-3) var(--ease-spring); }
 .new-tab button:first-child:hover svg { transform: rotate(90deg); }
 
+/* Admin windows say so before anything else. */
+.admin-badge {
+  flex: none;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  margin-left: 10px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.admin-badge svg { pointer-events: none; }
 .titlebar__actions { flex: none; display: flex; align-items: center; gap: 2px; padding: 0 8px; }
 .icon-button {
   width: 32px;
@@ -517,6 +535,24 @@ kbd { font: inherit; }
 .menu__icon { display: grid; place-items: center; color: var(--text-2); }
 .menu__label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .menu__label small { margin-left: 8px; color: var(--text-3); font-size: 11px; }
+/* An item with a second action: the button sits over the end of the row. */
+.menu__row { position: relative; }
+.menu__row .menu__item { padding-right: 40px; }
+.menu__alternate {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 28px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-s);
+  color: var(--text-3);
+  transform: translateY(-50%);
+  transition: color var(--dur-1), background var(--dur-1);
+}
+.menu__row:has(.is-active) .menu__alternate { color: var(--text-2); }
+.menu__alternate:hover { color: var(--warning); background: var(--hover); }
 .menu__swatches { display: flex; gap: 6px; padding: 2px 8px 6px; }
 .menu__swatch {
   position: relative;
@@ -919,6 +955,7 @@ kbd { font: inherit; }
 .settings__main { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .settings__header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 6px 32px; }
 .settings__header h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.settings__note { margin: 0 20px 10px 32px; color: var(--warning); font-size: 12px; }
 .settings__scroll { overflow-y: auto; padding: 0 32px 32px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .settings__page { animation: page-in var(--dur-3) var(--ease-out); }
 .settings__footer-actions { margin-top: 16px; }

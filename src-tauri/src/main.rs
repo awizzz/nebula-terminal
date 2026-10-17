@@ -3,6 +3,7 @@
 mod cmdline;
 mod custom;
 mod defterm;
+mod elevation;
 mod integration;
 mod launcher;
 mod profiles;
@@ -56,6 +57,15 @@ fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+    // With UAC off, "Run as administrator" starts an ordinary copy, which lands here;
+    // this window is elevated already, so the tab opens in it.
+    if let Some(request) = elevation::take_request(app, &args) {
+        let _ = app.emit(
+            "open-request",
+            serde_json::json!({ "profileId": request.profile_id, "folder": request.folder }),
+        );
+        return;
+    }
     let folder = launcher::folder_argument(&args, Path::new(&cwd));
     let _ = app.emit("open-tab", folder.map(|path| path.display().to_string()));
 }
@@ -66,12 +76,20 @@ fn main() {
         defterm::uninstall();
         return;
     }
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(open_from_second_launch))
+    let administrator = elevation::is_admin_copy();
+    let builder = tauri::Builder::default();
+    // An admin copy keeps to itself: it never hands its launch to an ordinary window,
+    // and ordinary launches never reach it.
+    let builder = if administrator {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(open_from_second_launch))
+    };
+    builder
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
-        .setup(|app| {
+        .setup(move |app| {
             let path = app
                 .path()
                 .app_config_dir()
@@ -84,7 +102,11 @@ fn main() {
                 .ok()
                 .map(|directory| directory.join("shell-integration"));
             app.manage(integration::Scripts::new(scripts));
-            defterm::listen(app.handle().clone());
+            elevation::create_window(app, administrator)?;
+            // Consoles Windows hands over open in an ordinary window.
+            if !administrator {
+                defterm::listen(app.handle().clone());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -107,6 +129,7 @@ fn main() {
             defterm::launched_for_handoff,
             pty::take_handoffs,
             pty::attach_handoff,
+            elevation::open_as_administrator,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");

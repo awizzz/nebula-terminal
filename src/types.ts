@@ -57,6 +57,7 @@ export type TabColor = "red" | "orange" | "yellow" | "green" | "teal" | "blue" |
 
 export interface KeybindingPreferences {
   newTab: string;
+  newAdministratorTab: string;
   closeTab: string;
   nextTab: string;
   previousTab: string;

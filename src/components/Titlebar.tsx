@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Plus, Search, Settings2, X } from "lucide-react";
+import { ChevronDown, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
 import ProfileIcon from "./ProfileIcon";
 import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
@@ -18,6 +18,8 @@ interface TitlebarProps {
   newTabShortcut: string;
   paletteShortcut: string;
   settingsShortcut: string;
+  /** Every shell in this window runs as administrator. */
+  administrator?: boolean;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onMoveTab: (fromId: string, toId: string) => void;
@@ -93,6 +95,7 @@ export default function Titlebar({
   closing,
   renamingId,
   newTabShortcut,
+  administrator = false,
   paletteShortcut,
   settingsShortcut,
   onSelectTab,
@@ -155,6 +158,12 @@ export default function Titlebar({
 
   return (
     <header className="titlebar">
+      {administrator && (
+        <span className="admin-badge" data-tauri-drag-region title="Every shell in this window runs as administrator">
+          <ShieldAlert size={14} strokeWidth={2} aria-hidden="true" />
+          Administrator
+        </span>
+      )}
       <div ref={stripRef} className="tab-strip" role="tablist" aria-label="Terminal tabs" data-tauri-drag-region>
         {tabs.map((tab, index) => {
           const pane = tab.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab.panes[0];

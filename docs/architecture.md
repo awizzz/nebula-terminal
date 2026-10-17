@@ -33,6 +33,7 @@ scripts/             sidecar build, icon font subset, preview recording
 | `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entry, and the `nebula-terminal` command on the user's PATH. |
+| `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
 | `defterm.rs` | Nebula Terminal as the default terminal of Windows 11: the COM class Windows hands consoles to, and the registry values that choose it. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
@@ -69,6 +70,23 @@ Two things point at the app, and `sync_launchers` adds or removes them when the 
 | `nebula-terminal` command | `%LOCALAPPDATA%\dev.awizz.nebula-terminal\bin`, added to the user's PATH (`HKCU\Environment`). It holds a `.cmd` for cmd, PowerShell and Nebula, and a `sh` script for Git Bash and WSL, like npm's shims. The app's own folder isn't used because it also holds `uninstall.exe`. |
 
 Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes both entries and exits without opening a window. Updates don't run it.
+
+### Admin windows
+
+A shell that runs as administrator never shares a window with ordinary ones. The ordinary window runs at medium integrity, so any program of the user's could type into it, and through it into the admin shell. Run as administrator (the shield next to a shell in the new-tab menu, Open as administrator on a tab, the palette) starts another copy of the app with `ShellExecuteEx` and the `runas` verb, which is what shows UAC. That copy runs elevated, and so does every shell in its window. Windows Terminal does the same.
+
+The ordinary copy writes its request (profile id, folder, and its settings, so both windows look alike) to `%LOCALAPPDATA%\dev.awizz.nebula-terminal\administrator-requests\<uuid>.json`, and passes only `--administrator <uuid>`. The admin copy reads and deletes the file, and gives it to the page as `window.__NEBULA_ADMIN__` in an initialization script, before anything renders. Nothing goes the other way: an admin copy doesn't take part in single-instance handoff, so no ordinary launch can reach it.
+
+| In an admin copy | |
+| --- | --- |
+| Web data | `EBWebView-administrator`, next to the ordinary `EBWebView`. An elevated WebView2 can't share the folder of one that isn't. |
+| Settings | Those of the window that asked. Changes made in the admin window don't go back. |
+| Tabs | The one asked for. No session is restored or saved. |
+| Left out | Single instance, default terminal handoffs, the Explorer and PATH entries, update checks and installs. |
+
+The title bar says Administrator, and the window title starts with it, as Windows does for elevated console windows.
+
+With UAC turned off, every program of an admin user runs elevated, so there's nothing to keep apart: the app runs as usual (`is_admin_copy` checks for a full token from UAC, not just an elevated one), and the copy that Run as administrator starts hands its request to the open window, which opens the tab itself.
 
 ### Default terminal
 
@@ -176,6 +194,7 @@ Settings and the tab layout are stored in the webview's local storage under the 
 
 - The capability file (`src-tauri/capabilities/default.json`) grants only window controls and opening `http(s)` links.
 - Profiles are resolved in Rust. The UI never passes a command line. Custom profiles are the one way to run a program of your choice: they are validated and stored by Rust, and started by id.
+- A shell that runs as administrator only lives in an admin window of its own, started through UAC (see Admin windows).
 - Links in terminal output open only on `Ctrl+Click`.
 - Multi-line pastes are confirmed by default.
 - Process output is rendered by xterm.js as text, never as HTML.

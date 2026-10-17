@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- run any shell as administrator: the shield next to it in the new-tab menu, Open as administrator in a tab's menu (same shell, same folder), the command palette, or a shortcut you set in Settings → Keyboard. After UAC, it opens in a separate admin window, as in Windows Terminal, so no program can type into an elevated shell without that confirmation. Every tab of that window is elevated, its title bar says Administrator, and it starts with your settings
+
 ### Security
 
 - rustls 0.23.46, used to check for and download updates, fixes four advisories published on 2026-10-14 (RUSTSEC-2026-0346 to 0349)
