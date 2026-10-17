@@ -5,12 +5,20 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # One pull request a week for everything that shouldn't break, so CI runs once.
+    groups:
+      npm:
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: cargo
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Patch releases together; a 0.x minor release can break, so each comes alone.
+    groups:
+      cargo:
+        update-types: ["patch"]
     ignore:
       # windows-core has to match the version the windows crate is built on; they move together, by hand.
       - dependency-name: windows-core
@@ -21,3 +29,6 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      actions:
+        update-types: ["minor", "patch"]
