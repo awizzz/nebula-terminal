@@ -4,6 +4,7 @@ import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 export const defaultKeybindings: KeybindingPreferences = {
   newTab: "Ctrl+Shift+T",
+  newAdministratorTab: "",
   closeTab: "Ctrl+Shift+W",
   nextTab: "Ctrl+Tab",
   previousTab: "Ctrl+Shift+Tab",
@@ -23,6 +24,7 @@ export const defaultKeybindings: KeybindingPreferences = {
 
 export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   newTab: "New tab",
+  newAdministratorTab: "New tab as administrator",
   closeTab: "Close tab",
   nextTab: "Next tab",
   previousTab: "Previous tab",

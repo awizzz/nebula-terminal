@@ -13,6 +13,8 @@ export interface MenuItem {
   color?: string;
   checked?: boolean;
   run: () => void;
+  /** A second way to run the item, as a button at the end of its row and with Shift+Enter. */
+  alternate?: { label: string; icon: ReactNode; run: () => void };
 }
 
 /** A row of color swatches; each one is an item for keyboard navigation. */
@@ -88,10 +90,10 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
     setActive(next);
   };
 
-  const run = (item: MenuItem | undefined) => {
+  const run = (item: MenuItem | undefined, alternate = false) => {
     if (!item || item.disabled) return;
     onClose();
-    item.run();
+    (alternate && item.alternate ? item.alternate.run : item.run)();
   };
 
   return (
@@ -108,7 +110,7 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
         else if (event.key === "ArrowUp") { event.preventDefault(); move(-1); }
         else if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && swatches.includes(items[active]!)) { event.preventDefault(); move(event.key === "ArrowLeft" ? -1 : 1); }
         else if (event.key === "Home") { event.preventDefault(); setActive(items.findIndex((item) => !item.disabled)); }
-        else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(items[active]); }
+        else if (event.key === "Enter" || event.key === " ") { event.preventDefault(); run(items[active], event.key === "Enter" && event.shiftKey); }
         else if (event.key === "Escape" || event.key === "Tab") { event.preventDefault(); onClose(); }
         event.stopPropagation();
       }}
@@ -140,7 +142,7 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
         }
         if (!isItem(entry)) return <div key={`heading-${entry.heading}`} className="menu__heading">{entry.heading}</div>;
         const itemIndex = items.indexOf(entry);
-        return (
+        const item = (
           <button
             key={entry.id}
             type="button"
@@ -157,6 +159,23 @@ export default function Menu({ x, y, entries, label, width = 260, onClose }: Men
             </span>
             {entry.shortcut && <Keys shortcut={entry.shortcut} subtle />}
           </button>
+        );
+        if (!entry.alternate || entry.disabled) return item;
+        return (
+          <div key={entry.id} className="menu__row">
+            {item}
+            <button
+              type="button"
+              className="menu__alternate"
+              tabIndex={-1}
+              aria-label={`${entry.alternate.label}: ${entry.label}`}
+              title={`${entry.alternate.label} (Shift+Enter)`}
+              onMouseEnter={() => setActive(itemIndex)}
+              onClick={() => run(entry, true)}
+            >
+              {entry.alternate.icon}
+            </button>
+          </div>
         );
       })}
     </div>

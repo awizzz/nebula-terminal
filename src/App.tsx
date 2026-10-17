@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Radio, Rows2, Search, Settings2, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Radio, Rows2, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -11,7 +11,8 @@ import { automaticCheckDue, checkForUpdate, dismiss as dismissUpdate, isDismisse
 import SearchBar from "./components/SearchBar";
 import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
-import { defaultKeybindings, defaultPreferences, loadPreferences, savePreferences } from "./preferences";
+import { defaultKeybindings, defaultPreferences, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
+import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
 import { clearSession, loadSession, saveSession } from "./session";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
@@ -30,6 +31,8 @@ const CommandPalette = lazy(() => import("./components/CommandPalette"));
 /** How this copy of the app was started. */
 interface Launch {
   folder?: string;
+  /** The profile of the first tab, when it isn't the default one. */
+  profileId?: string;
   forHandoff: boolean;
   handoffs: HandoffInfo[];
 }
@@ -96,7 +99,11 @@ function cleanTitle(title: string, profile: TerminalProfile): string {
 export default function App() {
   const nativeHost = isTauri();
   const [profiles, setProfiles] = useState<TerminalProfile[]>(nativeHost ? [] : previewProfiles);
-  const [preferences, setPreferences] = useState<AppearancePreferences>(() => loadPreferences());
+  // An admin window starts with the settings of the window that opened it.
+  const [preferences, setPreferences] = useState<AppearancePreferences>(() => {
+    const launch = administratorLaunch();
+    return launch?.preferences ? sanitizePreferences(launch.preferences) : loadPreferences();
+  });
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
   const [tabs, setTabs] = useState<TerminalTab[]>([]);
@@ -151,8 +158,9 @@ export default function App() {
     if (!hydratedRef.current) {
       hydratedRef.current = true;
       setReady(true);
-      const restored = preferencesRef.current.restoreSession ? loadSession(detected) : null;
-      const first = pickProfile(detected, preferencesRef.current.defaultProfileId);
+      // An admin window opens what it was asked for, never the tabs of a past session.
+      const restored = preferencesRef.current.restoreSession && !isAdministrator ? loadSession(detected) : null;
+      const first = pickProfile(detected, launch.profileId ?? preferencesRef.current.defaultProfileId);
       const wantsTab = launch.folder || (!restored && !launch.forHandoff);
       const opened = first && wantsTab ? [makeTab(first, launch.folder)] : [];
       if (first) opened.push(...launch.handoffs.map((handoff) => makeHandoffTab(first, handoff)));
@@ -198,7 +206,7 @@ export default function App() {
   }, [nativeHost, preferences.backgroundMode, theme.scheme]);
 
   useEffect(() => {
-    if (hydratedRef.current && preferences.restoreSession && tabs.length) saveSession(tabs, activeTabId);
+    if (hydratedRef.current && preferences.restoreSession && tabs.length && !isAdministrator) saveSession(tabs, activeTabId);
   }, [tabs, activeTabId, preferences.restoreSession]);
 
   useEffect(() => {
@@ -224,7 +232,8 @@ export default function App() {
 
   // Look for a new version a few seconds after launch, at most once a day.
   useEffect(() => {
-    if (!preferences.checkForUpdates || !automaticCheckDue()) return;
+    // Updates install from an ordinary window, so the app never restarts elevated.
+    if (isAdministrator || !preferences.checkForUpdates || !automaticCheckDue()) return;
     const timer = window.setTimeout(() => {
       markChecked();
       void checkForUpdate()
@@ -304,12 +313,34 @@ export default function App() {
     setActiveTabId(next.id);
   }, [currentFolder, resolveProfile]);
 
+  /** Opens an admin window through UAC. An admin window opens a tab instead: it already is one. */
+  const openAsAdmin = useCallback((profileId?: string, folder?: string) => {
+    if (isAdministrator) {
+      openNewTab(profileId, folder);
+      return;
+    }
+    const profile = resolveProfile(profileId);
+    if (!profile) return;
+    if (!nativeHost) {
+      setNotice("Administrator windows open in the desktop app");
+      return;
+    }
+    openAsAdministrator(profile.id, folder ?? currentFolder(), preferencesRef.current)
+      .catch((error) => setNotice(String(error)));
+  }, [currentFolder, nativeHost, openNewTab, resolveProfile]);
+
   // A second launch (Explorer's "Open in Nebula Terminal") lands here as a new tab.
   const openNewTabRef = useRef(openNewTab);
   openNewTabRef.current = openNewTab;
   useEffect(() => {
     if (!nativeHost) return;
     const stop = listen<string | null>("open-tab", (event) => openNewTabRef.current(undefined, event.payload ?? undefined));
+    return () => void stop.then((unlisten) => unlisten());
+  }, [nativeHost]);
+  // "Run as administrator" when UAC is off: this window is elevated already.
+  useEffect(() => {
+    if (!nativeHost) return;
+    const stop = listen<{ profileId?: string | null; folder?: string | null }>("open-request", (event) => openNewTabRef.current(event.payload.profileId ?? undefined, event.payload.folder ?? undefined));
     return () => void stop.then((unlisten) => unlisten());
   }, [nativeHost]);
 
@@ -354,7 +385,10 @@ export default function App() {
   }, [nativeHost]);
 
   useEffect(() => {
-    const launch: Promise<Launch> = nativeHost
+    const request = administratorLaunch();
+    const launch: Promise<Launch> = request
+      ? Promise.resolve({ folder: request.folder ?? undefined, profileId: request.profileId ?? undefined, forHandoff: false, handoffs: [] })
+      : nativeHost
       ? Promise.all([
         invoke<string | null>("launch_folder").catch(() => null),
         invoke<boolean>("launched_for_handoff").catch(() => false),
@@ -369,8 +403,9 @@ export default function App() {
   }, [hydrateWorkspace, nativeHost]);
 
   const [defaultTerminal, setDefaultTerminal] = useState<DefaultTerminal | null>(null);
+  // Both belong to the ordinary window: an admin one leaves them alone.
   const changeDefaultTerminal = useCallback((enabled: boolean | null) => {
-    if (!nativeHost) return;
+    if (!nativeHost || isAdministrator) return;
     invoke<DefaultTerminal>("default_terminal", { enabled })
       .then(setDefaultTerminal)
       .catch((error) => setNotice(String(error)));
@@ -379,7 +414,7 @@ export default function App() {
 
   const [launchers, setLaunchers] = useState<Launchers | null>(null);
   useEffect(() => {
-    if (!nativeHost) return;
+    if (!nativeHost || isAdministrator) return;
     invoke<Launchers>("sync_launchers", { explorerMenu: preferences.explorerMenu, command: preferences.pathCommand })
       .then(setLaunchers)
       .catch((error) => setNotice(String(error)));
@@ -533,6 +568,13 @@ export default function App() {
     setActiveTabId(next.id);
   }, [resolveProfile]);
 
+  /** The tab's shell again, in its folder, in an admin window. */
+  const openTabAsAdmin = useCallback((tabId: string) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    const pane = tab?.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab?.panes[0];
+    if (pane) openAsAdmin(pane.profile.id, pane.cwd);
+  }, [openAsAdmin]);
+
   const renameTab = useCallback((tabId: string, name: string) => {
     const customTitle = name.trim().slice(0, 120) || undefined;
     setTabs((current) => current.map((tab) => tab.id === tabId ? { ...tab, customTitle } : tab));
@@ -604,6 +646,7 @@ export default function App() {
     const defaultProfile = resolveProfile();
     return [
       { id: "new-tab", group: "Tabs", label: "New tab", detail: defaultProfile?.name, icon: <Plus size={15} />, shortcut: keys.newTab, run: () => openNewTab() },
+      ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
       { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
       { id: "next-tab", group: "Tabs", label: "Next tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.nextTab, run: () => cycleTab(1) },
@@ -614,6 +657,10 @@ export default function App() {
         id: `new-${profile.id}`, group: "Profiles", label: profileCommandLabel(profile), detail: profileTag(profile) ?? (profileGroup(profile) === "custom" ? "Custom" : undefined),
         icon: <ProfileIcon kind={profile.kind} accent={profile.accent} size={15} />, keywords: `${profile.kind} ${profileGroupLabels[profileGroup(profile)]} shell`, run: () => openNewTab(profile.id),
       })),
+      ...(isAdministrator ? [] : profiles.filter((profile) => profile.available && profileGroup(profile) !== "ssh").map((profile): PaletteCommand => ({
+        id: `administrator-${profile.id}`, group: "Run as administrator", label: `${profile.name} as administrator`,
+        icon: <ShieldCheck size={15} />, keywords: `admin elevated uac sudo ${profile.kind}`, run: () => openAsAdmin(profile.id),
+      }))),
       { id: "split-right", group: "Panes", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, run: () => splitActive("vertical") },
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
@@ -645,7 +692,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openNewTab, openSearch, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSearch, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -664,6 +711,7 @@ export default function App() {
       if (action(keys.settings, () => (settingsOpen ? setSettingsOpen(false) : openSettings()))) return;
       if (overlayOpen || menu) return;
       if (action(keys.newTab, () => openNewTab())) return;
+      if (action(keys.newAdministratorTab, () => openAsAdmin())) return;
       if (action(keys.find, openSearch)) return;
       if (action(keys.splitVertical, () => splitActive("vertical"))) return;
       if (action(keys.splitHorizontal, () => splitActive("horizontal"))) return;
@@ -703,7 +751,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
@@ -722,6 +770,7 @@ export default function App() {
             icon: <ProfileIcon kind={profile.kind} accent={profile.accent} />,
             shortcut: profile.id === defaultId ? keys.newTab : undefined,
             run: () => openNewTab(profile.id),
+            alternate: isAdministrator || profileGroup(profile) === "ssh" ? undefined : { label: "Run as administrator", icon: <ShieldCheck size={14} />, run: () => openAsAdmin(profile.id) },
           })),
         ]),
         "separator",
@@ -735,6 +784,7 @@ export default function App() {
       return [
         { id: "rename", label: "Rename tab", icon: <Pencil size={15} />, run: () => setRenamingTabId(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
+        ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
         { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
         "separator",
@@ -795,6 +845,7 @@ export default function App() {
         closing={closing}
         renamingId={renaming ? renamingTabId : null}
         newTabShortcut={keys.newTab}
+        administrator={isAdministrator}
         paletteShortcut={keys.commandPalette}
         settingsShortcut={keys.settings}
         onSelectTab={setActiveTabId}
@@ -906,6 +957,7 @@ export default function App() {
           launchers={launchers}
           defaultTerminal={defaultTerminal}
           onDefaultTerminalChange={changeDefaultTerminal}
+          administrator={isAdministrator}
         />
         <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
       </Suspense>

@@ -30,6 +30,10 @@ pub fn folder_argument(args: &[String], cwd: &Path) -> Option<PathBuf> {
 #[tauri::command]
 pub fn launch_folder() -> Option<String> {
     let args: Vec<String> = env::args().collect();
+    // An admin copy gets its folder from the request it was started for.
+    if args.iter().any(|arg| arg == crate::elevation::FLAG) {
+        return None;
+    }
     let cwd = env::current_dir().unwrap_or_default();
     folder_argument(&args, &cwd).map(|path| path.display().to_string())
 }

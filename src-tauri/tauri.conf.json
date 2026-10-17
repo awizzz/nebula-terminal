@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Nebula Terminal",
         "width": 1180,
         "height": 760,

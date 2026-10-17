@@ -15,7 +15,6 @@ Installing in one command, and making the window your own.
 
 ### Terminal
 
-- **Run a profile as administrator**, in its own clearly marked tab.
 - **Several windows:** drag a tab out to make a new window, or back in to merge.
 - **Images in the terminal** (Sixel and the iTerm2 protocol), for tools like `chafa` or `viu`.
 - **Font ligatures** for fonts that have them (Cascadia Code, Fira Code, JetBrains Mono).

@@ -30,6 +30,8 @@ interface SettingsPanelProps {
   /** Whether Nebula is the default terminal; null outside the desktop app. */
   defaultTerminal: DefaultTerminal | null;
   onDefaultTerminalChange: (enabled: boolean) => void;
+  /** An admin window: its settings come from the window that opened it. */
+  administrator?: boolean;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -68,7 +70,7 @@ async function shrinkImage(file: File): Promise<string> {
   }
 }
 
-function Row({ label, description, children, stacked = false }: { label: string; description?: string; children: ReactNode; stacked?: boolean }) {
+function Row({ label, description, children, stacked = false }: { label: string; description?: string; children?: ReactNode; stacked?: boolean }) {
   return (
     <div className={`row ${stacked ? "row--stacked" : ""}`}>
       <div className="row__text">
@@ -469,7 +471,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -583,6 +585,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
             <h1>{pages[pageIndex]?.label}</h1>
             <button className="icon-button" type="button" onClick={onClose} aria-label="Close settings" title="Close (Esc)"><X size={16} /></button>
           </header>
+          {administrator && <p className="settings__note">Admin windows take their settings from the window that opens them, so changes made here don't last.</p>}
 
           <div className="settings__scroll">
             <div className="settings__page" key={page}>
@@ -792,7 +795,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </select>
                   </Row>
                 </Group>
-                <Group title="Windows">
+                <Group title="Windows" description={administrator ? "Change these from an ordinary window." : undefined}>
                   <Row
                     label="Default terminal"
                     description={defaultTerminal?.supported === false
@@ -833,7 +836,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Check automatically" description="Looks for a new version on GitHub once a day. Nothing installs without you.">
                     <Switch label="Check for updates automatically" checked={preferences.checkForUpdates} onChange={(value) => patch("checkForUpdates", value)} />
                   </Row>
-                  <UpdateCheck />
+                  {administrator
+                    ? <Row label="Install updates" description="From an ordinary window, so the app never restarts as administrator." />
+                    : <UpdateCheck />}
                 </Group>
                 <Group>
                   <Row label="Source code"><button className="button" type="button" onClick={() => openExternal(REPOSITORY)}>Open on GitHub</button></Row>
