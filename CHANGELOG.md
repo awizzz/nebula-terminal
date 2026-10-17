@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Security
+
+- rustls 0.23.46, used to check for and download updates, fixes four advisories published on 2026-10-14 (RUSTSEC-2026-0346 to 0349)
+
 ## 1.3.0
 
 Nebula now runs the scripts people actually write: `awk`, `sed` and `diff` are built in, with arrays, background jobs, `trap`, `getopts` and `**` globs. At the prompt, `Ctrl+R` searches your history fuzzily and `z` jumps to the folders you use most. The terminal can type in every pane at once and import your color schemes from Windows Terminal or iTerm2.
