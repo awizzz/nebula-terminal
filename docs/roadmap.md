@@ -2,7 +2,7 @@
 
 Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.4)
+## Next (1.5)
 
 Installing in one command, and making the window your own.
 
@@ -11,7 +11,7 @@ Installing in one command, and making the window your own.
 - **Theme editor:** change any color of a scheme and keep it as your own.
 - **Per-profile looks:** each profile can have its own theme, font and background.
 
-## Soon (1.5 and 1.6)
+## Soon (1.6 and 1.7)
 
 ### Terminal
 
