@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.4.1
+
+A new icon.
 
 ### Changed
 
