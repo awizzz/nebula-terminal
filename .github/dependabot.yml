@@ -11,6 +11,10 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # windows-core has to match the version the windows crate is built on; they move together, by hand.
+      - dependency-name: windows-core
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: github-actions
     directory: "/"
