@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.4.2
+
+The new icon shows up everywhere after an update, and the certificate checks behind updates get a security fix.
 
 ### Fixed
 
