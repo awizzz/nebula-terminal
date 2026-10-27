@@ -9,6 +9,11 @@ updates:
     groups:
       npm:
         update-types: ["minor", "patch"]
+    ignore:
+      # The Tauri CLI refuses a crate and its npm package on different minor versions,
+      # so minor bumps of Tauri packages are done on both sides together, by hand.
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: cargo
     directory: "/"
@@ -20,6 +25,9 @@ updates:
       cargo:
         update-types: ["patch"]
     ignore:
+      # Tauri crates move with their npm packages (see above).
+      - dependency-name: "tauri*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
       # windows-core has to match the version the windows crate is built on; they move together, by hand.
       - dependency-name: windows-core
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
