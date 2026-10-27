@@ -11,6 +11,8 @@ import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, themes, type TerminalTheme } from "../themes";
 import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeImport";
 import Keys from "./Keys";
+import Segmented from "./Segmented";
+import ThemeSection from "./ThemeSection";
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
 
@@ -151,18 +153,6 @@ function Switch({ checked, onChange, label, disabled = false }: { checked: boole
   );
 }
 
-function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: Array<{ value: T; label: ReactNode }>; onChange: (value: T) => void; label: string }) {
-  const index = Math.max(0, options.findIndex((option) => option.value === value));
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label} style={{ "--count": options.length, "--index": index } as React.CSSProperties}>
-      <span className="segmented__thumb" aria-hidden="true" />
-      {options.map((option) => (
-        <button key={option.value} type="button" role="radio" aria-checked={option.value === value} onClick={() => onChange(option.value)}>{option.label}</button>
-      ))}
-    </div>
-  );
-}
-
 function Slider({ value, min, max, step, onChange, format, label }: { value: number; min: number; max: number; step: number; onChange: (value: number) => void; format: (value: number) => string; label: string }) {
   const progress = ((value - min) / (max - min)) * 100;
   return (
@@ -178,18 +168,6 @@ function schemeImportMessage(added: TerminalTheme[], repeated: TerminalTheme[]):
   if (added.length === 0) return known;
   const imported = added.length === 1 ? `Imported ${added[0]!.name}` : `Imported ${added.length} color schemes`;
   return repeated.length === 0 ? imported : `${imported}; ${known}`;
-}
-
-function ThemePreview({ theme }: { theme: TerminalTheme }) {
-  const [, red, green, yellow, blue, magenta] = theme.ansi;
-  return (
-    <span className="theme-card__preview" style={{ background: theme.background, color: theme.foreground }} aria-hidden="true">
-      <span><b style={{ color: blue }}>~/app</b> on <b style={{ color: magenta }}>main</b> <span style={{ color: yellow }}>!1</span></span>
-      <span><b style={{ color: green }}>❯ git</b> status --short</span>
-      <span><span style={{ color: red }}> M</span> src/theme.ts</span>
-      <span><span style={{ color: red }}>??</span> notes.txt</span>
-    </span>
-  );
 }
 
 function ShortcutRecorder({ action, value, conflict, onChange }: { action: string; value: string; conflict?: string; onChange: (value: string) => void }) {
@@ -526,12 +504,6 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
     }
   };
 
-  const removeScheme = (id: string) => {
-    const customThemes = preferences.customThemes.filter((theme) => theme.id !== id);
-    onChange(preferences.themeId === id
-      ? { ...preferences, customThemes, themeId: themes[0]!.id, accent: themes[0]!.accent }
-      : { ...preferences, customThemes });
-  };
 
   const importTheme = async (file?: File) => {
     if (!file) return;
@@ -591,25 +563,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
             <div className="settings__page" key={page}>
               {page === "appearance" && <>
                 <Group title="Theme">
-                  <div className="theme-grid" role="radiogroup" aria-label="Theme">
-                    {[...themes, ...preferences.customThemes].map((theme) => {
-                      const selected = preferences.themeId === theme.id;
-                      const custom = theme.id.startsWith("custom-");
-                      return (
-                        <div key={theme.id} className="theme-card-wrap">
-                          <button type="button" role="radio" aria-checked={selected} className="theme-card" onClick={() => onChange({ ...preferences, themeId: theme.id, accent: theme.accent })}>
-                            <ThemePreview theme={theme} />
-                            <span className="theme-card__name">{theme.name}{selected && <Check size={14} strokeWidth={2.2} />}</span>
-                          </button>
-                          {custom && (
-                            <button type="button" className="theme-card__remove" aria-label={`Remove ${theme.name}`} title="Remove" onClick={() => removeScheme(theme.id)}>
-                              <X size={13} />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <ThemeSection preferences={preferences} onChange={onChange} />
                 </Group>
 
                 <Group title="Window">

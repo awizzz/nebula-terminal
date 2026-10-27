@@ -8,7 +8,7 @@ The repository is a Cargo workspace:
 src/                 React interface
 src-tauri/           desktop host (Rust)
 crates/nebula-sh/    Nebula interpreter (Rust)
-scripts/             sidecar build, icon font subset, preview recording
+scripts/             sidecar build, icon font subset, preview recording, theme gallery data
 ```
 
 ```text
@@ -153,11 +153,14 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `components/UpdateBanner.tsx` | The card that offers a new version. |
 | `components/Titlebar.tsx` | Tabs, new-tab button, caption buttons. |
 | `components/SettingsPanel.tsx` | Every setting, grouped by page, including the custom profile editor. |
+| `components/ThemeSection.tsx` | Settings → Appearance → Theme: the grid of themes, and the gallery (`ThemeGallery.tsx`) or the editor (`ThemeEditor.tsx`) in its place. Editing a built-in theme edits a copy; a copy left unchanged is dropped. The gallery keeps the theme you end on and drops the others you tried. |
 | `components/CommandPalette.tsx` | Fuzzy-searchable list of actions. |
 | `components/Menu.tsx` | Context menus and dropdowns. |
 | `themes.ts` | Terminal color schemes. The UI chrome is derived from them in CSS. |
 | `preferences.ts` | Defaults, validation and migration of saved settings; theme import and export. |
-| `themeImport.ts` | Reading Windows Terminal and iTerm2 color schemes, and checking imported schemes read back from storage. |
+| `themeImport.ts` | Reading Windows Terminal and iTerm2 color schemes, turning the gallery's data into themes, exporting a scheme for Windows Terminal, contrast ratios, and checking imported schemes read back from storage. |
+| `themeEdit.ts` | What the theme editor and gallery need: copies with names of their own, one color changed at a time, colors too faint for their background, search, and the featured schemes. |
+| `assets/color-schemes.json` | The theme gallery: about 860 schemes from iTerm2-Color-Schemes as `[name, background, foreground, cursor, 16 colors]`, with their license. `scripts/build-color-schemes.mjs` writes it from a checkout of that repository, and it's loaded only when the gallery opens. |
 | `layout.ts` | The split layout of a tab as a tree: split, close, resize, find the pane next to another one, and validate a saved tree. |
 | `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. A pane whose profile no longer exists opens the default profile instead. |
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |

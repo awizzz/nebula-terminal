@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { themes } from "./themes";
-import { isCustomTheme, normalizeColor, parseColorSchemes, sortOutSchemes } from "./themeImport";
+import gallery from "./assets/color-schemes.json";
+import { contrastRatio, galleryThemes, isCustomTheme, normalizeColor, parseColorSchemes, sortOutSchemes, toWindowsTerminalScheme, type GalleryEntry } from "./themeImport";
 
 const dracula = {
   name: "Dracula",
@@ -88,5 +89,37 @@ describe("parseColorSchemes", () => {
     expect(normalizeColor("#ABC")).toBe("#aabbcc");
     expect(normalizeColor("12ab34ff")).toBe("#12ab34");
     expect(normalizeColor("red")).toBeNull();
+  });
+});
+
+describe("the theme gallery", () => {
+  const all = galleryThemes(gallery.schemes as GalleryEntry[], themes);
+
+  it("turns every scheme into a valid theme with an id of its own", () => {
+    expect(all.length).toBeGreaterThan(800);
+    expect(all.every(isCustomTheme)).toBe(true);
+    expect(new Set(all.map((theme) => theme.id)).size).toBe(all.length);
+  });
+
+  it("leaves out what the built-in themes already have", () => {
+    const builtInNames = new Set(themes.map((theme) => theme.name.toLowerCase()));
+    expect(all.some((theme) => builtInNames.has(theme.name.toLowerCase()))).toBe(false);
+    expect(all.find((theme) => theme.name === "Nord")).toMatchObject({ scheme: "dark", background: "#2e3440" });
+    expect(all.find((theme) => theme.name === "Nord Light")?.scheme).toBe("light");
+  });
+});
+
+describe("export and contrast", () => {
+  it("exports a scheme Windows Terminal and the importer both read", () => {
+    const theme = themes.find((candidate) => candidate.id === "tokyo-night")!;
+    const [back] = parseColorSchemes(JSON.stringify(toWindowsTerminalScheme(theme)));
+    expect(back).toMatchObject({ name: theme.name, background: theme.background, foreground: theme.foreground, ansi: theme.ansi, accent: theme.accent });
+  });
+
+  it("measures contrast as WCAG does", () => {
+    expect(contrastRatio("#000000", "#ffffff")).toBeCloseTo(21, 5);
+    expect(contrastRatio("#ffffff", "#000000")).toBeCloseTo(21, 5);
+    expect(contrastRatio("#777777", "#777777")).toBe(1);
+    expect(contrastRatio("#767676", "#ffffff")).toBeGreaterThan(4.5);
   });
 });

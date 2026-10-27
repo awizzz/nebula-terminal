@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- a theme gallery with about 850 color schemes from iTerm2-Color-Schemes (Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub…), in Settings → Appearance → Browse. Search it, keep to dark or light ones, and click a theme to see it on the terminal at once. The one you end on joins your themes; the others you tried don't
+- a theme editor: the pencil on a theme opens it, or a copy of it for a built-in theme, and every change shows on the terminal as you make it. Background, text, accent and cursor, the 16 colors, a warning when one of them is hard to read on the background, Undo changes, and Export for Windows Terminal. New theme from… starts from the theme in use
+
 ## 1.4.2
 
 The new icon shows up everywhere after an update, and the certificate checks behind updates get a security fix.
