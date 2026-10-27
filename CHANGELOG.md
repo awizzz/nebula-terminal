@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.5.0
+
+About 850 more themes to pick from, and an editor to make any of them your own.
 
 ### Added
 

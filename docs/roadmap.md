@@ -2,15 +2,16 @@
 
 Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.5)
+## Next (1.6)
 
 Installing in one command, and making the window your own.
 
 - **A winget package:** `winget install Awizz.NebulaTerminal`. It's waiting for review in the winget repository; Scoop already works (see the README).
 - **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
-- **Per-profile looks:** each profile can have its own theme, font and background.
+- **Per-profile looks:** each profile can have its own theme, font and background, and admin windows a look that sets them apart.
+- **A configurable prompt** in `~/.nebularc`: choose the segments (Git, time, Node or Rust version, the last command's duration, an admin marker), their order and colors, or keep using Starship.
 
-## Soon (1.6 and 1.7)
+## Soon (1.7 and 1.8)
 
 ### Terminal
 
@@ -20,7 +21,6 @@ Installing in one command, and making the window your own.
 
 ### Nebula
 
-- **A configurable prompt** in `~/.nebularc`: choose the segments (Git, time, Node or Rust version, battery), their order and colors, or keep using Starship.
 - **Completion for more programs:** kubectl and the rest, and your own completions in a simple file.
 - **Ctrl+Z** to pause the command in front, then `fg` or `bg` to resume it.
 

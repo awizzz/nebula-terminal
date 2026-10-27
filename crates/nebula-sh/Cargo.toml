@@ -1,6 +1,6 @@
 [package]
 name = "nebula-sh"
-version = "1.4.2"
+version = "1.5.0"
 description = "Nebula, a Linux-style command interpreter for Windows"
 authors = ["Awizz"]
 edition = "2021"
