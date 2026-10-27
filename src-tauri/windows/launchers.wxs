@@ -15,8 +15,12 @@
 
     <!-- Runs the app's own cleanup (launcher.rs) while its files are still there. -->
     <CustomAction Id="LauncherUninstall" FileKey="Path" ExeCommand="--uninstall" Execute="immediate" Return="ignore" />
+    <!-- Windows caches the icons of shortcuts and pinned apps, so the taskbar can keep an
+         old icon after an update. ie4uinit rebuilds that cache for the user installing. -->
+    <CustomAction Id="RefreshIcons" Directory="INSTALLDIR" ExeCommand="&quot;[System64Folder]ie4uinit.exe&quot; -show" Execute="immediate" Return="ignore" />
     <InstallExecuteSequence>
       <Custom Action="LauncherUninstall" Before="RemoveFiles">REMOVE~="ALL" AND NOT UPGRADINGPRODUCTCODE</Custom>
+      <Custom Action="RefreshIcons" After="InstallFinalize">NOT REMOVE~="ALL"</Custom>
     </InstallExecuteSequence>
   </Fragment>
 </Wix>
