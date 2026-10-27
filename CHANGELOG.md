@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- after an update, the taskbar, Start menu and desktop shortcuts could keep showing the old icon: both installers now have Windows rebuild its icon cache
+
 ## 1.4.1
 
 A new icon.
