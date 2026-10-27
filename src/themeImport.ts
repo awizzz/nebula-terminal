@@ -24,7 +24,8 @@ export function normalizeColor(value: unknown): string | null {
   return null;
 }
 
-function luminance(hex: string): number {
+/** WCAG relative luminance of `#rrggbb`. */
+export function luminance(hex: string): number {
   const channel = (offset: number) => {
     const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
     return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
@@ -37,7 +38,13 @@ function slug(name: string): string {
   return text.slice(0, 40) || "scheme";
 }
 
-function makeTheme(name: string, background: string, foreground: string, ansi: string[], cursor: string | null): TerminalTheme {
+/** WCAG contrast ratio between two `#rrggbb` colors, from 1 to 21. */
+export function contrastRatio(a: string, b: string): number {
+  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (light! + 0.05) / (dark! + 0.05);
+}
+
+export function makeTheme(name: string, background: string, foreground: string, ansi: string[], cursor: string | null): TerminalTheme {
   // A cursor color that stands out from the text makes a good accent; otherwise blue.
   const accent = cursor && cursor !== foreground && cursor !== background ? cursor : ansi[12]!;
   return {
@@ -179,6 +186,49 @@ export function sortOutSchemes(imported: readonly TerminalTheme[], builtIn: read
     added.set(theme.id, taken ? { ...theme, name: `${theme.name} (imported)` } : theme);
   }
   return { added: [...added.values()], repeated };
+}
+
+/** `src/assets/color-schemes.json`: [name, background, foreground, cursor or "", 16 ANSI colors]. */
+export type GalleryEntry = [string, string, string, string, string];
+
+/**
+ * The gallery's schemes as themes, made by the same rules as an import. Schemes a
+ * built-in theme already has, by colors or by name, are left out, and two names that
+ * make the same id get a number.
+ */
+export function galleryThemes(entries: readonly GalleryEntry[], builtIn: readonly TerminalTheme[]): TerminalTheme[] {
+  const builtInNames = new Set(builtIn.map((theme) => theme.name.toLowerCase()));
+  const ids = new Set<string>();
+  const out: TerminalTheme[] = [];
+  for (const [name, background, foreground, cursor, ansi] of entries) {
+    if (builtInNames.has(name.toLowerCase())) continue;
+    const colors = ansi.split(" ").map((color) => `#${color}`);
+    const theme = makeTheme(name, `#${background}`, `#${foreground}`, colors, cursor ? `#${cursor}` : null);
+    if (colors.length !== 16 || builtIn.some((candidate) => sameColors(candidate, theme))) continue;
+    let id = theme.id;
+    for (let index = 2; ids.has(id); index++) id = `${theme.id}-${index}`;
+    ids.add(id);
+    out.push({ ...theme, id });
+  }
+  return out;
+}
+
+const WINDOWS_TERMINAL_NAMES = [
+  "black", "red", "green", "yellow", "blue", "purple", "cyan", "white",
+  "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightPurple", "brightCyan", "brightWhite",
+] as const;
+
+/** A theme as a Windows Terminal scheme, ready for the `schemes` of its settings.json. */
+export function toWindowsTerminalScheme(theme: TerminalTheme): Record<string, string> {
+  const scheme: Record<string, string> = {
+    name: theme.name,
+    background: theme.background,
+    foreground: theme.foreground,
+    cursorColor: theme.accent,
+    selectionBackground: theme.accent,
+  };
+  WINDOWS_TERMINAL_NAMES.forEach((key, index) => { scheme[key] = theme.ansi[index]!; });
+  return scheme;
 }
 
 /** Checks a custom theme read back from the preferences. */

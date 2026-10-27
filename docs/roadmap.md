@@ -8,7 +8,6 @@ Installing in one command, and making the window your own.
 
 - **A winget package:** `winget install Awizz.NebulaTerminal`. It's waiting for review in the winget repository; Scoop already works (see the README).
 - **Quake mode:** a drop-down window on a global hotkey that slides over whatever you're doing.
-- **Theme editor:** change any color of a scheme and keep it as your own.
 - **Per-profile looks:** each profile can have its own theme, font and background.
 
 ## Soon (1.6 and 1.7)
