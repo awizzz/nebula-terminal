@@ -6,6 +6,10 @@
 
 - after an update, the taskbar, Start menu and desktop shortcuts could keep showing the old icon: both installers now have Windows rebuild its icon cache
 
+### Security
+
+- rustls-webpki 0.103.16, webpki-roots and webpki-root-certs 1.0.11, used to check update downloads: certificates chaining to distrusted intermediates were accepted (RUSTSEC-2026-0381 to 0383)
+
 ## 1.4.1
 
 A new icon.
