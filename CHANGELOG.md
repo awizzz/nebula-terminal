@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.0
+
+File paths you can click, workspaces, SSH connections from the profile editor, and an administrator entry in File Explorer.
+
+### Added
+
+- Ctrl+Click a file path in the output to open it at its line: `src/main.rs:42:7`, `app.ts(12,5)`, Python's `File "x.py", line 3`, `~/notes.md`, Git Bash's `/c/…` and paths inside WSL. Only paths that exist get underlined, relative ones are read from the folder the shell is in, and folders open in File Explorer. Settings → Behavior picks what opens files: VS Code or Cursor at the right line, the app Windows uses, or a command of your own such as `notepad++ -n{line} {file}`. Programs and scripts are shown in File Explorer instead of being run
+- workspaces: Save these tabs as a workspace… in the new-tab menu keeps the open tabs, their names, colors, splits and folders under a name. Open one from the same menu or the command palette and its tabs join the ones you have. Rename and delete them in Settings → Behavior
+- SSH connections in the profile editor: Add SSH connection in Settings → Profiles takes a server, a user, a port, a key file and port forwards, and shows the ssh command it will run. Connections sit with the SSH hosts in the new-tab menu
+- Open in Nebula Terminal (Administrator) in the right-click menu of folders in File Explorer, with the UAC shield: it opens an admin window in that folder. The switch for the Explorer entry in Settings → Behavior covers both
+
 ## 1.5.0
 
 About 850 more themes to pick from, and an editor to make any of them your own.

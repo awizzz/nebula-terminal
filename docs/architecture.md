@@ -30,9 +30,10 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `profiles.rs` | Lists everything a tab can open (built-in shells, WSL distributions, SSH hosts, custom profiles), resolves a profile id to an executable and arguments, expands `~` and `%VAR%` in the starting folder. |
 | `wsl.rs` | Installed WSL distributions, read from `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. If that key is missing, it asks `wsl.exe -l -q` (UTF-16 output) with a 3 second limit. Docker Desktop's and Rancher Desktop's internal distributions are skipped. |
 | `ssh.rs` | `Host` names from `~/.ssh/config` and the files it includes (one level deep, wildcards allowed in file names). Patterns with `*`, `?` or `!` are skipped. |
-| `custom.rs` | Custom profiles: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
+| `custom.rs` | Custom profiles and SSH connections: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
+| `files.rs` | File paths in terminal output: which of the candidates the page found exist (`find_paths`), and opening one (`open_path`) in VS Code, Cursor, the default app or the user's command. |
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
-| `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entry, and the `nebula-terminal` command on the user's PATH. |
+| `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entries, and the `nebula-terminal` command on the user's PATH. |
 | `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
 | `defterm.rs` | Nebula Terminal as the default terminal of Windows 11: the COM class Windows hands consoles to, and the registry values that choose it. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
@@ -46,7 +47,7 @@ The webview cannot start arbitrary programs. It sends a **profile id**, and Rust
 | `nebula`, `pwsh`, `powershell`, `cmd`, `gitbash`, `wsl` | The built-in shells, found on disk or on PATH. |
 | `wsl:<distribution>` | `wsl.exe -d <distribution> --cd ~`, only if that distribution is installed. |
 | `ssh:<host>` | `ssh.exe <host>`, only if the host is in your ssh config and `ssh.exe` is on PATH. |
-| `custom:<uuid>` | The program and arguments saved for that profile. |
+| `custom:<uuid>` | The program and arguments saved for that profile, or `ssh.exe` with the arguments built from a saved SSH connection. |
 
 Unknown ids are rejected. Distribution and host names must start with a letter or digit and contain only letters, digits, `.`, `_` and `-`, so they can never be read as options. With a custom starting folder, WSL profiles drop `--cd ~` and start in that folder.
 
@@ -58,6 +59,8 @@ Custom profiles are kept in `custom-profiles.json` in the app's config folder (`
 
 The editor sends the arguments as one line. Rust splits it with the Windows rules, stores the list, and the editor shows the split result as you type (`split_arguments`). Starting a custom profile uses the stored entry only; the webview never sends a program or arguments to run.
 
+An SSH connection is a custom profile with an `ssh` object instead of a program: host, user, port, key file, and up to 16 local (`-L`) and remote (`-R`) forwards in ssh's `[bind:]port:host:hostport` form. The host and user can't start with `-` and use a short list of characters, ports are numbers, and the key file must exist, so no field can be read as an option. The arguments are built from these fields every time the profile starts, never read back from the file. Its kind is `ssh`, so menus put it with the hosts from `~/.ssh/config`, and it has no Run as administrator.
+
 ### Opening a folder
 
 The app runs once per user (`tauri-plugin-single-instance`). A second launch hands its arguments and working folder to the running app, which opens a tab and comes to the front. The first launch reads its own arguments with `launch_folder`.
@@ -67,6 +70,7 @@ Two things point at the app, and `sync_launchers` adds or removes them when the 
 | Entry | Where |
 | --- | --- |
 | Open in Nebula Terminal | `HKCU\Software\Classes\{Directory, Directory\Background, Drive}\shell\NebulaTerminal`, running `"nebula-terminal.exe" "%V"`. Explorer writes a drive root as `C:"`, which `folder_argument` repairs. |
+| Open in Nebula Terminal (Administrator) | `…\shell\NebulaTerminalAdmin` next to it, with `HasLUAShield`, running `"nebula-terminal.exe" --open-as-administrator "%V"`. That copy writes an admin request for the folder, starts the admin copy through UAC and exits before Tauri starts, so it never opens a window or reaches the single-instance check. |
 | `nebula-terminal` command | `%LOCALAPPDATA%\dev.awizz.nebula-terminal\bin`, added to the user's PATH (`HKCU\Environment`). It holds a `.cmd` for cmd, PowerShell and Nebula, and a `sh` script for Git Bash and WSL, like npm's shims. The app's own folder isn't used because it also holds `uninstall.exe`. |
 
 Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes both entries and exits without opening a window. Updates don't run it.
@@ -86,7 +90,9 @@ The ordinary copy writes its request (profile id, folder, and its settings, so b
 
 The title bar says Administrator, and the window title starts with it, as Windows does for elevated console windows.
 
-With UAC turned off, every program of an admin user runs elevated, so there's nothing to keep apart: the app runs as usual (`is_admin_copy` checks for a full token from UAC, not just an elevated one), and the copy that Run as administrator starts hands its request to the open window, which opens the tab itself.
+With UAC turned off, every program of an admin user runs elevated, so there's nothing to keep apart: the app runs as usual (`is_admin_copy` checks for a full token from UAC, not just an elevated one), and the copy that Run as administrator starts hands its request to the open window, which opens the tab itself. If no window is open, that copy becomes the window and `launch_folder` reads the folder from the request.
+
+A request from File Explorer carries no settings, since no window asked. The admin window then uses the settings it was last given, which its own web data keeps.
 
 ### Default terminal
 
@@ -164,7 +170,10 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `layout.ts` | The split layout of a tab as a tree: split, close, resize, find the pane next to another one, and validate a saved tree. |
 | `session.ts` | Saves and restores tabs (names, colors, layouts), and migrates layouts saved before mixed splits. A pane whose profile no longer exists opens the default profile instead. |
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
-| `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview. |
+| `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview, and the editor's SSH draft: its checks and the ssh command it shows. |
+| `workspaces.ts` | Saved workspaces: named snapshots of the tabs (the same format as the session), kept in local storage, 30 at most. |
+| `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
+| `fileLinks.ts` | The xterm link provider that underlines existing paths and opens them on `Ctrl+Click`, reading the pane's current folder when needed. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
 | `commandMarks.ts` | Finding the next prompt for command jumps, and joining wrapped lines of a command's output. |
 | `folders.ts` | Reading the folder a shell reports (OSC 7) and checking a folder before a new shell starts in it. |
@@ -198,6 +207,6 @@ Settings and the tab layout are stored in the webview's local storage under the 
 - The capability file (`src-tauri/capabilities/default.json`) grants only window controls and opening `http(s)` links.
 - Profiles are resolved in Rust. The UI never passes a command line. Custom profiles are the one way to run a program of your choice: they are validated and stored by Rust, and started by id.
 - A shell that runs as administrator only lives in an admin window of its own, started through UAC (see Admin windows).
-- Links in terminal output open only on `Ctrl+Click`.
+- Links and file paths in terminal output open only on `Ctrl+Click`. A path is checked again in Rust before it opens, only local files and WSL shares count, and programs and scripts are shown in File Explorer instead of being run, unless the user chose a command of their own to open files with.
 - Multi-line pastes are confirmed by default.
 - Process output is rendered by xterm.js as text, never as HTML.
