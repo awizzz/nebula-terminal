@@ -1,8 +1,8 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles and SSH connections, workspaces, clickable file paths, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.6)
+## Next (1.7)
 
 Installing in one command, and making the window your own.
 
@@ -11,7 +11,7 @@ Installing in one command, and making the window your own.
 - **Per-profile looks:** each profile can have its own theme, font and background, and admin windows a look that sets them apart.
 - **A configurable prompt** in `~/.nebularc`: choose the segments (Git, time, Node or Rust version, the last command's duration, an admin marker), their order and colors, or keep using Starship.
 
-## Soon (1.7 and 1.8)
+## Soon (1.8 and 1.9)
 
 ### Terminal
 
@@ -29,7 +29,6 @@ Installing in one command, and making the window your own.
 - **Signed releases** (Authenticode), once a code-signing certificate fits the project's budget. Until then SmartScreen may warn on first run, and every release lists its SHA-256 checksums.
 - ARM64 builds for Windows on Arm laptops.
 - Settings sync through a file you choose (OneDrive, Dropbox, a Git repository), with no account.
-- Saved SSH connections with their own folder, keys and port forwarding, from the profile editor.
 - `help <command>` with short, practical examples, the way tldr does it.
 - A screen-reader mode and a high-contrast theme, checked with Narrator and NVDA.
 - A French interface, then more languages contributed by users.
@@ -41,7 +40,6 @@ Ideas that need more thought before they get a slot.
 
 - Nebula outside the terminal: install `nebula-sh` on its own and add it to Windows Terminal automatically.
 - Command blocks: each command and its output as one unit you can collapse, copy or share.
-- Saved workspaces: a set of tabs, splits and folders you open in one click ("frontend", "server").
 - A Linux build of the terminal for people who use both systems.
 
 ## Not planned

@@ -79,8 +79,9 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 ## What you get
 
 - **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL, plus one entry for each WSL distribution and for each host in your `~/.ssh/config`. Nebula is the default, and you can pick another in Settings.
-- **Your own profiles.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color. You see how the arguments will be split before you save.
-- **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, and Settings → Keyboard can give it a shortcut.
+- **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type.
+- **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
+- **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette.
 - **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **Nine themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
@@ -89,8 +90,9 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 - **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
 - **Knows when you're done.** When a long command finishes in a tab you're not looking at, you get a Windows notification and a green or red dot on the tab.
 - **Updates itself.** When a new version is out, the app offers to install it and restarts. You can also check from Settings → About.
-- **Opens from Explorer and from any shell.** Right-click a folder and choose Open in Nebula Terminal, or type `nebula-terminal .` in cmd, PowerShell, Git Bash or WSL. Both open a tab in the window you already have.
+- **Opens from Explorer and from any shell.** Right-click a folder and choose Open in Nebula Terminal, or type `nebula-terminal .` in cmd, PowerShell, Git Bash or WSL. Both open a tab in the window you already have. Open in Nebula Terminal (Administrator) opens an admin window there instead.
 - **Your default terminal, if you want.** On Windows 11, Settings → Behavior makes Nebula Terminal the default terminal: `cmd`, scripts and other console programs started from the Start menu or Explorer open in a tab.
+- **Click a path to open it.** `Ctrl+Click` on `src/main.rs:42` in a compiler error or a `grep` result opens the file at that line, in VS Code, Cursor, the app Windows uses or a command you choose. Folders open in File Explorer.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
 - **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, to run the same command on several servers or shells. A colored outline shows when it's on.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
@@ -114,13 +116,13 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
-| Open a link | `Ctrl+Click` |
+| Open a link or a file path | `Ctrl+Click` |
 
 All of these except going to a tab by number, moving between panes and opening links can be changed in **Settings → Keyboard**. The recorder warns you when two actions share a shortcut.
 
 ## What's next
 
-Next up: the winget package (in review), a Quake-style drop-down window, per-profile looks and a prompt you can configure. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: the winget package (in review), a Quake-style drop-down window, per-profile looks and a prompt you can configure, then several windows and images in the terminal. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
