@@ -1,8 +1,8 @@
 import { useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
-import { Check, Info, Keyboard, Monitor, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
+import { Check, ChevronRight, Globe, Info, Keyboard, Monitor, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
 import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
-import { deleteCustomProfile, listCustomProfiles, saveCustomProfile, splitArguments } from "../customProfiles";
+import { deleteCustomProfile, draftOf, listCustomProfiles, newDraft, saveCustomProfile, splitArguments, sshCommand } from "../customProfiles";
 import { openExternal } from "../external";
 import { checkForUpdate, installUpdate, markChecked, type UpdateInfo } from "../updates";
 import { shortcutFromEvent } from "../keys";
@@ -15,7 +15,7 @@ import Segmented from "./Segmented";
 import ThemeSection from "./ThemeSection";
 import { describe as describeWorkspace, renamed, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, SshDraft, TerminalProfile } from "../types";
 
 interface SettingsPanelProps {
   open: boolean;
@@ -223,6 +223,7 @@ function ShortcutRecorder({ action, value, conflict, onChange }: { action: strin
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const NEW_PROFILE = "new";
+const NEW_CONNECTION = "new-ssh";
 
 /** One detected profile: icon, name and what it runs. */
 function ProfileRow({ profile }: { profile: TerminalProfile }) {
@@ -279,18 +280,26 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<ProfileFieldError | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showForwards, setShowForwards] = useState(Boolean(initial.ssh.localForwards || initial.ssh.remoteForwards));
   const id = useId();
-  const set = (key: keyof CustomProfileDraft) => (event: { target: { value: string } }) => {
+  const set = (key: "name" | "executable" | "arguments" | "cwd") => (event: { target: { value: string } }) => {
     setDraft((current) => ({ ...current, [key]: event.target.value }));
+    if (error?.field === key) setError(null);
+  };
+  const setSsh = (key: keyof SshDraft) => (event: { target: { value: string } }) => {
+    setDraft((current) => ({ ...current, ssh: { ...current.ssh, [key]: event.target.value } }));
     if (error?.field === key) setError(null);
   };
   const errorFor = (field: CustomProfileField) => error?.field === field ? error.message : undefined;
   const invalid = (field: CustomProfileField) => error?.field === field ? { "aria-invalid": true, "aria-describedby": `${id}-${field}-error` } : {};
   const accent = draft.accent.toLowerCase();
+  const ssh = draft.kind === "ssh";
+  const forwardsError = error?.field === "localForwards" || error?.field === "remoteForwards";
 
   useEffect(() => {
-    if (error?.field) document.getElementById(`${id}-${error.field}`)?.focus();
-  }, [error, id]);
+    if (forwardsError && !showForwards) setShowForwards(true);
+    else if (error?.field) document.getElementById(`${id}-${error.field}`)?.focus();
+  }, [error, forwardsError, showForwards, id]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -315,14 +324,50 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
       }}
     >
       <div className="profile-editor__head">
-        <ProfileIcon kind="custom" accent={HEX_COLOR.test(accent) ? accent : undefined} size={20} />
-        <span className="row__label">{initial.id ? "Edit profile" : "New profile"}</span>
+        <ProfileIcon kind={ssh ? "ssh" : "custom"} accent={HEX_COLOR.test(accent) ? accent : undefined} size={20} />
+        <span className="row__label">{initial.id ? (ssh ? "Edit connection" : "Edit profile") : (ssh ? "New SSH connection" : "New profile")}</span>
+        <Segmented label="Profile type" value={draft.kind} onChange={(kind) => { setDraft((current) => ({ ...current, kind })); setError(null); }} options={[{ value: "program", label: "Program" }, { value: "ssh", label: "SSH connection" }]} />
       </div>
 
       <EditorField id={`${id}-name`} label="Name" error={errorFor("name")}>
-        <input id={`${id}-name`} className="field" value={draft.name} maxLength={60} autoFocus spellCheck={false} placeholder="Python" onChange={set("name")} {...invalid("name")} />
+        <input id={`${id}-name`} className="field" value={draft.name} maxLength={60} autoFocus spellCheck={false} placeholder={ssh ? "Build server" : "Python"} onChange={set("name")} {...invalid("name")} />
       </EditorField>
 
+      {ssh ? <>
+        <EditorField id={`${id}-host`} label="Server" error={errorFor("host")} note="A host name, an IP address, or a Host from ~/.ssh/config.">
+          <input id={`${id}-host`} className="field field--mono" value={draft.ssh.host} maxLength={253} spellCheck={false} autoCapitalize="off" placeholder="server.example.com" onChange={setSsh("host")} {...invalid("host")} />
+        </EditorField>
+
+        <div className="editor-field-row">
+          <EditorField id={`${id}-user`} label="User" error={errorFor("user")}>
+            <input id={`${id}-user`} className="field field--mono" value={draft.ssh.user} maxLength={64} spellCheck={false} autoCapitalize="off" placeholder="Same as on Windows" onChange={setSsh("user")} {...invalid("user")} />
+          </EditorField>
+          <EditorField id={`${id}-port`} label="Port" error={errorFor("port")}>
+            <input id={`${id}-port`} className="field field--mono" value={draft.ssh.port} maxLength={5} inputMode="numeric" spellCheck={false} placeholder="22" onChange={setSsh("port")} {...invalid("port")} />
+          </EditorField>
+        </div>
+
+        <EditorField id={`${id}-identityFile`} label="Key file" error={errorFor("identityFile")} note="Optional. Without one, ssh tries your keys in ~/.ssh and the ssh-agent. Accepts ~ and %VARIABLES%.">
+          <input id={`${id}-identityFile`} className="field field--mono" value={draft.ssh.identityFile} maxLength={1024} spellCheck={false} placeholder="~\.ssh\id_ed25519" onChange={setSsh("identityFile")} {...invalid("identityFile")} />
+        </EditorField>
+
+        <button className="disclosure" type="button" aria-expanded={showForwards} aria-controls={`${id}-forwards`} onClick={() => setShowForwards((open) => !open)}>
+          <ChevronRight size={14} aria-hidden="true" />Port forwarding
+        </button>
+        {showForwards && <div className="editor-field-row" id={`${id}-forwards`}>
+          <EditorField id={`${id}-localForwards`} label="Local ports" error={errorFor("localForwards")} note="A port on this PC, then where the server sends it. One per line.">
+            <textarea id={`${id}-localForwards`} className="field field--mono field--area" rows={3} value={draft.ssh.localForwards} maxLength={2048} spellCheck={false} placeholder="8080:localhost:80" onChange={setSsh("localForwards")} {...invalid("localForwards")} />
+          </EditorField>
+          <EditorField id={`${id}-remoteForwards`} label="Remote ports" error={errorFor("remoteForwards")} note="A port on the server, then where this PC sends it. One per line.">
+            <textarea id={`${id}-remoteForwards`} className="field field--mono field--area" rows={3} value={draft.ssh.remoteForwards} maxLength={2048} spellCheck={false} placeholder="9000:localhost:3000" onChange={setSsh("remoteForwards")} {...invalid("remoteForwards")} />
+          </EditorField>
+        </div>}
+
+        <div className="arg-preview" aria-live="polite">
+          <span className="arg-preview__label">Runs</span>
+          <code className="arg-chip">{sshCommand(draft.ssh)}</code>
+        </div>
+      </> : <>
       <EditorField id={`${id}-executable`} label="Program" error={errorFor("executable")} note="A full path, or the name of a program on PATH. Accepts %VARIABLES%.">
         <input id={`${id}-executable`} className="field field--mono" value={draft.executable} maxLength={1024} spellCheck={false} placeholder="C:\Python313\python.exe" onChange={set("executable")} {...invalid("executable")} />
       </EditorField>
@@ -335,6 +380,7 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
       <EditorField id={`${id}-cwd`} label="Starting folder" error={errorFor("cwd")} note="Leave empty to use the starting folder above. Accepts ~ and %VARIABLES%.">
         <input id={`${id}-cwd`} className="field field--mono" value={draft.cwd} maxLength={1024} spellCheck={false} placeholder="Default starting folder" onChange={set("cwd")} {...invalid("cwd")} />
       </EditorField>
+      </>}
 
       <EditorField id={`${id}-accent`} label="Color" error={errorFor("accent")}>
         <div className="swatches" role="radiogroup" aria-labelledby={`${id}-accent-label`} id={`${id}-accent`}>
@@ -351,7 +397,7 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
         {error && error.field === null && <p className="field-note field-note--error" role="alert">{error.message}</p>}
         <div className="button-row">
           <button className="button" type="button" onClick={onCancel}>Cancel</button>
-          <button className="button button--primary" type="submit" disabled={saving}>{initial.id ? "Save" : "Add profile"}</button>
+          <button className="button button--primary" type="submit" disabled={saving}>{initial.id ? "Save" : ssh ? "Add connection" : "Add profile"}</button>
         </div>
       </div>
     </form>
@@ -403,27 +449,27 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
 
   const editorFor = (entry?: CustomProfile) => (
     <ProfileEditor
-      key={entry?.id ?? NEW_PROFILE}
-      initial={entry
-        ? { id: entry.id, name: entry.name, executable: entry.executable, arguments: entry.arguments, cwd: entry.cwd ?? "", accent: entry.accent }
-        : { name: "", executable: "", arguments: "", cwd: "", accent: unusedAccent }}
+      key={entry?.id ?? editing}
+      initial={entry ? draftOf(entry) : newDraft(unusedAccent, editing === NEW_CONNECTION ? "ssh" : "program")}
       onSave={save}
       onCancel={() => setEditing(null)}
     />
   );
+  const startNew = (kind: string) => { setEditing(kind); setRemoving(null); };
 
   return (
-    <Group title="Custom profiles" description="Open any program in a tab, with its own arguments, folder and color.">
+    <Group title="Custom profiles" description="Open any program in a tab, or connect to a server over SSH, with its own name and color.">
       {entries.map((entry) => {
         if (editing === entry.id) return editorFor(entry);
         const available = detected.get(entry.id)?.available ?? true;
         const command = [entry.executable, entry.arguments].filter(Boolean).join(" ");
+        const missing = entry.ssh ? "The OpenSSH client isn't installed" : `Program not found: ${entry.executable}`;
         return (
           <div key={entry.id} className={`shell-row shell-row--actions ${available ? "" : "is-missing"}`}>
-            <ProfileIcon kind="custom" accent={entry.accent} size={20} />
+            <ProfileIcon kind={entry.ssh ? "ssh" : "custom"} accent={entry.accent} size={20} />
             <div className="row__text">
               <span className="row__label">{entry.name}</span>
-              <span className={`row__description ${available ? "" : "row__description--warning"}`} title={command}>{available ? command : `Program not found: ${entry.executable}`}</span>
+              <span className={`row__description ${available ? "" : "row__description--warning"}`} title={command}>{available ? command : missing}</span>
             </div>
             {removing === entry.id
               ? <div className="button-row">
@@ -437,15 +483,16 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
           </div>
         );
       })}
-      {editing === NEW_PROFILE
+      {editing === NEW_PROFILE || editing === NEW_CONNECTION
         ? editorFor()
         : <div className="row">
             <div className="row__text">
               <span className="row__label">{entries.length ? "Add another profile" : "Add a profile"}</span>
-              <span className={`row__description ${problem ? "row__description--error" : ""}`}>{problem ?? (entries.length >= 50 ? "You can have up to 50 custom profiles." : "For example a REPL, a project shell or a remote session.")}</span>
+              <span className={`row__description ${problem ? "row__description--error" : ""}`}>{problem ?? (entries.length >= 50 ? "You can have up to 50 custom profiles." : "For example a REPL, a project shell or a server you reach over SSH.")}</span>
             </div>
-            <div className="row__control">
-              <button className="button" type="button" disabled={editing !== null || entries.length >= 50} onClick={() => { setEditing(NEW_PROFILE); setRemoving(null); }}><Plus size={14} />Add profile</button>
+            <div className="row__control button-row">
+              <button className="button" type="button" disabled={editing !== null || entries.length >= 50} onClick={() => startNew(NEW_CONNECTION)}><Globe size={14} />Add SSH connection</button>
+              <button className="button" type="button" disabled={editing !== null || entries.length >= 50} onClick={() => startNew(NEW_PROFILE)}><Plus size={14} />Add profile</button>
             </div>
           </div>}
     </Group>

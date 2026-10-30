@@ -1007,6 +1007,15 @@ kbd { font: inherit; }
 .editor-field__label { color: var(--text-2); font-size: 12px; }
 .editor-field.has-error .field { border-color: var(--danger); box-shadow: inset 0 -1px 0 var(--danger); }
 .field--mono { font-family: var(--mono-font); font-size: 12px; }
+.field--area { height: auto; min-height: 64px; padding: 7px 10px; line-height: 18px; resize: vertical; }
+.profile-editor__head .segmented { margin-left: auto; }
+.editor-field-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.editor-field-row:has(input[inputmode="numeric"]) { grid-template-columns: minmax(0, 1fr) 96px; }
+.disclosure { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 2px 0; border: 0; background: none; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.disclosure:hover { color: var(--text); }
+.disclosure:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--radius-s); }
+.disclosure svg { transition: transform var(--dur-1) var(--ease-out); }
+.disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
 .field-note { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.4; }
 .field-note--error { color: var(--danger); }
 :root[data-scheme="dark"] .field-note--error { color: #ff8a80; }
@@ -1160,6 +1169,8 @@ kbd { font: inherit; }
   .row { flex-direction: column; align-items: stretch; gap: 10px; }
   .row__control { flex-wrap: wrap; }
   .field--select { width: 100%; }
+  .editor-field-row:not(:has(input[inputmode="numeric"])) { grid-template-columns: minmax(0, 1fr); }
+  .profile-editor__head { flex-wrap: wrap; }
   .palette__footer { display: none; }
 }
 

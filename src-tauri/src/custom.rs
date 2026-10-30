@@ -20,6 +20,9 @@ const MAX_PATH: usize = 1024;
 const MAX_ARGUMENTS: usize = 64;
 const MAX_ARGUMENTS_LENGTH: usize = 4096;
 const MAX_FILE_BYTES: u64 = 512 * 1024;
+const MAX_FORWARDS: usize = 16;
+const MAX_HOST: usize = 253;
+const MAX_USER: usize = 64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,6 +36,136 @@ pub struct CustomProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
     pub accent: String,
+    /// Set for an SSH connection: `executable` is then `ssh`, and its arguments are
+    /// always built from these fields.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ssh: Option<SshConnection>,
+}
+
+/// An SSH connection made in the profile editor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshConnection {
+    pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    /// A private key file; `~` and `%VAR%` are expanded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_file: Option<String>,
+    /// `[bind:]port:host:hostport`, as `-L` takes them: local ports that reach the remote side.
+    #[serde(default)]
+    pub local_forwards: Vec<String>,
+    /// The same for `-R`: remote ports that reach this PC.
+    #[serde(default)]
+    pub remote_forwards: Vec<String>,
+}
+
+impl SshConnection {
+    /// The arguments for `ssh`. Every value was checked, so none can pass for an option.
+    pub fn arguments(&self) -> Vec<String> {
+        let mut args = Vec::new();
+        if let Some(port) = self.port {
+            args.extend(["-p".to_owned(), port.to_string()]);
+        }
+        if let Some(key) = &self.identity_file {
+            args.extend([
+                "-i".to_owned(),
+                profiles::expand_directory(key).display().to_string(),
+            ]);
+        }
+        for forward in &self.local_forwards {
+            args.extend(["-L".to_owned(), forward.clone()]);
+        }
+        for forward in &self.remote_forwards {
+            args.extend(["-R".to_owned(), forward.clone()]);
+        }
+        args.push(match &self.user {
+            Some(user) => format!("{user}@{}", self.host),
+            None => self.host.clone(),
+        });
+        args
+    }
+
+    fn is_well_formed(&self) -> bool {
+        is_host(&self.host)
+            && self.user.as_deref().is_none_or(is_user)
+            && self.port.is_none_or(|port| port > 0)
+            && self
+                .identity_file
+                .as_ref()
+                .is_none_or(|path| path.len() <= MAX_PATH && !has_control_characters(path))
+            && self.local_forwards.len() <= MAX_FORWARDS
+            && self.remote_forwards.len() <= MAX_FORWARDS
+            && self
+                .local_forwards
+                .iter()
+                .chain(&self.remote_forwards)
+                .all(|forward| is_forward(forward))
+    }
+}
+
+impl CustomProfile {
+    /// What the profile passes to its program.
+    pub fn arguments(&self) -> Vec<String> {
+        self.ssh
+            .as_ref()
+            .map_or_else(|| self.args.clone(), SshConnection::arguments)
+    }
+}
+
+/// A host name, an IPv4 address or an IPv6 one (bare or in brackets). Never starts with
+/// `-`, so ssh can't read it as an option.
+fn is_host(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_HOST
+        && !value.starts_with('-')
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ':' | '[' | ']'))
+}
+
+/// A user name, possibly `DOMAIN\user` or `user@domain`.
+fn is_user(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= MAX_USER
+        && !value.starts_with('-')
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '\\' | '@'))
+}
+
+fn is_port(value: &str) -> bool {
+    value.parse::<u16>().is_ok_and(|port| port > 0)
+}
+
+/// `[bind:]port:host:hostport`, where bind and host may be `[IPv6]`.
+fn is_forward(value: &str) -> bool {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut bracket = false;
+    for c in value.chars() {
+        match c {
+            '[' => bracket = true,
+            ']' => bracket = false,
+            ':' if !bracket => {
+                parts.push(std::mem::take(&mut current));
+                continue;
+            }
+            _ => {}
+        }
+        current.push(c);
+    }
+    parts.push(current);
+    let address = |text: &str| text == "*" || is_host(text);
+    match parts.as_slice() {
+        [port, host, host_port] => is_port(port) && address(host) && is_port(host_port),
+        [bind, port, host, host_port] => {
+            address(bind) && is_port(port) && address(host) && is_port(host_port)
+        }
+        _ => false,
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -51,6 +184,26 @@ pub struct CustomProfileInput {
     pub arguments: String,
     pub cwd: String,
     pub accent: String,
+    /// Present for an SSH connection; `executable`, `arguments` and `cwd` are then unused.
+    #[serde(default)]
+    pub ssh: Option<SshInput>,
+}
+
+/// The SSH fields of the editor, as typed: forwards one per line.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshInput {
+    pub host: String,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub port: String,
+    #[serde(default)]
+    pub identity_file: String,
+    #[serde(default)]
+    pub local_forwards: String,
+    #[serde(default)]
+    pub remote_forwards: String,
 }
 
 /// A stored profile plus its arguments as one line, for the editor.
@@ -64,7 +217,7 @@ pub struct CustomProfileView {
 
 impl From<CustomProfile> for CustomProfileView {
     fn from(profile: CustomProfile) -> Self {
-        let arguments = cmdline::join(&profile.args);
+        let arguments = cmdline::join(&profile.arguments());
         Self { profile, arguments }
     }
 }
@@ -145,6 +298,96 @@ fn is_well_formed(profile: &CustomProfile) -> bool {
             .as_ref()
             .is_none_or(|cwd| cwd.len() <= MAX_PATH && !has_control_characters(cwd))
         && is_hex_color(&profile.accent)
+        && profile
+            .ssh
+            .as_ref()
+            .is_none_or(|ssh| profile.executable == "ssh" && ssh.is_well_formed())
+}
+
+fn forwards(field: &'static str, text: &str) -> Result<Vec<String>, FieldError> {
+    let list: Vec<String> = text
+        .split(['\n', ','])
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect();
+    if list.len() > MAX_FORWARDS {
+        return Err(FieldError::on(
+            field,
+            format!("Use at most {MAX_FORWARDS} forwards."),
+        ));
+    }
+    if let Some(bad) = list.iter().find(|forward| !is_forward(forward)) {
+        return Err(FieldError::on(field, format!("\u{201c}{bad}\u{201d} isn't a forward: use port:host:port, like 8080:localhost:80.")));
+    }
+    Ok(list)
+}
+
+/// Checks the SSH fields. `find_program` must find `ssh` (the OpenSSH client).
+fn validate_ssh(
+    input: &SshInput,
+    find_program: impl Fn(&str) -> Option<PathBuf>,
+) -> Result<SshConnection, FieldError> {
+    let host = input.host.trim();
+    if host.is_empty() {
+        return Err(FieldError::on(
+            "host",
+            "Enter the server's name or address.",
+        ));
+    }
+    if !is_host(host) {
+        return Err(FieldError::on(
+            "host",
+            "Use a host name or an IP address, like server.example.com or 192.168.1.20.",
+        ));
+    }
+    let user = input.user.trim();
+    if !user.is_empty() && !is_user(user) {
+        return Err(FieldError::on(
+            "user",
+            "Use letters, digits, dots, dashes and underscores.",
+        ));
+    }
+    let port = input.port.trim();
+    let port = if port.is_empty() {
+        None
+    } else {
+        Some(
+            port.parse::<u16>()
+                .ok()
+                .filter(|port| *port > 0)
+                .ok_or_else(|| FieldError::on("port", "Use a port from 1 to 65535."))?,
+        )
+    };
+    let key = input.identity_file.trim().trim_matches('"').trim();
+    let identity_file = if key.is_empty() {
+        None
+    } else {
+        if key.len() > MAX_PATH || has_control_characters(key) {
+            return Err(FieldError::on("identityFile", "This path is not valid."));
+        }
+        if !profiles::expand_directory(key).is_file() {
+            return Err(FieldError::on(
+                "identityFile",
+                "This key file does not exist.",
+            ));
+        }
+        Some(key.to_owned())
+    };
+    let connection = SshConnection {
+        host: host.to_owned(),
+        user: (!user.is_empty()).then(|| user.to_owned()),
+        port,
+        identity_file,
+        local_forwards: forwards("localForwards", &input.local_forwards)?,
+        remote_forwards: forwards("remoteForwards", &input.remote_forwards)?,
+    };
+    if find_program("ssh").is_none() {
+        return Err(FieldError::general(
+            "The OpenSSH client isn't installed. Add it in Windows Settings → System → Optional features.",
+        ));
+    }
+    Ok(connection)
 }
 
 pub fn split_arguments_line(line: &str) -> Result<Vec<String>, String> {
@@ -179,6 +422,23 @@ pub fn validate(
             "name",
             format!("Use up to {MAX_NAME} characters, on one line."),
         ));
+    }
+
+    let accent = input.accent.trim().to_ascii_lowercase();
+    if let Some(ssh) = &input.ssh {
+        let connection = validate_ssh(ssh, &find_program)?;
+        if !is_hex_color(&accent) {
+            return Err(FieldError::on("accent", "Use a color like #5b8def."));
+        }
+        return Ok(CustomProfile {
+            id,
+            name: name.to_owned(),
+            executable: "ssh".to_owned(),
+            args: connection.arguments(),
+            cwd: None,
+            accent,
+            ssh: Some(connection),
+        });
     }
 
     let executable = input.executable.trim().trim_matches('"').trim();
@@ -223,7 +483,6 @@ pub fn validate(
         Some(cwd.to_owned())
     };
 
-    let accent = input.accent.trim().to_ascii_lowercase();
     if !is_hex_color(&accent) {
         return Err(FieldError::on("accent", "Use a color like #5b8def."));
     }
@@ -235,6 +494,7 @@ pub fn validate(
         args,
         cwd,
         accent,
+        ssh: None,
     })
 }
 
@@ -364,7 +624,7 @@ impl CustomProfiles {
         })?;
         Ok(profiles::ResolvedProfile {
             executable,
-            args: profile.args,
+            args: profile.arguments(),
             cwd: profile.cwd,
         })
     }
@@ -431,6 +691,17 @@ mod tests {
             arguments: String::new(),
             cwd: String::new(),
             accent: "#5B8DEF".into(),
+            ssh: None,
+        }
+    }
+
+    fn ssh_input(host: &str) -> CustomProfileInput {
+        CustomProfileInput {
+            ssh: Some(SshInput {
+                host: host.into(),
+                ..SshInput::default()
+            }),
+            ..input("Server", "")
         }
     }
 
@@ -616,6 +887,7 @@ mod tests {
             args: vec!["--path".into(), r"C:\My Files\".into(), String::new()],
             cwd: None,
             accent: "#112233".into(),
+            ssh: None,
         };
         let view = CustomProfileView::from(profile.clone());
         assert_eq!(split_arguments_line(&view.arguments).unwrap(), profile.args);
@@ -642,5 +914,97 @@ mod tests {
 
         fs::remove_file(&program).unwrap();
         assert!(store.resolve(&saved.id).unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn ssh_connection_builds_the_command() {
+        let key = scratch("ssh-key").join("id_ed25519");
+        fs::write(&key, "key").unwrap();
+        let mut value = ssh_input("  build.example.com ");
+        let ssh = value.ssh.as_mut().unwrap();
+        ssh.user = "deploy".into();
+        ssh.port = "2222".into();
+        ssh.identity_file = format!("\"{}\"", key.display());
+        ssh.local_forwards = "8080:localhost:80\n\n 127.0.0.1:5433:db:5432 ".into();
+        ssh.remote_forwards = "9000:[::1]:9000".into();
+
+        let profile = validate(&value, id(), found).unwrap();
+        assert_eq!(profile.executable, "ssh");
+        assert_eq!(profile.cwd, None);
+        assert_eq!(
+            profile.args,
+            [
+                "-p",
+                "2222",
+                "-i",
+                &key.display().to_string(),
+                "-L",
+                "8080:localhost:80",
+                "-L",
+                "127.0.0.1:5433:db:5432",
+                "-R",
+                "9000:[::1]:9000",
+                "deploy@build.example.com",
+            ]
+        );
+        assert!(is_well_formed(&profile));
+
+        // Stored arguments are never trusted: they come from the connection.
+        let tampered = CustomProfile {
+            args: vec!["-oProxyCommand=calc".into()],
+            ..profile.clone()
+        };
+        assert_eq!(tampered.arguments(), profile.args);
+    }
+
+    #[test]
+    fn ssh_connection_rejects_anything_that_reads_as_an_option() {
+        let error = |value: CustomProfileInput| validate(&value, id(), found).unwrap_err().field;
+        assert_eq!(error(ssh_input("")), Some("host"));
+        assert_eq!(error(ssh_input("-oProxyCommand=calc")), Some("host"));
+        assert_eq!(error(ssh_input("server name")), Some("host"));
+
+        let with = |change: fn(&mut SshInput)| {
+            let mut value = ssh_input("server");
+            change(value.ssh.as_mut().unwrap());
+            value
+        };
+        assert_eq!(error(with(|ssh| ssh.user = "-l root".into())), Some("user"));
+        assert_eq!(error(with(|ssh| ssh.port = "0".into())), Some("port"));
+        assert_eq!(error(with(|ssh| ssh.port = "70000".into())), Some("port"));
+        assert_eq!(
+            error(with(|ssh| ssh.identity_file = "C:\\nowhere\\id_rsa".into())),
+            Some("identityFile")
+        );
+        assert_eq!(
+            error(with(|ssh| ssh.local_forwards = "8080".into())),
+            Some("localForwards")
+        );
+        assert_eq!(
+            error(with(|ssh| ssh.local_forwards = "-oX:a:1".into())),
+            Some("localForwards")
+        );
+        assert_eq!(
+            error(with(|ssh| ssh.remote_forwards = "1:host:port".into())),
+            Some("remoteForwards")
+        );
+
+        let missing_ssh = validate(&ssh_input("server"), id(), missing).unwrap_err();
+        assert_eq!(missing_ssh.field, None);
+
+        let user = with(|ssh| ssh.user = r"CORP\jane".into());
+        assert_eq!(
+            validate(&user, id(), found).unwrap().args,
+            [r"CORP\jane@server"]
+        );
+    }
+
+    #[test]
+    fn stored_ssh_connections_are_checked_on_load() {
+        let profile = validate(&ssh_input("server"), id(), found).unwrap();
+        let mut bad = profile.clone();
+        bad.ssh.as_mut().unwrap().host = "-oProxyCommand=calc".into();
+        assert!(is_well_formed(&profile));
+        assert!(!is_well_formed(&bad));
     }
 }
