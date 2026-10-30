@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app adds "Open in Nebula Terminal" to File Explorer and the nebula-terminal
-     command to the user's PATH itself (launcher.rs). This only removes them when the
-     app is uninstalled, not when an update replaces it. -->
+<!-- The app adds "Open in Nebula Terminal" and its administrator entry to File
+     Explorer, and the nebula-terminal command to the user's PATH, itself (launcher.rs).
+     This only removes them when the app is uninstalled, not when an update replaces it. -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
@@ -10,6 +10,9 @@
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\shell\NebulaTerminal" Action="removeOnUninstall" />
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\NebulaTerminal" Action="removeOnUninstall" />
         <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Drive\shell\NebulaTerminal" Action="removeOnUninstall" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\shell\NebulaTerminalAdmin" Action="removeOnUninstall" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Directory\Background\shell\NebulaTerminalAdmin" Action="removeOnUninstall" />
+        <RemoveRegistryKey Root="HKCU" Key="Software\Classes\Drive\shell\NebulaTerminalAdmin" Action="removeOnUninstall" />
       </Component>
     </DirectoryRef>
 

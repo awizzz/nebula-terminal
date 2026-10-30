@@ -77,6 +77,13 @@ fn main() {
         defterm::uninstall();
         return;
     }
+    // Before the single-instance check, which would hand this launch to an open window.
+    if std::env::args().nth(1).as_deref() == Some(elevation::EXPLORER_FLAG) {
+        let args: Vec<String> = std::env::args().collect();
+        let cwd = std::env::current_dir().unwrap_or_default();
+        elevation::open_from_explorer(launcher::folder_argument(&args, &cwd));
+        return;
+    }
     let administrator = elevation::is_admin_copy();
     let builder = tauri::Builder::default();
     // An admin copy keeps to itself: it never hands its launch to an ordinary window,

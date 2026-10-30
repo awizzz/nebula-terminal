@@ -28,25 +28,68 @@ pub fn folder_argument(args: &[String], cwd: &Path) -> Option<PathBuf> {
 
 /// The folder this copy was started with, for its first tab.
 #[tauri::command]
-pub fn launch_folder() -> Option<String> {
+pub fn launch_folder(app: tauri::AppHandle) -> Option<String> {
     let args: Vec<String> = env::args().collect();
-    // An admin copy gets its folder from the request it was started for.
+    // An admin copy read its request already. With UAC off, Explorer's admin entry
+    // starts an ordinary copy for one instead, and its folder is read here.
     if args.iter().any(|arg| arg == crate::elevation::FLAG) {
-        return None;
+        return crate::elevation::take_request(&app, &args).and_then(|request| request.folder);
     }
     let cwd = env::current_dir().unwrap_or_default();
     folder_argument(&args, &cwd).map(|path| path.display().to_string())
 }
 
+/// The app's local data folder, as Tauri names it, for code that runs before Tauri does.
+pub fn local_data_dir() -> Option<PathBuf> {
+    let local = env::var_os("LOCALAPPDATA")?;
+    Some(PathBuf::from(local).join("dev.awizz.nebula-terminal"))
+}
+
 /// Where the `nebula-terminal` command lives. It gets a folder of its own because the
 /// app's folder also holds `uninstall.exe`, which must never be a command.
 fn command_directory() -> Option<PathBuf> {
-    let local = env::var_os("LOCALAPPDATA")?;
-    Some(
-        PathBuf::from(local)
-            .join("dev.awizz.nebula-terminal")
-            .join("bin"),
-    )
+    local_data_dir().map(|dir| dir.join("bin"))
+}
+
+/// One entry of the File Explorer menu.
+#[cfg_attr(not(windows), allow(dead_code))]
+struct MenuEntry {
+    key: String,
+    label: &'static str,
+    command: String,
+    /// The UAC shield next to the label.
+    elevated: bool,
+}
+
+/// "Open in Nebula Terminal" and its administrator twin, on a folder, the empty space
+/// inside a folder, and a drive. The installers remove the same keys on uninstall.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn menu_entries(exe: &Path) -> Vec<MenuEntry> {
+    const CLASSES: [&str; 3] = [
+        r"Software\Classes\Directory",
+        r"Software\Classes\Directory\Background",
+        r"Software\Classes\Drive",
+    ];
+    let exe = exe.display();
+    CLASSES
+        .iter()
+        .flat_map(|class| {
+            [
+                MenuEntry {
+                    key: format!(r"{class}\shell\NebulaTerminal"),
+                    label: "Open in Nebula Terminal",
+                    command: format!("\"{exe}\" \"%V\""),
+                    elevated: false,
+                },
+                MenuEntry {
+                    key: format!(r"{class}\shell\NebulaTerminalAdmin"),
+                    label: "Open in Nebula Terminal (Administrator)",
+                    command: format!("\"{exe}\" {} \"%V\"", crate::elevation::EXPLORER_FLAG),
+                    elevated: true,
+                },
+            ]
+        })
+        .collect()
 }
 
 /// For cmd, PowerShell and Nebula. `start` returns at once instead of waiting for the app.
@@ -170,45 +213,35 @@ mod system {
         RegKey, RegValue,
     };
 
-    const LABEL: &str = "Open in Nebula Terminal";
-    /// A folder, the empty space inside a folder, and a drive. The installers remove
-    /// the same keys when the app is uninstalled.
-    const MENU_KEYS: [&str; 3] = [
-        r"Software\Classes\Directory\shell\NebulaTerminal",
-        r"Software\Classes\Directory\Background\shell\NebulaTerminal",
-        r"Software\Classes\Drive\shell\NebulaTerminal",
-    ];
-
-    fn menu_command(exe: &Path) -> String {
-        format!("\"{}\" \"%V\"", exe.display())
-    }
-
     pub fn sync_explorer_menu(exe: &Path, enabled: bool) -> io::Result<()> {
         let root = RegKey::predef(HKEY_CURRENT_USER);
+        let entries = super::menu_entries(exe);
         if !enabled {
-            for key in MENU_KEYS {
-                match root.delete_subkey_all(key) {
+            for entry in &entries {
+                match root.delete_subkey_all(&entry.key) {
                     Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
                     _ => {}
                 }
             }
             return Ok(());
         }
-        let command = menu_command(exe);
-        let current = MENU_KEYS.iter().all(|key| {
-            root.open_subkey(format!(r"{key}\command"))
-                .and_then(|entry| entry.get_value::<String, _>(""))
-                .is_ok_and(|value| value == command)
+        let current = entries.iter().all(|entry| {
+            root.open_subkey(format!(r"{}\command", entry.key))
+                .and_then(|key| key.get_value::<String, _>(""))
+                .is_ok_and(|value| value == entry.command)
         });
         if current {
             return Ok(());
         }
-        for key in MENU_KEYS {
-            let (entry, _) = root.create_subkey(key)?;
-            entry.set_value("", &LABEL)?;
-            entry.set_value("Icon", &format!("\"{}\",0", exe.display()))?;
-            let (command_key, _) = entry.create_subkey("command")?;
-            command_key.set_value("", &command)?;
+        for entry in &entries {
+            let (key, _) = root.create_subkey(&entry.key)?;
+            key.set_value("", &entry.label)?;
+            key.set_value("Icon", &format!("\"{}\",0", exe.display()))?;
+            if entry.elevated {
+                key.set_value("HasLUAShield", &"")?;
+            }
+            let (command_key, _) = key.create_subkey("command")?;
+            command_key.set_value("", &entry.command)?;
         }
         Ok(())
     }
@@ -329,6 +362,30 @@ mod tests {
             folder_argument(&args(&[&format!("{drive}\"")]), Path::new(r"C:\")),
             Some(PathBuf::from(format!("{drive}\\")))
         );
+    }
+
+    #[test]
+    fn explorer_menu_has_an_administrator_entry_for_each_place() {
+        let exe = Path::new(r"C:\Program Files\Nebula Terminal\nebula-terminal.exe");
+        let entries = menu_entries(exe);
+        assert_eq!(entries.len(), 6);
+        let admin: Vec<&MenuEntry> = entries.iter().filter(|entry| entry.elevated).collect();
+        assert_eq!(admin.len(), 3);
+        assert!(admin
+            .iter()
+            .all(|entry| entry.key.ends_with(r"\shell\NebulaTerminalAdmin")));
+        assert_eq!(
+            admin[0].command,
+            r#""C:\Program Files\Nebula Terminal\nebula-terminal.exe" --open-as-administrator "%V""#
+        );
+        assert_eq!(
+            entries[0].command,
+            r#""C:\Program Files\Nebula Terminal\nebula-terminal.exe" "%V""#
+        );
+        // The flag is skipped when the folder is read back.
+        let base = env::temp_dir();
+        let launched = args(&["--open-as-administrator", &base.display().to_string()]);
+        assert_eq!(folder_argument(&launched, Path::new("/")), Some(base));
     }
 
     #[test]
