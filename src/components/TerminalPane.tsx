@@ -9,6 +9,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { adjacentPrompt, joinLines } from "../commandMarks";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
+import { openPath, registerFileLinks } from "../fileLinks";
 import { registerPane } from "../paneRegistry";
 import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
@@ -38,6 +39,8 @@ interface TerminalPaneProps {
   onCommandFinished: (finished: FinishedCommand) => void;
   onNotify: (title: string, body: string) => void;
   onFolderChange: (folder: string) => void;
+  /** A short message for the window, like a file that couldn't be opened. */
+  onNotice?: (text: string) => void;
   onClose: () => void;
 }
 
@@ -132,6 +135,7 @@ export default function TerminalPane({
   onCommandFinished,
   onNotify,
   onFolderChange,
+  onNotice,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -145,7 +149,9 @@ export default function TerminalPane({
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice });
+  /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
+  const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
@@ -155,7 +161,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -209,6 +215,11 @@ export default function TerminalPane({
     terminal.loadAddon(new WebLinksAddon((event, uri) => {
       if (event.ctrlKey || !isTauri()) openExternal(uri);
     }));
+    // File paths that exist, the same way: Ctrl+click opens them at their line.
+    const fileLinks = registerFileLinks(terminal, () => folderRef.current, (path, candidate) => {
+      openPath(path, candidate.line, candidate.column, preferencesRef.current)
+        .catch((error) => callbacksRef.current.onNotice?.(error instanceof Error ? error.message : String(error)));
+    });
     terminal.open(host);
     // A restart or profile change replaces the focused textarea; take focus back.
     if (focusedRef.current) terminal.focus();
@@ -346,7 +357,10 @@ export default function TerminalPane({
     // OSC 7: the shell's current folder, where splits and the next launch start.
     const folderReport = terminal.parser.registerOscHandler(7, (data) => {
       const folder = folderFromReport(data);
-      if (folder) callbacksRef.current.onFolderChange(folder);
+      if (folder) {
+        folderRef.current = folder;
+        callbacksRef.current.onFolderChange(folder);
+      }
       return true;
     });
     const searchDisposable = search.onDidChangeResults(({ resultIndex, resultCount }) => {
@@ -538,6 +552,7 @@ export default function TerminalPane({
       notification.dispose();
       titledNotification.dispose();
       folderReport.dispose();
+      fileLinks.dispose();
       searchDisposable.dispose();
       inputDisposable.dispose();
       selectionDisposable.dispose();

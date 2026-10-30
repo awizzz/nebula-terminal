@@ -4,6 +4,7 @@ mod cmdline;
 mod custom;
 mod defterm;
 mod elevation;
+mod files;
 mod integration;
 mod launcher;
 mod profiles;
@@ -130,6 +131,8 @@ fn main() {
             pty::take_handoffs,
             pty::attach_handoff,
             elevation::open_as_administrator,
+            files::find_paths,
+            files::open_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");
