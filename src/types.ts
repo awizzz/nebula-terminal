@@ -30,6 +30,27 @@ export interface CustomProfile {
   arguments: string;
   cwd?: string | null;
   accent: string;
+  /** Set when the profile is an SSH connection made in the editor. */
+  ssh?: SshConnection | null;
+}
+
+export interface SshConnection {
+  host: string;
+  user?: string | null;
+  port?: number | null;
+  identityFile?: string | null;
+  localForwards: string[];
+  remoteForwards: string[];
+}
+
+/** The SSH fields as typed in the editor; forwards go one per line. */
+export interface SshDraft {
+  host: string;
+  user: string;
+  port: string;
+  identityFile: string;
+  localForwards: string;
+  remoteForwards: string;
 }
 
 /** What the profile editor sends to be saved. Without an id, a new profile is added. */
@@ -40,9 +61,12 @@ export interface CustomProfileDraft {
   arguments: string;
   cwd: string;
   accent: string;
+  /** Only `ssh` is saved for an SSH connection; switching back keeps the program fields. */
+  kind: "program" | "ssh";
+  ssh: SshDraft;
 }
 
-export type CustomProfileField = "name" | "executable" | "arguments" | "cwd" | "accent";
+export type CustomProfileField = "name" | "executable" | "arguments" | "cwd" | "accent" | keyof SshDraft;
 
 export interface ProfileFieldError {
   field: CustomProfileField | null;

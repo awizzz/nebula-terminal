@@ -30,6 +30,7 @@ describe("profile groups", () => {
     expect(profileGroup({ id: "wsl:Debian" })).toBe("wsl");
     expect(profileGroup({ id: "ssh:pi" })).toBe("ssh");
     expect(profileGroup(custom)).toBe("custom");
+    expect(profileGroup({ ...custom, kind: "ssh" })).toBe("ssh");
   });
 
   it("keep the order shells, WSL, SSH, custom and skip empty groups", () => {

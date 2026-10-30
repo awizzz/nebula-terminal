@@ -26,9 +26,10 @@ export const profileGroupLabels: Record<ProfileGroup, string> = {
 const groupOrder: ProfileGroup[] = ["shell", "wsl", "ssh", "custom"];
 
 /** Built-in shells keep plain ids; the others carry their source as a prefix. */
-export function profileGroup(profile: Pick<TerminalProfile, "id">): ProfileGroup {
+export function profileGroup(profile: Pick<TerminalProfile, "id"> & Partial<Pick<TerminalProfile, "kind">>): ProfileGroup {
   if (profile.id.startsWith("wsl:")) return "wsl";
-  if (profile.id.startsWith("ssh:")) return "ssh";
+  // SSH connections made in the profile editor sit with the hosts from ~/.ssh/config.
+  if (profile.id.startsWith("ssh:") || profile.kind === "ssh") return "ssh";
   if (profile.id.startsWith("custom:")) return "custom";
   return "shell";
 }

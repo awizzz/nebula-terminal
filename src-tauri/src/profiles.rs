@@ -252,16 +252,12 @@ fn detect_all(custom_path: Option<PathBuf>) -> Vec<TerminalProfile> {
         let resolved =
             custom::resolve_executable(&entry.executable).map(|executable| ResolvedProfile {
                 executable,
-                args: entry.args.clone(),
+                args: entry.arguments(),
                 cwd: entry.cwd.clone(),
             });
-        profiles.push(profile(
-            entry.id,
-            entry.name,
-            "custom",
-            &entry.accent,
-            resolved,
-        ));
+        // An SSH connection made in the editor looks like the hosts from ~/.ssh/config.
+        let kind = if entry.ssh.is_some() { "ssh" } else { "custom" };
+        profiles.push(profile(entry.id, entry.name, kind, &entry.accent, resolved));
     }
     profiles
 }
