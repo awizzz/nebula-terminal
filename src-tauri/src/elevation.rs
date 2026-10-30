@@ -18,6 +18,9 @@ use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
 /// Starts an admin copy: `--administrator <request id>`.
 pub const FLAG: &str = "--administrator";
 
+/// File Explorer's "Open in Nebula Terminal (Administrator)": `--open-as-administrator <folder>`.
+pub const EXPLORER_FLAG: &str = "--open-as-administrator";
+
 /// What the command answers when the user says no to UAC.
 const CANCELLED: &str = "cancelled";
 
@@ -83,11 +86,24 @@ pub fn is_admin_copy() -> bool {
     false
 }
 
+const REQUESTS: &str = "administrator-requests";
+
 fn requests_dir(app: &AppHandle) -> Option<PathBuf> {
     app.path()
         .app_local_data_dir()
         .ok()
-        .map(|dir| dir.join("administrator-requests"))
+        .map(|dir| dir.join(REQUESTS))
+}
+
+/// Writes a request and returns its id and file.
+fn write_request(dir: &Path, request: &Request) -> Result<(String, PathBuf), String> {
+    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    remove_stale(dir);
+    let id = uuid::Uuid::new_v4().hyphenated().to_string();
+    let path = dir.join(format!("{id}.json"));
+    let bytes = serde_json::to_vec(request).map_err(|error| error.to_string())?;
+    fs::write(&path, bytes).map_err(|error| error.to_string())?;
+    Ok((id, path))
 }
 
 /// The request id after `--administrator`, as a canonical UUID: never a path.
@@ -169,17 +185,12 @@ pub async fn open_as_administrator(
     preferences: Option<serde_json::Value>,
 ) -> Result<(), String> {
     let dir = requests_dir(&app).ok_or("There's no folder to pass the request through.")?;
-    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    remove_stale(&dir);
-    let id = uuid::Uuid::new_v4().hyphenated().to_string();
-    let path = dir.join(format!("{id}.json"));
     let request = Request {
         profile_id,
         folder,
         preferences,
     };
-    let bytes = serde_json::to_vec(&request).map_err(|error| error.to_string())?;
-    fs::write(&path, bytes).map_err(|error| error.to_string())?;
+    let (id, path) = write_request(&dir, &request)?;
 
     // The UAC prompt belongs to this window, so it comes up in front of it.
     #[cfg(windows)]
@@ -198,6 +209,26 @@ pub async fn open_as_administrator(
         let _ = fs::remove_file(&path);
     }
     result
+}
+
+/// `--open-as-administrator`, run by File Explorer before the app starts: asks UAC for
+/// an admin window in `folder`, and opens no window of its own. The admin window has no
+/// settings to copy here, so it keeps those it was last given.
+pub fn open_from_explorer(folder: Option<PathBuf>) {
+    let Some(dir) = crate::launcher::local_data_dir().map(|dir| dir.join(REQUESTS)) else {
+        return;
+    };
+    let request = Request {
+        folder: folder.map(|path| path.display().to_string()),
+        ..Request::default()
+    };
+    let Ok((id, path)) = write_request(&dir, &request) else {
+        return;
+    };
+    // Declined or failed, there is no window to say so in.
+    if run_elevated(None, &id).is_err() {
+        let _ = fs::remove_file(path);
+    }
 }
 
 #[cfg(windows)]

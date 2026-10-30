@@ -824,7 +824,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   >
                     <Switch label="Default terminal" checked={defaultTerminal?.enabled ?? false} disabled={!defaultTerminal?.supported} onChange={onDefaultTerminalChange} />
                   </Row>
-                  <Row label="Open in Nebula Terminal" description="In the right-click menu of folders in File Explorer. On Windows 11, it's under Show more options.">
+                  <Row label="Open in Nebula Terminal" description="In the right-click menu of folders in File Explorer, with a second entry that opens an administrator window. On Windows 11, they're under Show more options.">
                     <Switch label="Open in Nebula Terminal" checked={launchers?.explorerMenu ?? false} disabled={!launchers} onChange={(value) => patch("explorerMenu", value)} />
                   </Row>
                   <Row label="nebula-terminal command" description="Type “nebula-terminal .” in a shell to open a tab in its folder. Shells that are already open don't see the change.">

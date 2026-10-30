@@ -1,6 +1,6 @@
-; The app adds "Open in Nebula Terminal" to File Explorer and the nebula-terminal
-; command to the user's PATH itself (launcher.rs). Uninstalling removes both; an
-; update, which runs the old uninstaller, keeps them.
+; The app adds "Open in Nebula Terminal" and its administrator entry to File Explorer,
+; and the nebula-terminal command to the user's PATH, itself (launcher.rs).
+; Uninstalling removes them; an update, which runs the old uninstaller, keeps them.
 !macro NSIS_HOOK_PREUNINSTALL
   ${If} $UpdateMode <> 1
     ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --uninstall'
@@ -8,6 +8,9 @@
     DeleteRegKey HKCU "Software\Classes\Directory\shell\NebulaTerminal"
     DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\NebulaTerminal"
     DeleteRegKey HKCU "Software\Classes\Drive\shell\NebulaTerminal"
+    DeleteRegKey HKCU "Software\Classes\Directory\shell\NebulaTerminalAdmin"
+    DeleteRegKey HKCU "Software\Classes\Directory\Background\shell\NebulaTerminalAdmin"
+    DeleteRegKey HKCU "Software\Classes\Drive\shell\NebulaTerminalAdmin"
   ${EndIf}
 !macroend
 
