@@ -15,7 +15,7 @@ path = "src/main.rs"
 ctrlc = "3.5.2"
 crossterm = "0.29.0"
 # diff and cmp, from the uutils diffutils project.
-diffutils = "0.5.0"
+diffutils = "0.6.0"
 glob = "0.3.4"
 indexmap = "2.14.2"
 jiff = "0.2.37"
