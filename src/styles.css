@@ -673,6 +673,9 @@ kbd { font: inherit; }
   white-space: pre-wrap;
   word-break: break-all;
 }
+.workspace-row__name { width: 220px; max-width: 100%; font-weight: 500; }
+.dialog__field { display: grid; gap: 6px; margin-top: 16px; color: var(--text-2); font-size: 12px; }
+.dialog__field .field { width: 100%; }
 .dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .dialog__actions .button { min-width: 96px; justify-content: center; }
 

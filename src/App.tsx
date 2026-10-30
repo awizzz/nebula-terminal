@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, Radio, Rows2, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -14,6 +14,7 @@ import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
 import { clearSession, loadSession, saveSession } from "./session";
+import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
 import { readableOn } from "./color";
@@ -49,7 +50,8 @@ type OpenMenu =
   | { kind: "tab"; tabId: string; x: number; y: number }
   | { kind: "terminal"; x: number; y: number };
 
-type Confirmation = { title: string; body: string; action: string; run: () => void };
+/** A question before an action; `input` asks for a value (a name) first. */
+type Confirmation = { title: string; body: string; action: string; input?: { label: string; value: string }; run: (value: string) => void };
 
 function makePane(profile: TerminalProfile, cwd?: string): TerminalPaneModel {
   return { id: crypto.randomUUID(), profile, cwd };
@@ -312,6 +314,39 @@ export default function App() {
     setTabs((current) => [...current, next]);
     setActiveTabId(next.id);
   }, [currentFolder, resolveProfile]);
+
+  const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
+  const changeWorkspaces = useCallback((next: Workspace[]) => {
+    setWorkspaces(next);
+    saveWorkspaces(next);
+  }, []);
+
+  /** Asks for a name, then saves the open tabs (splits, folders, names, colors) under it. */
+  const saveTabsAsWorkspace = useCallback(() => {
+    const live = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id));
+    if (live.length === 0) return;
+    setConfirmation({
+      title: "Save these tabs as a workspace",
+      body: `${live.length} tab${live.length === 1 ? "" : "s"}, with their splits and folders. Open them again from the new-tab menu or the command palette; a workspace with the same name is replaced.`,
+      action: "Save",
+      input: { label: "Name", value: suggestName(live, workspaces) },
+      run: (name) => {
+        changeWorkspaces(withWorkspace(workspaces, name, tabsRef.current.filter((tab) => !closingRef.current.has(tab.id)), activeTabIdRef.current));
+        setNotice(`Saved “${name.trim()}”`);
+      },
+    });
+  }, [changeWorkspaces, workspaces]);
+
+  /** Opens a workspace's tabs next to the ones already open. */
+  const openSavedWorkspace = useCallback((workspace: Workspace) => {
+    const opened = openWorkspace(workspace, profiles);
+    if (!opened) {
+      setNotice(`“${workspace.name}” couldn't be opened`);
+      return;
+    }
+    setTabs((current) => [...current, ...opened.tabs]);
+    setActiveTabId(opened.activeTabId);
+  }, [profiles]);
 
   /** Opens an admin window through UAC. An admin window opens a tab instead: it already is one. */
   const openAsAdmin = useCallback((profileId?: string, folder?: string) => {
@@ -646,6 +681,8 @@ export default function App() {
     const defaultProfile = resolveProfile();
     return [
       { id: "new-tab", group: "Tabs", label: "New tab", detail: defaultProfile?.name, icon: <Plus size={15} />, shortcut: keys.newTab, run: () => openNewTab() },
+      { id: "save-workspace", group: "Workspaces", label: "Save these tabs as a workspace…", icon: <Save size={15} />, keywords: "layout session", run: saveTabsAsWorkspace },
+      ...workspaces.map((workspace): PaletteCommand => ({ id: `workspace-${workspace.id}`, group: "Workspaces", label: `Open workspace: ${workspace.name}`, detail: describeWorkspace(workspace), icon: <LayoutPanelTop size={15} />, keywords: "layout session tabs", run: () => openSavedWorkspace(workspace) })),
       ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
       { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
@@ -692,7 +729,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSearch, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -773,6 +810,10 @@ export default function App() {
             alternate: isAdministrator || profileGroup(profile) === "ssh" ? undefined : { label: "Run as administrator", icon: <ShieldCheck size={14} />, run: () => openAsAdmin(profile.id) },
           })),
         ]),
+        "separator",
+        { heading: "Workspaces" },
+        ...workspaces.map((workspace): MenuEntry => ({ id: `workspace-${workspace.id}`, label: workspace.name, detail: describeWorkspace(workspace), icon: <LayoutPanelTop size={15} />, run: () => openSavedWorkspace(workspace) })),
+        { id: "save-workspace", label: "Save these tabs as a workspace…", icon: <Save size={15} />, run: saveTabsAsWorkspace },
         "separator",
         { id: "palette", label: "Command palette", icon: <Search size={15} />, shortcut: keys.commandPalette, run: () => setPaletteOpen(true) },
         { id: "settings", label: "Settings", icon: <Settings2 size={15} />, shortcut: keys.settings, run: () => openSettings() },
@@ -958,6 +999,8 @@ export default function App() {
           launchers={launchers}
           defaultTerminal={defaultTerminal}
           onDefaultTerminalChange={changeDefaultTerminal}
+          workspaces={workspaces}
+          onWorkspacesChange={changeWorkspaces}
           administrator={isAdministrator}
         />
         <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
@@ -968,10 +1011,28 @@ export default function App() {
           <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => event.key === "Escape" && setConfirmation(null)}>
             <h2 id="confirm-title">{confirmation.title}</h2>
             <p>{confirmation.body}</p>
-            <div className="dialog__actions">
-              <button className="button" type="button" onClick={() => setConfirmation(null)}>Cancel</button>
-              <button className="button button--primary" type="button" autoFocus onClick={() => { const { run } = confirmation; setConfirmation(null); run(); }}>{confirmation.action}</button>
-            </div>
+            <form
+              className="dialog__form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const value = String(new FormData(event.currentTarget).get("value") ?? "").trim();
+                if (confirmation.input && !value) return;
+                const { run } = confirmation;
+                setConfirmation(null);
+                run(value);
+              }}
+            >
+              {confirmation.input && (
+                <label className="dialog__field">
+                  <span>{confirmation.input.label}</span>
+                  <input className="field" name="value" defaultValue={confirmation.input.value} maxLength={60} spellCheck={false} autoFocus onFocus={(event) => event.currentTarget.select()} />
+                </label>
+              )}
+              <div className="dialog__actions">
+                <button className="button" type="button" onClick={() => setConfirmation(null)}>Cancel</button>
+                <button className="button button--primary" type="submit" autoFocus={!confirmation.input}>{confirmation.action}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
