@@ -13,6 +13,7 @@ import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeIm
 import Keys from "./Keys";
 import Segmented from "./Segmented";
 import ThemeSection from "./ThemeSection";
+import { describe as describeWorkspace, renamed, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, TerminalProfile } from "../types";
 
@@ -34,6 +35,8 @@ interface SettingsPanelProps {
   onDefaultTerminalChange: (enabled: boolean) => void;
   /** An admin window: its settings come from the window that opened it. */
   administrator?: boolean;
+  workspaces: Workspace[];
+  onWorkspacesChange: (workspaces: Workspace[]) => void;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -449,7 +452,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -780,6 +783,28 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="nebula-terminal command" description="Type “nebula-terminal .” in a shell to open a tab in its folder. Shells that are already open don't see the change.">
                     <Switch label="nebula-terminal command" checked={launchers?.command ?? false} disabled={!launchers} onChange={(value) => patch("pathCommand", value)} />
                   </Row>
+                </Group>
+                <Group title="Workspaces" description={workspaces.length ? "Opened from the new-tab menu or the command palette, next to the tabs already open." : "Save the tabs you have open (splits and folders included) from the new-tab menu or the command palette, and open them again in one click."}>
+                  {workspaces.map((workspace) => (
+                    <div key={workspace.id} className="row workspace-row">
+                      <div className="row__text">
+                        <input
+                          key={workspace.name}
+                          className="field workspace-row__name"
+                          defaultValue={workspace.name}
+                          maxLength={60}
+                          spellCheck={false}
+                          aria-label={`Name of ${workspace.name}`}
+                          onBlur={(event) => event.target.value.trim() !== workspace.name && onWorkspacesChange(renamed(workspaces, workspace.id, event.target.value))}
+                          onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                        />
+                        <span className="row__description">{describeWorkspace(workspace)}, saved {new Date(workspace.savedAt).toLocaleDateString()}</span>
+                      </div>
+                      <div className="row__control">
+                        <button className="button" type="button" onClick={() => onWorkspacesChange(workspaces.filter((candidate) => candidate.id !== workspace.id))}><Trash size={14} />Delete</button>
+                      </div>
+                    </div>
+                  ))}
                 </Group>
                 <Group title="Tabs">
                   <Row label="Reopen tabs on launch" description="Restores tabs, splits and the folder each one was in. Shells start fresh.">

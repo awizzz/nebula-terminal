@@ -17,8 +17,9 @@ function persistLayout(node: LayoutNode, panes: ReadonlyMap<string, TerminalPane
   return { type: "split", direction: node.direction, sizes: node.sizes, children: node.children.map((child) => persistLayout(child, panes)) };
 }
 
-export function saveSession(tabs: TerminalTab[], activeTabId: string): void {
-  const snapshot: SessionSnapshot = {
+/** Tabs as they are saved: names, colors, splits, and the profile and folder of each pane. */
+export function snapshotOf(tabs: TerminalTab[], activeTabId: string): SessionSnapshot {
+  return {
     version: 3,
     activeTabIndex: Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId)),
     tabs: tabs.map((tab) => ({
@@ -29,8 +30,11 @@ export function saveSession(tabs: TerminalTab[], activeTabId: string): void {
       layout: persistLayout(tab.layout, new Map(tab.panes.map((pane) => [pane.id, pane]))),
     })),
   };
+}
+
+export function saveSession(tabs: TerminalTab[], activeTabId: string): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotOf(tabs, activeTabId)));
   } catch {
     // Restoring the workspace is optional; a storage failure must never block a PTY.
   }
@@ -84,11 +88,13 @@ function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, Terminal
   };
 }
 
-export function loadSession(profiles: TerminalProfile[]): { tabs: TerminalTab[]; activeTabId: string } | null {
+/**
+ * Tabs rebuilt from a saved snapshot, checked like anything read back from storage. A
+ * profile that no longer exists opens the default one; a folder that isn't valid, none.
+ */
+export function restoreSnapshot(value: unknown, profiles: TerminalProfile[]): { tabs: TerminalTab[]; activeTabId: string } | null {
   try {
-    const raw = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS].map((key) => localStorage.getItem(key)).find((value) => value !== null);
-    if (!raw) return null;
-    const snapshot = JSON.parse(raw) as SessionSnapshot;
+    const snapshot = value as SessionSnapshot;
     if (typeof snapshot !== "object" || snapshot === null || ![1, 2, 3].includes(snapshot.version) || !Array.isArray(snapshot.tabs)) return null;
 
     const available = new Map(profiles.filter((profile) => profile.available).map((profile) => [profile.id, profile]));
@@ -105,6 +111,15 @@ export function loadSession(profiles: TerminalProfile[]): { tabs: TerminalTab[];
       tabs,
       activeTabId: tabs[readIndex(snapshot.activeTabIndex, tabs.length)]!.id,
     };
+  } catch {
+    return null;
+  }
+}
+
+export function loadSession(profiles: TerminalProfile[]): { tabs: TerminalTab[]; activeTabId: string } | null {
+  try {
+    const raw = [STORAGE_KEY, ...LEGACY_STORAGE_KEYS].map((key) => localStorage.getItem(key)).find((value) => value !== null);
+    return raw ? restoreSnapshot(JSON.parse(raw), profiles) : null;
   } catch {
     return null;
   }
