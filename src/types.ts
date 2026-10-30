@@ -1,6 +1,8 @@
 import type { TerminalTheme } from "./themes";
 import type { LayoutNode } from "./layout";
 
+export type FileOpener = "auto" | "vscode" | "cursor" | "default" | "custom";
+
 export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl" | "ssh" | "custom";
 
 /**
@@ -107,6 +109,10 @@ export interface AppearancePreferences {
   /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
   pathCommand: boolean | null;
   copyOnSelect: boolean;
+  /** What Ctrl+Click on a file path in the output opens it with. */
+  fileOpener: FileOpener;
+  /** For `fileOpener: "custom"`: a command with {file}, {line} and {column}. */
+  fileOpenerCommand: string;
   /** Find options, kept from one search to the next. */
   searchCaseSensitive: boolean;
   searchWholeWord: boolean;

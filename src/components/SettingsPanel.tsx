@@ -739,6 +739,22 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <Switch label="Confirm multi-line paste" checked={preferences.confirmMultilinePaste} onChange={(value) => patch("confirmMultilinePaste", value)} />
                   </Row>
                 </Group>
+                <Group title="Files in the output">
+                  <Row label="Open files with" description="Ctrl+Click a path like src/main.rs:42 to open it at that line. Folders open in File Explorer.">
+                    <select className="field field--select" value={preferences.fileOpener} onChange={(event) => patch("fileOpener", event.target.value as AppearancePreferences["fileOpener"])}>
+                      <option value="auto">VS Code or Cursor, if installed</option>
+                      <option value="vscode">VS Code</option>
+                      <option value="cursor">Cursor</option>
+                      <option value="default">The app Windows uses for the file</option>
+                      <option value="custom">A command of my own</option>
+                    </select>
+                  </Row>
+                  {preferences.fileOpener === "custom" && (
+                    <Row label="Command" description="{file}, {line} and {column} are filled in; without {file}, the file goes last." stacked>
+                      <input className="field field--mono" value={preferences.fileOpenerCommand} spellCheck={false} aria-label="Command to open files with" placeholder="notepad++ -n{line} {file}" onChange={(event) => patch("fileOpenerCommand", event.target.value)} />
+                    </Row>
+                  )}
+                </Group>
                 <Group title="Notifications">
                   <Row label="Notify when a long command finishes" description="When its tab is in the background or the window is not in front. Works in Nebula, in PowerShell, Git Bash and WSL with shell integration, and with programs that send notifications.">
                     <Switch label="Notify when a long command finishes" checked={preferences.notifyLongCommands} onChange={(value) => patch("notifyLongCommands", value)} />

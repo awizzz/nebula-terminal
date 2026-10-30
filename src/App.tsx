@@ -890,6 +890,7 @@ export default function App() {
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
+                        onNotice={setNotice}
                         onSearchResult={setSearchResult}
                         onInput={(data) => broadcastInput(tab.id, pane.id, data)}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}
