@@ -4,7 +4,8 @@ use std::{
     env,
     ffi::OsString,
     path::{Path, PathBuf},
-    thread,
+    sync::Mutex,
+    thread::{self, JoinHandle},
 };
 use tauri::State;
 
@@ -262,16 +263,38 @@ fn detect_all(custom_path: Option<PathBuf>) -> Vec<TerminalProfile> {
     profiles
 }
 
+/// The first detection, started with the app rather than when the page asks for it:
+/// it runs while WebView2 starts and the page loads, and is ready by the time it's needed.
+pub struct EarlyDetection(Mutex<Option<JoinHandle<Vec<TerminalProfile>>>>);
+
+impl EarlyDetection {
+    pub fn start(custom_path: Option<PathBuf>) -> Self {
+        Self(Mutex::new(Some(thread::spawn(move || {
+            detect_all(custom_path)
+        }))))
+    }
+
+    fn take(&self) -> Option<JoinHandle<Vec<TerminalProfile>>> {
+        self.0.lock().ok()?.take()
+    }
+}
+
 /// Runs on a blocking thread: detection reads the registry and the disk and may start
-/// `wsl.exe`, none of which should hold up the UI or the async runtime.
+/// `wsl.exe`, none of which should hold up the UI or the async runtime. The first call
+/// gets the early detection; later ones, after a profile was saved, detect again.
 #[tauri::command]
 pub async fn detect_profiles(
     custom: State<'_, custom::CustomProfiles>,
+    early: State<'_, EarlyDetection>,
 ) -> Result<Vec<TerminalProfile>, String> {
     let path = custom.path().map(Path::to_path_buf);
-    tauri::async_runtime::spawn_blocking(move || detect_all(path))
-        .await
-        .map_err(|error| format!("Profile detection failed: {error}"))
+    let early = early.take();
+    tauri::async_runtime::spawn_blocking(move || match early.map(JoinHandle::join) {
+        Some(Ok(profiles)) => profiles,
+        _ => detect_all(path),
+    })
+    .await
+    .map_err(|error| format!("Profile detection failed: {error}"))
 }
 
 fn resolve_wsl(distro: &str, custom_cwd: bool) -> Result<ResolvedProfile, String> {
@@ -462,6 +485,15 @@ mod tests {
         fs::write(directory.join("tool.exe.exe"), b"").unwrap();
         let path = env::join_paths([directory]).unwrap();
         assert_eq!(find_in_path("tool.exe", Some(path), &[".exe".into()]), None);
+    }
+
+    #[test]
+    fn early_detection_serves_the_first_call_only() {
+        let early = EarlyDetection::start(None);
+        let first = early.take().expect("started with the app").join().unwrap();
+        // Every built-in shell is listed, installed or not.
+        assert!(first.iter().any(|profile| profile.id == "cmd"));
+        assert!(early.take().is_none());
     }
 
     #[test]

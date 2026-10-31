@@ -51,7 +51,7 @@ The webview cannot start arbitrary programs. It sends a **profile id**, and Rust
 
 Unknown ids are rejected. Distribution and host names must start with a letter or digit and contain only letters, digits, `.`, `_` and `-`, so they can never be read as options. With a custom starting folder, WSL profiles drop `--cd ~` and start in that folder.
 
-Detection runs on a blocking thread when the app starts and again after a custom profile is saved. The registry lookup, the ssh config and the custom profiles file are all local reads; the only thing that can take time is the `wsl.exe` fallback, and it runs in parallel with the rest.
+Detection runs on a thread of its own as soon as the app starts (`EarlyDetection`), while WebView2 starts and the page loads, so the list is usually ready when the page first asks for it. It runs again after a custom profile is saved. The registry lookup, the ssh config and the custom profiles file are all local reads; the only thing that can take time is the `wsl.exe` fallback, and it runs in parallel with the rest.
 
 ### Custom profiles
 
@@ -183,10 +183,19 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `platform.ts` | The Windows build number, for xterm's ConPTY handling. |
 | `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…), and broadcast input write to the other panes of a tab. |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
+| `splash.ts` | The loading screen: lights the dots of the mark at each step of the start, and removes the screen once the first shell has drawn its prompt (or after 3 seconds of a shell printing nothing). |
 
 The icon glyphs that `ls`, `tree` and the prompt print come from `assets/fonts/nebula-symbols.woff2`, a subset of the Nerd Fonts symbols built by `scripts/subset-icons.py`. It's added as a fallback after the user's terminal font and loaded before the first terminal renders.
 
 Terminal output never goes through React state. It is written straight into xterm, so a busy shell doesn't re-render the UI.
+
+### Starting up
+
+The loading screen is plain HTML in `index.html`, styled by `public/splash.css`, so it's drawn before the app's script has loaded. `public/boot.js` runs first and gives it the colors of the last session, which the app saves on every theme change (`nebula-terminal.boot.v1`). `splash.ts` then moves it along: the interface is running, the shells are being found, the first shell is starting, and its prompt is on screen. Nothing is timed; the screen only waits for real work.
+
+The screen's styles live in a file because Tauri gives every `<style>` element of the page a CSP nonce. With a nonce in `style-src`, browsers ignore `'unsafe-inline'`, and the styles xterm.js adds at run time would be blocked.
+
+When a session with several tabs is restored, only the tab in front starts its shells at first. The others start once the loading screen is gone, one tab every 120 ms, or as soon as they're shown.
 
 ### Split layouts
 

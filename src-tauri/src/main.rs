@@ -103,6 +103,7 @@ fn main() {
                 .app_config_dir()
                 .ok()
                 .map(|directory| directory.join("custom-profiles.json"));
+            app.manage(profiles::EarlyDetection::start(path.clone()));
             app.manage(custom::CustomProfiles::new(path));
             let scripts = app
                 .path()

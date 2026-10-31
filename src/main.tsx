@@ -3,6 +3,9 @@ import ReactDOM from "react-dom/client";
 import "@xterm/xterm/css/xterm.css";
 import "./styles.css";
 import App from "./App";
+import { advance } from "./splash";
+
+advance("interface", "Loading the interface");
 
 // xterm caches glyphs as it draws them, so the icon font must be ready before the
 // first terminal renders. Never wait more than a moment for it.
