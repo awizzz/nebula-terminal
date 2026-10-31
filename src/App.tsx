@@ -17,6 +17,7 @@ import { clearSession, loadSession, saveSession } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
+import * as splash from "./splash";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
@@ -132,6 +133,10 @@ export default function App() {
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [resizingDivider, setResizingDivider] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Restored tabs that aren't in front start their shells once the one in front is up.
+  const [deferredTabs, setDeferredTabs] = useState<ReadonlySet<string>>(() => new Set());
+  const deferredTabsRef = useRef(deferredTabs);
+  deferredTabsRef.current = deferredTabs;
   const hydratedRef = useRef(false);
   const closingWindowRef = useRef(false);
   /** Tabs playing their close animation; they are gone as far as every action is concerned. */
@@ -166,13 +171,27 @@ export default function App() {
       const wantsTab = launch.folder || (!restored && !launch.forHandoff);
       const opened = first && wantsTab ? [makeTab(first, launch.folder)] : [];
       if (first) opened.push(...launch.handoffs.map((handoff) => makeHandoffTab(first, handoff)));
-      setTabs([...restored?.tabs ?? [], ...opened]);
-      setActiveTabId(opened.at(-1)?.id ?? restored?.activeTabId ?? "");
+      const all = [...restored?.tabs ?? [], ...opened];
+      const activeId = opened.at(-1)?.id ?? restored?.activeTabId ?? "";
+      setTabs(all);
+      setActiveTabId(activeId);
+      setDeferredTabs(new Set(restored?.tabs.map((tab) => tab.id).filter((id) => id !== activeId)));
+      const front = all.find((tab) => tab.id === activeId) ?? all[0];
+      const shell = front?.panes.find((pane) => pane.id === front.activePaneId) ?? front?.panes[0];
+      if (shell) {
+        splash.advance("session", `Starting ${shell.profile.name}`);
+        // A shell that prints nothing yet (an ssh login, say) still gets its window.
+        window.setTimeout(splash.finish, 3000);
+      } else {
+        splash.finish();
+      }
       return;
     }
     setTabs((current) => refreshTabProfiles(current, detected));
   }, []);
 
+
+  const splashReady = useCallback(() => splash.finish(), []);
 
   /** Detects profiles again after custom profiles changed; open panes keep running. */
   const refreshProfiles = useCallback(async () => {
@@ -197,7 +216,31 @@ export default function App() {
     root.style.setProperty("--on-accent", readableOn(preferences.accent));
     root.style.setProperty("--term-surface", preferences.terminalOpacity >= 1 ? theme.background : `color-mix(in srgb, ${theme.background} ${Math.round(preferences.terminalOpacity * 100)}%, transparent)`);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
+    splash.rememberLook({ background: theme.background, foreground: theme.foreground, accent: preferences.accent, scheme: theme.scheme, animation: preferences.animationLevel });
   }, [micaFailed, nativeHost, preferences, theme]);
+
+  // Once the shell in front is up and the loading screen gone, the other restored tabs
+  // start, one at a time so typing in the first one stays smooth.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    let timer = 0;
+    const startNext = () => {
+      const [next] = deferredTabsRef.current;
+      if (cancelled || next === undefined) return;
+      setDeferredTabs((current) => new Set([...current].filter((id) => id !== next)));
+      timer = window.setTimeout(startNext, 120);
+    };
+    void splash.finished.then(startNext);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [ready]);
+
+  useEffect(() => {
+    if (deferredTabs.has(activeTabId)) setDeferredTabs((current) => new Set([...current].filter((id) => id !== activeTabId)));
+  }, [activeTabId, deferredTabs]);
 
   useEffect(() => {
     if (!nativeHost) return;
@@ -430,6 +473,7 @@ export default function App() {
         invoke<HandoffInfo[]>("take_handoffs").catch(() => []),
       ]).then(([folder, forHandoff, handoffs]) => ({ folder: folder ?? undefined, forHandoff, handoffs }))
       : Promise.resolve({ forHandoff: false, handoffs: [] });
+    splash.advance("shells", "Finding your shells");
     void Promise.all([detectProfiles(), launch])
       .then(([detected, started]) => hydrateWorkspace(detected, started))
       .catch(() => hydrateWorkspace([]))
@@ -905,6 +949,7 @@ export default function App() {
       <div className="workspace">
         {tabs.map((tab) => {
           const visible = tab.id === activeTabId;
+          if (!visible && deferredTabs.has(tab.id)) return null;
           const { panes: rects, dividers } = computeLayout(tab.layout);
           return (
             <div key={tab.id} className={`workspace__tab ${visible ? "is-visible" : ""}`} aria-hidden={!visible}>
@@ -932,6 +977,7 @@ export default function App() {
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
                         onNotice={setNotice}
+                        onReady={splashReady}
                         onSearchResult={setSearchResult}
                         onInput={(data) => broadcastInput(tab.id, pane.id, data)}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}

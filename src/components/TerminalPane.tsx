@@ -14,6 +14,7 @@ import { registerPane } from "../paneRegistry";
 import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
+import { drawsText } from "../splash";
 import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
 
@@ -41,6 +42,8 @@ interface TerminalPaneProps {
   onFolderChange: (folder: string) => void;
   /** A short message for the window, like a file that couldn't be opened. */
   onNotice?: (text: string) => void;
+  /** Called once, when the shell first draws something or fails to start. */
+  onReady?: () => void;
   onClose: () => void;
 }
 
@@ -136,6 +139,7 @@ export default function TerminalPane({
   onNotify,
   onFolderChange,
   onNotice,
+  onReady,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -149,7 +153,7 @@ export default function TerminalPane({
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -161,7 +165,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -420,21 +424,31 @@ export default function TerminalPane({
       void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => undefined);
     };
 
+    let drawn = false;
+    const ready = () => {
+      if (drawn) return;
+      drawn = true;
+      callbacksRef.current.onReady?.();
+    };
+
     if (isTauri()) {
       const channel = new Channel<PtyEvent>();
       channel.onmessage = (message) => {
         if (disposed) return;
         if (message.event === "output" && message.data.chunk) {
-          terminal.write(message.data.chunk);
+          // Ready once xterm has taken the text in; it is drawn on the next frame.
+          if (!drawn && drawsText(message.data.chunk)) terminal.write(message.data.chunk, ready);
+          else terminal.write(message.data.chunk);
           if (!visibleRef.current) callbacksRef.current.onActivity();
         } else if (message.event === "exit") {
+          ready();
           setExitCode(message.data.code ?? null);
           setConnectionState("closed");
           exited = true;
           queued = [];
           sessionRef.current = null;
         } else if (message.event === "error" && message.data.message) {
-          terminal.writeln(`\r\n\x1b[31m${message.data.message}\x1b[0m`);
+          terminal.writeln(`\r\n\x1b[31m${message.data.message}\x1b[0m`, ready);
         }
       };
 
@@ -469,12 +483,13 @@ export default function TerminalPane({
         queued = [];
       }).catch((error) => {
         if (disposed) return;
-        terminal.writeln(`\x1b[31mCould not ${handoff ? "open this console" : `start ${profile.name}`}: ${String(error)}\x1b[0m`);
+        terminal.writeln(`\x1b[31mCould not ${handoff ? "open this console" : `start ${profile.name}`}: ${String(error)}\x1b[0m`, ready);
         setConnectionState("closed");
       });
     } else {
       setConnectionState("preview");
       writePreview(terminal, profile);
+      terminal.write("", ready);
     }
 
     // terminal.paste() routes through onData with bracketed-paste markers when the shell asks for them.

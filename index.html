@@ -6,8 +6,31 @@
     <meta name="theme-color" content="#111214" />
     <link rel="icon" href="/src/assets/icon.svg" type="image/svg+xml" />
     <title>Nebula Terminal</title>
+    <!-- The colors of the last session, before anything is drawn. -->
+    <script src="/boot.js"></script>
+    <!-- The loading screen, drawn before the app's scripts load (public/splash.css). -->
+    <link rel="stylesheet" href="/splash.css" />
   </head>
   <body>
+    <div id="splash" class="splash" data-tauri-drag-region role="progressbar" aria-label="Starting Nebula Terminal" aria-valuemin="0" aria-valuemax="11" aria-valuenow="2" aria-valuetext="Starting">
+      <div class="splash__art" aria-hidden="true">
+        <svg class="splash__mark" viewBox="240 240 544 544">
+          <circle class="is-lit" cx="356" cy="270" r="18" />
+          <circle class="is-lit" cx="426" cy="314" r="49" />
+          <circle cx="360" cy="378" r="25" />
+          <circle cx="506" cy="384" r="40" />
+          <circle cx="567" cy="437" r="22" />
+          <circle cx="631" cy="513" r="58" />
+          <circle cx="625" cy="613" r="18" />
+          <circle cx="554" cy="598" r="40" />
+          <circle cx="474" cy="673" r="49" />
+          <circle cx="394" cy="691" r="18" />
+          <circle cx="420" cy="744" r="25" />
+        </svg>
+        <span class="splash__pulse"></span>
+      </div>
+      <p class="splash__step">Starting</p>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
