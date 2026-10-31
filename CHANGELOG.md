@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.1
+
+A loading screen that shows where the start is at, and a faster start.
+
+### Added
+
+- a loading screen: the dots of the ❯ light up as the app starts (the interface, finding your shells, starting the first one) in the colors of your theme, and it goes as soon as the prompt is drawn. Before, the window stayed empty until everything was ready
+
+### Changed
+
+- faster start: shells are found while the window opens instead of after the interface has loaded, and with several restored tabs, the one in front starts first and the others right after it, one at a time
+
 ## 1.6.0
 
 File paths you can click, workspaces, SSH connections from the profile editor, and an administrator entry in File Explorer.
