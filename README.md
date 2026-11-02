@@ -17,6 +17,7 @@ Download the latest installer from [Releases](https://github.com/awizzz/nebula-t
 - `Nebula.Terminal_<version>_x64-setup.exe`: per-user installer (recommended)
 - `Nebula.Terminal_<version>_x64_en-US.msi`: MSI for managed machines
 - `Nebula-Terminal-<version>-windows-x64-portable.zip`: no installation, just unzip and run
+- `Nebula.Terminal_<version>_arm64-setup.exe` and `Nebula-Terminal-<version>-windows-arm64-portable.zip`: the same for Windows on Arm (Snapdragon laptops, Surface Pro X)
 
 Releases are not code-signed yet, so Windows SmartScreen may warn you the first time. Check the file against `SHA256SUMS.txt` from the same release before you continue:
 
@@ -102,8 +103,9 @@ deploy production eu
 - **Images and progress.** Sixel and iTerm2 images show in the terminal, programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
-- **Nine themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
-- **Settings without a config file.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts. Every change applies immediately.
+- **Eleven themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
+- **Settings without a config file, and on every PC.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts, and every change applies immediately. Point Sync settings at a file in OneDrive, Dropbox or a Git repository, and your other PCs get the same themes, shortcuts and saved commands, with no account.
+- **For everyone.** Screen reader support for Narrator, NVDA and JAWS, two high contrast themes that keep every color at 7:1, and terminals that follow Windows' contrast themes on their own.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
 - **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
 - **Knows when you're done.** When a long command finishes in a tab you're not looking at, you get a Windows notification and a green or red dot on the tab.
@@ -143,7 +145,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: settings sync through a file you choose, a tray icon for the quick terminal, a screen-reader mode with a high-contrast theme, and ARM64 builds. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: command blocks, find in every tab, recent folders and saving output to a file. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
