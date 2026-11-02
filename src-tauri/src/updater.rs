@@ -116,12 +116,15 @@ pub fn install_kind() -> InstallKind {
     InstallKind::Manual
 }
 
+/// The machine this copy was built for, as the installers' names spell it.
+const ARCH: &str = if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" };
+
 fn installer_asset(release: &Release, kind: InstallKind) -> Option<&Asset> {
     release.assets.iter().find(|asset| {
         let name = asset.name.to_ascii_lowercase();
         match kind {
-            InstallKind::Installer => name.ends_with("_x64-setup.exe"),
-            InstallKind::Msi => name.ends_with(".msi") && name.contains("_x64"),
+            InstallKind::Installer => name.ends_with(&format!("_{ARCH}-setup.exe")),
+            InstallKind::Msi => name.ends_with(".msi") && name.contains(&format!("_{ARCH}")),
             InstallKind::Manual => false,
         }
     })
