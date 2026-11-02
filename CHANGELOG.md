@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.0
+
+Nebula in Windows Terminal, a workspace at startup, copy with colors and a tab switcher.
+
+### Added
+
+- Nebula in Windows Terminal: Settings → Behavior → Windows adds a Nebula profile to Windows Terminal, for people who live there. It's off until you turn it on, keeps the settings you give it in Windows Terminal, and goes away when you uninstall
+- a workspace at startup: Settings → Workspaces → At startup, open picks a saved workspace for the main window, instead of the tabs you had last time
+- copy with colors: the right-click menu and the palette copy a selection as HTML next to the plain text, so output pasted into Word, Outlook or a chat keeps its colors
+- tab switcher: `Ctrl+Shift+Space` lists the open tabs; type a few letters of a tab's name, folder or shell and press Enter
+
 ## 2.1.0
 
 More out of what's on screen: command blocks, find in every tab, recent folders and saved output.
