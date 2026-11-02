@@ -40,6 +40,7 @@ jobs:
         with:
           toolchain: 1.98.1
           components: rustfmt, clippy
+          targets: aarch64-pc-windows-msvc
 
       - name: Resolve version
         id: version
@@ -88,34 +89,44 @@ jobs:
       - name: Build installers
         run: npm run tauri build
 
+      # Windows on Arm, from this x64 runner. Only NSIS: WiX 3 can't make an ARM64 MSI.
+      - name: Build the ARM64 installer
+        run: npm run tauri build -- --target aarch64-pc-windows-msvc --bundles nsis
+
       - name: Prepare release files
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
           $target = 'target/release'
-          $exe = Join-Path $target 'nebula-terminal.exe'
-          $shell = Join-Path $target 'nebula-sh.exe'
-          if (-not (Test-Path $exe)) { throw 'nebula-terminal.exe was not built.' }
-          if (-not (Test-Path $shell)) { throw 'nebula-sh.exe was not built.' }
 
           New-Item -ItemType Directory -Force release | Out-Null
-          $portable = "release/Nebula-Terminal-$version-windows-x64-portable"
-          New-Item -ItemType Directory -Force $portable | Out-Null
-          Copy-Item $exe (Join-Path $portable 'Nebula Terminal.exe')
-          Copy-Item $shell (Join-Path $portable 'nebula-sh.exe')
-          Copy-Item README.md, LICENSE $portable
-          Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -CompressionLevel Optimal
-          Remove-Item -Recurse $portable
+          function New-Portable($arch, $folder) {
+            $app = Join-Path $folder 'nebula-terminal.exe'
+            $sidecar = Join-Path $folder 'nebula-sh.exe'
+            if (-not (Test-Path $app) -or -not (Test-Path $sidecar)) { throw "The $arch executables were not built." }
+            $portable = "release/Nebula-Terminal-$version-windows-$arch-portable"
+            New-Item -ItemType Directory -Force $portable | Out-Null
+            Copy-Item $app (Join-Path $portable 'Nebula Terminal.exe')
+            Copy-Item $sidecar (Join-Path $portable 'nebula-sh.exe')
+            Copy-Item README.md, LICENSE $portable
+            Compress-Archive -Path "$portable/*" -DestinationPath "$portable.zip" -CompressionLevel Optimal
+            Remove-Item -Recurse $portable
+            return "$portable.zip"
+          }
+          $portable = New-Portable 'x64' $target
+          $arm64 = 'target/aarch64-pc-windows-msvc/release'
+          $portableArm64 = New-Portable 'arm64' $arm64
 
           $bundles = @()
           $bundles += Get-ChildItem "$target/bundle/nsis" -File -Filter '*.exe' -ErrorAction SilentlyContinue
           $bundles += Get-ChildItem "$target/bundle/msi" -File -Filter '*.msi' -ErrorAction SilentlyContinue
-          if ($bundles.Count -eq 0) { throw 'Tauri did not produce an installer.' }
+          $bundles += Get-ChildItem "$arm64/bundle/nsis" -File -Filter '*.exe' -ErrorAction SilentlyContinue
+          if ($bundles.Count -lt 3) { throw 'Tauri did not produce every installer.' }
           # GitHub replaces spaces in asset names with dots. Use the published names here,
           # so SHA256SUMS.txt matches what people (and the in-app updater) download.
           foreach ($bundle in $bundles) { Copy-Item $bundle.FullName (Join-Path release ($bundle.Name -replace ' ', '.')) }
 
-          ./scripts/scoop-manifest.ps1 -Version $version -Zip "$portable.zip" -Repository $env:GITHUB_REPOSITORY -Out release/nebula-terminal.json
+          ./scripts/scoop-manifest.ps1 -Version $version -Zip $portable -Arm64Zip $portableArm64 -Repository $env:GITHUB_REPOSITORY -Out release/nebula-terminal.json
 
           Get-ChildItem release -File | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
