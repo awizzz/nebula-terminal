@@ -25,3 +25,19 @@ describe("themes", () => {
     expect(colors.cursor).toBe("#123456");
   });
 });
+
+describe("high contrast themes", () => {
+  it("keep every color at 7:1 against the background", async () => {
+    const { contrastRatio } = await import("./themeImport");
+    for (const id of ["high-contrast-dark", "high-contrast-light"]) {
+      const theme = themes.find((candidate) => candidate.id === id)!;
+      // Black on a dark theme and white on a light one are the background itself, by convention.
+      const skip = theme.scheme === "dark" ? [0] : [7, 15];
+      expect(contrastRatio(theme.foreground, theme.background)).toBeGreaterThanOrEqual(7);
+      expect(contrastRatio(theme.accent, theme.background)).toBeGreaterThanOrEqual(7);
+      theme.ansi.forEach((color, index) => {
+        if (!skip.includes(index)) expect(contrastRatio(color, theme.background), `${id} color ${index}`).toBeGreaterThanOrEqual(7);
+      });
+    }
+  });
+});

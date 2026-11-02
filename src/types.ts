@@ -188,6 +188,10 @@ export interface AppearancePreferences {
   /** Draw =>, != and the like as one symbol in fonts that have ligatures. */
   fontLigatures: boolean;
   savedCommands: SavedCommand[];
+  /** xterm's accessibility tree, which Narrator and NVDA read. */
+  screenReaderMode: boolean;
+  /** With a Windows contrast theme on, terminals wear High Contrast Dark or Light. */
+  followContrastThemes: boolean;
   keybindings: KeybindingPreferences;
 }
 

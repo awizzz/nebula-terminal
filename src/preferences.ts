@@ -98,6 +98,8 @@ export const defaultPreferences: AppearancePreferences = {
   clipboardWrite: true,
   fontLigatures: true,
   savedCommands: [],
+  screenReaderMode: false,
+  followContrastThemes: true,
   keybindings: defaultKeybindings,
 };
 
@@ -197,6 +199,8 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     clipboardWrite: booleanFrom(value.clipboardWrite, defaultPreferences.clipboardWrite),
     fontLigatures: booleanFrom(value.fontLigatures, defaultPreferences.fontLigatures),
     savedCommands: sanitizeSavedCommands(value.savedCommands),
+    screenReaderMode: booleanFrom(value.screenReaderMode, defaultPreferences.screenReaderMode),
+    followContrastThemes: booleanFrom(value.followContrastThemes, defaultPreferences.followContrastThemes),
     keybindings,
   };
 }
