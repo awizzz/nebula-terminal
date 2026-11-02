@@ -17,6 +17,8 @@ interface CommandPaletteProps {
   open: boolean;
   commands: PaletteCommand[];
   onClose: () => void;
+  placeholder?: string;
+  empty?: string;
 }
 
 export interface Match {
@@ -54,7 +56,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{[...text].map((char, index) => marked.has(index) ? <mark key={index}>{char}</mark> : <Fragment key={index}>{char}</Fragment>)}</>;
 }
 
-export default function CommandPalette({ open, commands, onClose }: CommandPaletteProps) {
+export default function CommandPalette({ open, commands, onClose, placeholder = "Type a command", empty = "No matching command" }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -98,7 +100,7 @@ export default function CommandPalette({ open, commands, onClose }: CommandPalet
           <input
             ref={inputRef}
             value={query}
-            placeholder="Type a command"
+            placeholder={placeholder}
             spellCheck={false}
             role="combobox"
             aria-expanded="true"
@@ -137,7 +139,7 @@ export default function CommandPalette({ open, commands, onClose }: CommandPalet
               </div>
             </Fragment>
           ))}
-          {results.length === 0 && <div className="palette__empty">No matching command</div>}
+          {results.length === 0 && <div className="palette__empty">{empty}</div>}
         </div>
         <footer className="palette__footer">
           <span><kbd>↑</kbd><kbd>↓</kbd> to navigate</span>

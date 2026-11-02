@@ -120,6 +120,7 @@ fi
 pub struct Launchers {
     explorer_menu: bool,
     command: bool,
+    windows_terminal: bool,
 }
 
 /// Adds or removes the Explorer entry and the command, and says which are there. Each
@@ -129,13 +130,19 @@ pub struct Launchers {
 pub fn sync_launchers(
     explorer_menu: Option<bool>,
     command: Option<bool>,
+    windows_terminal: Option<bool>,
 ) -> Result<Launchers, String> {
     let installed = install_kind() != InstallKind::Manual;
     let exe = env::current_exe().map_err(|error| error.to_string())?;
+    let fragment = windows_terminal_fragment().ok_or("LOCALAPPDATA is not set.")?;
     let launchers = Launchers {
         explorer_menu: explorer_menu.unwrap_or(installed),
         command: command.unwrap_or(installed),
+        // Another app's settings: only when asked, never by default.
+        windows_terminal: windows_terminal.unwrap_or_else(|| fragment.is_file()),
     };
+    sync_windows_terminal(&fragment, &exe, launchers.windows_terminal)
+        .map_err(|error| format!("Could not update Windows Terminal's profiles: {error}"))?;
     if explorer_menu.is_some() || installed {
         system::sync_explorer_menu(&exe, launchers.explorer_menu)
             .map_err(|error| format!("Could not update the File Explorer menu: {error}"))?;
@@ -146,6 +153,58 @@ pub fn sync_launchers(
             .map_err(|error| format!("Could not update the nebula-terminal command: {error}"))?;
     }
     Ok(launchers)
+}
+
+/// The Nebula profile of Windows Terminal, as a fragment it reads at startup:
+/// `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\Nebula Terminal\nebula.json`.
+fn windows_terminal_fragment() -> Option<PathBuf> {
+    let local = env::var_os("LOCALAPPDATA")?;
+    Some(
+        PathBuf::from(local)
+            .join("Microsoft")
+            .join("Windows Terminal")
+            .join("Fragments")
+            .join("Nebula Terminal")
+            .join("nebula.json"),
+    )
+}
+
+/// Always the same profile id, so Windows Terminal keeps the user's changes to it.
+const WINDOWS_TERMINAL_PROFILE: &str = "{176d5e09-7129-5910-ae63-94207641007d}";
+
+fn windows_terminal_profile(exe: &Path) -> String {
+    let shell = exe.with_file_name("nebula-sh.exe");
+    let fragment = serde_json::json!({
+        "profiles": [{
+            "guid": WINDOWS_TERMINAL_PROFILE,
+            "name": "Nebula",
+            "commandline": format!("\"{}\"", shell.display()),
+            "icon": exe.display().to_string(),
+            "startingDirectory": "%USERPROFILE%",
+        }]
+    });
+    format!(
+        "{}\n",
+        serde_json::to_string_pretty(&fragment).unwrap_or_default()
+    )
+}
+
+/// Writes the fragment with this copy's path, or removes it (and its folder, if empty).
+fn sync_windows_terminal(fragment: &Path, exe: &Path, enabled: bool) -> std::io::Result<()> {
+    if enabled {
+        if let Some(folder) = fragment.parent() {
+            std::fs::create_dir_all(folder)?;
+        }
+        return write_if_changed(fragment, &windows_terminal_profile(exe));
+    }
+    match std::fs::remove_file(fragment) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(error),
+        _ => {}
+    }
+    if let Some(folder) = fragment.parent() {
+        let _ = std::fs::remove_dir(folder);
+    }
+    Ok(())
 }
 
 fn sync_command(directory: &Path, exe: &Path, enabled: bool) -> std::io::Result<()> {
@@ -181,6 +240,9 @@ pub fn uninstall() {
     if let Some(directory) = command_directory() {
         let _ = std::fs::remove_dir_all(&directory);
         let _ = system::sync_user_path(&directory, false);
+    }
+    if let (Some(fragment), Ok(exe)) = (windows_terminal_fragment(), env::current_exe()) {
+        let _ = sync_windows_terminal(&fragment, &exe, false);
     }
 }
 
@@ -386,6 +448,28 @@ mod tests {
         let base = env::temp_dir();
         let launched = args(&["--open-as-administrator", &base.display().to_string()]);
         assert_eq!(folder_argument(&launched, Path::new("/")), Some(base));
+    }
+
+    #[test]
+    fn windows_terminal_gets_a_nebula_profile() {
+        let folder = env::temp_dir().join(format!("nebula-wt-{}", std::process::id()));
+        let fragment = folder.join("Nebula Terminal").join("nebula.json");
+        let exe = Path::new(r"C:\Program Files\Nebula Terminal\Nebula Terminal.exe");
+        sync_windows_terminal(&fragment, exe, true).unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&fragment).unwrap()).unwrap();
+        let profile = &written["profiles"][0];
+        assert_eq!(profile["guid"], WINDOWS_TERMINAL_PROFILE);
+        assert_eq!(
+            profile["commandline"],
+            r#""C:\Program Files\Nebula Terminal\nebula-sh.exe""#
+        );
+        sync_windows_terminal(&fragment, exe, false).unwrap();
+        assert!(!fragment.exists());
+        assert!(!fragment.parent().unwrap().exists());
+        // Removing what isn't there is fine.
+        sync_windows_terminal(&fragment, exe, false).unwrap();
+        let _ = fs::remove_dir_all(folder);
     }
 
     #[test]

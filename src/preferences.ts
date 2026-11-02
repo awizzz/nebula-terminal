@@ -24,6 +24,7 @@ export const defaultKeybindings: KeybindingPreferences = {
   previousCommand: "Ctrl+ArrowUp",
   togglePaneZoom: "Ctrl+Shift+Z",
   findEverywhere: "Ctrl+Shift+Alt+F",
+  switchTab: "Ctrl+Shift+Space",
   nextCommand: "Ctrl+ArrowDown",
 };
 
@@ -46,6 +47,7 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   previousCommand: "Previous command",
   togglePaneZoom: "Zoom pane",
   findEverywhere: "Find in every tab",
+  switchTab: "Switch to a tab",
   nextCommand: "Next command",
 };
 
@@ -73,6 +75,7 @@ export const defaultPreferences: AppearancePreferences = {
   restoreSession: true,
   explorerMenu: null,
   pathCommand: null,
+  windowsTerminalProfile: null,
   copyOnSelect: false,
   fileOpener: "auto",
   fileOpenerCommand: "",
@@ -105,6 +108,7 @@ export const defaultPreferences: AppearancePreferences = {
   followContrastThemes: true,
   syncFile: "",
   commandBlocks: true,
+  startupWorkspace: "",
   keybindings: defaultKeybindings,
 };
 
@@ -176,6 +180,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     openInCurrentFolder: booleanFrom(value.openInCurrentFolder, defaultPreferences.openInCurrentFolder),
     explorerMenu: typeof value.explorerMenu === "boolean" ? value.explorerMenu : null,
     pathCommand: typeof value.pathCommand === "boolean" ? value.pathCommand : null,
+    windowsTerminalProfile: typeof value.windowsTerminalProfile === "boolean" ? value.windowsTerminalProfile : null,
     shellIntegration: booleanFrom(value.shellIntegration, defaultPreferences.shellIntegration),
     restoreSession: booleanFrom(value.restoreSession, defaultPreferences.restoreSession),
     copyOnSelect: booleanFrom(value.copyOnSelect, defaultPreferences.copyOnSelect),
@@ -208,6 +213,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     screenReaderMode: booleanFrom(value.screenReaderMode, defaultPreferences.screenReaderMode),
     followContrastThemes: booleanFrom(value.followContrastThemes, defaultPreferences.followContrastThemes),
     commandBlocks: booleanFrom(value.commandBlocks, defaultPreferences.commandBlocks),
+    startupWorkspace: stringFrom(value.startupWorkspace, defaultPreferences.startupWorkspace, 64),
     syncFile: typeof value.syncFile === "string" && value.syncFile.length <= 1024 && /\.json$/i.test(value.syncFile) ? value.syncFile : "",
     keybindings,
   };

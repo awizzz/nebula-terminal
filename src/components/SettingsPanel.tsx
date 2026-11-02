@@ -1005,11 +1005,22 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Open in Nebula Terminal" description="In the right-click menu of folders in File Explorer, with a second entry that opens an administrator window. On Windows 11, they're under Show more options.">
                     <Switch label="Open in Nebula Terminal" checked={launchers?.explorerMenu ?? false} disabled={!launchers} onChange={(value) => patch("explorerMenu", value)} />
                   </Row>
+                  <Row label="Nebula in Windows Terminal" description="Adds Nebula to Windows Terminal's profiles, for when you work there. Windows Terminal picks it up the next time it starts.">
+                    <Switch label="Nebula in Windows Terminal" checked={launchers?.windowsTerminal ?? false} disabled={!launchers} onChange={(value) => patch("windowsTerminalProfile", value)} />
+                  </Row>
                   <Row label="nebula-terminal command" description="Type “nebula-terminal .” in a shell to open a tab in its folder. Shells that are already open don't see the change.">
                     <Switch label="nebula-terminal command" checked={launchers?.command ?? false} disabled={!launchers} onChange={(value) => patch("pathCommand", value)} />
                   </Row>
                 </Group>
                 <Group title="Workspaces" description={workspaces.length ? "Opened from the new-tab menu or the command palette, next to the tabs already open." : "Save the tabs you have open (splits and folders included) from the new-tab menu or the command palette, and open them again in one click."}>
+                  {workspaces.length > 0 && (
+                    <Row label="At startup, open" description="What the main window opens when Nebula Terminal starts.">
+                      <select className="field field--select" value={workspaces.some((workspace) => workspace.id === preferences.startupWorkspace) ? preferences.startupWorkspace : ""} onChange={(event) => patch("startupWorkspace", event.target.value)}>
+                        <option value="">The tabs from last time</option>
+                        {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                      </select>
+                    </Row>
+                  )}
                   {workspaces.map((workspace) => (
                     <div key={workspace.id} className="row workspace-row">
                       <div className="row__text">
