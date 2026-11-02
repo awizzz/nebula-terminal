@@ -161,6 +161,44 @@ pub fn icons_enabled() -> bool {
     }
 }
 
+/// Whether this shell runs as administrator (an elevated token), for the prompt's `admin` segment.
+pub fn is_elevated() -> bool {
+    static ELEVATED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ELEVATED.get_or_init(elevated_token)
+}
+
+#[cfg(windows)]
+fn elevated_token() -> bool {
+    use windows_sys::Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        Security::{GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_QUERY},
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
+    };
+    let mut token: HANDLE = std::ptr::null_mut();
+    let mut elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+    let mut size = 0u32;
+    // SAFETY: the token is opened and closed here, and TOKEN_ELEVATION is the size passed.
+    unsafe {
+        if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
+            return false;
+        }
+        let read = GetTokenInformation(
+            token,
+            TokenElevation,
+            std::ptr::from_mut(&mut elevation).cast(),
+            std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+            &mut size,
+        );
+        CloseHandle(token);
+        read != 0 && elevation.TokenIsElevated != 0
+    }
+}
+
+#[cfg(not(windows))]
+fn elevated_token() -> bool {
+    false
+}
+
 pub fn terminal_width() -> usize {
     terminal_size::terminal_size()
         .map(|(width, _)| usize::from(width.0))
