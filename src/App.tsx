@@ -1,7 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
 import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
@@ -20,6 +20,7 @@ import { detectProfiles } from "./customProfiles";
 import * as splash from "./splash";
 import { isQuickTerminal } from "./windowKind";
 import { lookFor, windowLook, withLook } from "./looks";
+import { windowProgress, type Progress } from "./progress";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
@@ -132,6 +133,8 @@ export default function App() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [closing, setClosing] = useState<ReadonlySet<string>>(() => new Set());
   const [notice, setNotice] = useState<string | null>(null);
+  // OSC 9;4 progress by tab, the latest report last.
+  const [progress, setProgress] = useState<ReadonlyMap<string, Progress>>(() => new Map());
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [resizingDivider, setResizingDivider] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -210,6 +213,16 @@ export default function App() {
 
   const splashReady = useCallback(() => splash.finish(), []);
 
+  const reportProgress = useCallback((tabId: string, report: Progress | null) => {
+    setProgress((current) => {
+      if (!report && !current.has(tabId)) return current;
+      const next = new Map(current);
+      next.delete(tabId);
+      if (report) next.set(tabId, report);
+      return next;
+    });
+  }, []);
+
   /** Detects profiles again after custom profiles changed; open panes keep running. */
   const refreshProfiles = useCallback(async () => {
     try {
@@ -235,6 +248,16 @@ export default function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
     splash.rememberLook({ background: theme.background, foreground: theme.foreground, accent: activeLook.accent, scheme: theme.scheme, animation: preferences.animationLevel });
   }, [activeLook.accent, micaFailed, nativeHost, preferences, theme]);
+
+  // The taskbar button shows the progress of the tab in front, or of one in the background.
+  const shownProgress = windowProgress(progress, activeTabId);
+  useEffect(() => {
+    if (!nativeHost) return;
+    const state = shownProgress
+      ? { status: shownProgress.state as ProgressBarStatus, progress: shownProgress.value }
+      : { status: ProgressBarStatus.None };
+    void getCurrentWindow().setProgressBar(state).catch(() => undefined);
+  }, [nativeHost, shownProgress?.state, shownProgress?.value]);
 
   // The theme picked last for each scheme is the one "Follow Windows" comes back to.
   useEffect(() => {
@@ -614,6 +637,7 @@ export default function App() {
     setClosing(new Set(closingIds));
     const finish = () => {
       setTabs((latest) => latest.filter((tab) => !remove.has(tab.id)));
+      setProgress((current) => [...remove].some((id) => current.has(id)) ? new Map([...current].filter(([id]) => !remove.has(id))) : current);
       remove.forEach((id) => closingIds.delete(id));
       setClosing(new Set(closingIds));
     };
@@ -1022,6 +1046,7 @@ export default function App() {
         finished={finished}
         closing={closing}
         renamingId={renaming ? renamingTabId : null}
+        progress={progress}
         newTabShortcut={keys.newTab}
         administrator={isAdministrator}
         quick={isQuickTerminal}
@@ -1073,6 +1098,7 @@ export default function App() {
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
                         onNotice={setNotice}
                         onReady={splashReady}
+                        onProgress={(report) => reportProgress(tab.id, report)}
                         onSearchResult={setSearchResult}
                         onInput={(data) => broadcastInput(tab.id, pane.id, data)}
                         onContextMenu={(x, y) => { setActivePane(tab.id, pane.id); setMenu({ kind: "terminal", x, y }); }}

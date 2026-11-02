@@ -5,6 +5,7 @@ import { ChevronDown, ChevronsUp, Plus, Search, Settings2, ShieldAlert, X } from
 import ProfileIcon from "./ProfileIcon";
 import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
+import type { Progress } from "../progress";
 
 interface TitlebarProps {
   tabs: TerminalTab[];
@@ -15,6 +16,8 @@ interface TitlebarProps {
   closing: ReadonlySet<string>;
   /** The tab whose name is being edited in place. */
   renamingId: string | null;
+  /** What programs report with OSC 9;4, by tab. */
+  progress?: ReadonlyMap<string, Progress>;
   newTabShortcut: string;
   paletteShortcut: string;
   settingsShortcut: string;
@@ -35,6 +38,23 @@ interface TitlebarProps {
   onRenameEnd: () => void;
   onOpenPalette: () => void;
   onOpenSettings: () => void;
+}
+
+const progressLabels: Record<Progress["state"], string> = { normal: "In progress", error: "Failed", indeterminate: "Working", paused: "Paused" };
+
+function TabProgress({ progress }: { progress: Progress }) {
+  const percent = progress.state === "indeterminate" ? undefined : progress.value;
+  return (
+    <span
+      className={`tab__progress is-${progress.state}`}
+      role="progressbar"
+      aria-label={progressLabels[progress.state]}
+      aria-valuenow={percent}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      style={{ "--progress": `${progress.value}%` } as CSSProperties}
+    />
+  );
 }
 
 export function tabTitle(tab: TerminalTab): string {
@@ -97,6 +117,7 @@ export default function Titlebar({
   finished,
   closing,
   renamingId,
+  progress,
   newTabShortcut,
   administrator = false,
   quick = false,
@@ -215,6 +236,7 @@ export default function Titlebar({
               }}
             >
               {color && <span className="tab__color" aria-hidden="true" />}
+              {progress?.has(tab.id) && <TabProgress progress={progress.get(tab.id)!} />}
               {renaming ? (
                 <div className="tab__button is-renaming">{details}</div>
               ) : (

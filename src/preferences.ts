@@ -91,6 +91,8 @@ export const defaultPreferences: AppearancePreferences = {
   darkThemeId: "nebula",
   lightThemeId: "nebula-light",
   markAdministratorWindows: true,
+  terminalImages: true,
+  clipboardWrite: true,
   keybindings: defaultKeybindings,
 };
 
@@ -186,6 +188,8 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     darkThemeId: normalizeThemeId(value.darkThemeId, customThemes) ?? defaultPreferences.darkThemeId,
     lightThemeId: normalizeThemeId(value.lightThemeId, customThemes) ?? defaultPreferences.lightThemeId,
     markAdministratorWindows: booleanFrom(value.markAdministratorWindows, defaultPreferences.markAdministratorWindows),
+    terminalImages: booleanFrom(value.terminalImages, defaultPreferences.terminalImages),
+    clipboardWrite: booleanFrom(value.clipboardWrite, defaultPreferences.clipboardWrite),
     keybindings,
   };
 }

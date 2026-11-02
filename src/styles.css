@@ -240,6 +240,14 @@ kbd { font: inherit; }
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 22%, transparent);
 }
 /* A tab's own color: a short bar along its top edge, full strength on the active tab. */
+/* OSC 9;4: a thin bar along the bottom of the tab, in the state's color. */
+.tab__progress { position: absolute; left: 10px; right: 10px; bottom: 2px; height: 2px; border-radius: 1px; background: var(--hover-strong); overflow: hidden; pointer-events: none; }
+.tab__progress::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--progress); border-radius: inherit; background: var(--accent); transition: width var(--dur-3) var(--ease-out); }
+.tab__progress.is-error::after { background: var(--danger); }
+.tab__progress.is-paused::after { background: var(--warning); }
+.tab__progress.is-indeterminate::after { width: 35%; animation: progress-sweep 1.3s var(--ease-standard) infinite; }
+@keyframes progress-sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+:root[data-animation="off"] .tab__progress.is-indeterminate::after { animation: none; width: 100%; opacity: 0.6; }
 .tab__color {
   position: absolute;
   z-index: 1;

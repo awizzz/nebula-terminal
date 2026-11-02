@@ -837,6 +837,14 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </select>
                   </Row>
                 </Group>
+                <Group title="What programs can do">
+                  <Row label="Show images" description="Sixel and iTerm2 images, from tools like chafa, timg or viu.">
+                    <Switch label="Show images" checked={preferences.terminalImages} onChange={(value) => patch("terminalImages", value)} />
+                  </Row>
+                  <Row label="Copy to the clipboard" description="Programs like vim or tmux, here or over SSH, can put text on your clipboard (OSC 52). They can never read it.">
+                    <Switch label="Copy to the clipboard" checked={preferences.clipboardWrite} onChange={(value) => patch("clipboardWrite", value)} />
+                  </Row>
+                </Group>
               </>}
 
               {page === "profiles" && <>
