@@ -3,7 +3,7 @@
 
 use crate::complete::{Known, NebulaCompleter};
 use crate::exec::Shell;
-use crate::prompt::NebulaPrompt;
+use crate::prompt::{NebulaPrompt, PromptState};
 use crate::sys;
 use nu_ansi_term::{Color, Style};
 use reedline::{
@@ -553,7 +553,11 @@ pub fn interactive(shell: &mut Shell) -> i32 {
             report_folder(&cwd);
             mark("A");
         }
-        let prompt = NebulaPrompt::new(shell.last_status, last_duration);
+        let prompt = NebulaPrompt::new(&PromptState {
+            status: shell.last_status,
+            duration: last_duration,
+            jobs: shell.jobs.len(),
+        });
         match editor.read_line(&prompt) {
             Ok(Signal::Success(line)) => {
                 if line.trim().is_empty() {
