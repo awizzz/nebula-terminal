@@ -93,6 +93,26 @@ export const themes: TerminalTheme[] = [
     foreground: "#f8f8f2",
     ansi: ["#21222c", "#ff5555", "#50fa7b", "#f1fa8c", "#bd93f9", "#ff79c6", "#8be9fd", "#f8f8f2", "#6272a4", "#ff6e6e", "#69ff94", "#ffffa5", "#d6acff", "#ff92df", "#a4ffff", "#ffffff"],
   },
+  // Every color at 7:1 or more against the background (WCAG AAA), for low vision and
+  // for Windows' contrast themes.
+  {
+    id: "high-contrast-dark",
+    name: "High Contrast Dark",
+    scheme: "dark",
+    accent: "#ffd60a",
+    background: "#000000",
+    foreground: "#ffffff",
+    ansi: ["#000000", "#ff7070", "#4cff4c", "#ffff3c", "#7cb8ff", "#ff7cff", "#3cffff", "#ffffff", "#b8b8b8", "#ff9a9a", "#8aff8a", "#ffff8a", "#a8d0ff", "#ffa8ff", "#8affff", "#ffffff"],
+  },
+  {
+    id: "high-contrast-light",
+    name: "High Contrast Light",
+    scheme: "light",
+    accent: "#0033cc",
+    background: "#ffffff",
+    foreground: "#000000",
+    ansi: ["#000000", "#a30000", "#005c00", "#5c4a00", "#0000b8", "#850085", "#00545e", "#ffffff", "#3d3d3d", "#8c0000", "#004d00", "#4d3d00", "#00009e", "#700070", "#00454d", "#ffffff"],
+  },
 ];
 
 /** Older releases stored these theme ids; map them to their closest replacement. */

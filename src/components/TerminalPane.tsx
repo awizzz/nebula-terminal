@@ -208,6 +208,7 @@ export default function TerminalPane({
     const terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: preferencesRef.current.terminalOpacity < 1,
+      screenReaderMode: preferencesRef.current.screenReaderMode,
       cursorBlink: preferencesRef.current.cursorBlink,
       cursorStyle: preferencesRef.current.cursorStyle,
       cursorInactiveStyle: "outline",
@@ -679,6 +680,7 @@ export default function TerminalPane({
     terminal.options.smoothScrollDuration = preferences.animationLevel === "full" ? 80 : 0;
     terminal.options.allowTransparency = translucent;
     terminal.options.theme = colors;
+    terminal.options.screenReaderMode = preferences.screenReaderMode;
     requestAnimationFrame(() => {
       try {
         fitRef.current?.fit();
@@ -686,7 +688,7 @@ export default function TerminalPane({
         // Hidden panes are fitted again when they become visible.
       }
     });
-  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback]);
+  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback, preferences.screenReaderMode]);
 
   // Sixel and iTerm2 images. The decoder is loaded the first time a pane wants it.
   useEffect(() => {

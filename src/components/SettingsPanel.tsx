@@ -844,6 +844,14 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </select>
                   </Row>
                 </Group>
+                <Group title="Accessibility">
+                  <Row label="Screen reader support" description="Narrator, NVDA and JAWS can read the output and follow the cursor. Uses a little more memory and time per line.">
+                    <Switch label="Screen reader support" checked={preferences.screenReaderMode} onChange={(value) => patch("screenReaderMode", value)} />
+                  </Row>
+                  <Row label="Follow Windows contrast themes" description="When a contrast theme is on in Windows, terminals use High Contrast Dark or Light, whatever their own theme.">
+                    <Switch label="Follow Windows contrast themes" checked={preferences.followContrastThemes} onChange={(value) => patch("followContrastThemes", value)} />
+                  </Row>
+                </Group>
                 <Group title="What programs can do">
                   <Row label="Show images" description="Sixel and iTerm2 images, from tools like chafa, timg or viu.">
                     <Switch label="Show images" checked={preferences.terminalImages} onChange={(value) => patch("terminalImages", value)} />

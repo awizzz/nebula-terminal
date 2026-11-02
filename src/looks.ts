@@ -21,9 +21,17 @@ export function lookFor(preferences: AppearancePreferences, profileId: string | 
   };
 }
 
-/** The settings a window draws with: an admin window marks itself with a red accent. */
-export function windowLook(preferences: AppearancePreferences, administrator: boolean): AppearancePreferences {
-  return administrator && preferences.markAdministratorWindows ? { ...preferences, accent: ADMIN_ACCENT } : preferences;
+/**
+ * The settings a window draws with: an admin window marks itself with a red accent, and
+ * with a Windows contrast theme on, every terminal wears a high contrast one.
+ */
+export function windowLook(preferences: AppearancePreferences, administrator: boolean, contrast?: "dark" | "light"): AppearancePreferences {
+  let look = preferences;
+  if (contrast && preferences.followContrastThemes) {
+    const theme = resolveTheme(contrast === "dark" ? "high-contrast-dark" : "high-contrast-light");
+    look = { ...look, themeId: theme.id, accent: theme.accent, profileLooks: {}, terminalOpacity: 1 };
+  }
+  return administrator && preferences.markAdministratorWindows ? { ...look, accent: ADMIN_ACCENT } : look;
 }
 
 /** Sets or clears part of a profile's look. A look with nothing left in it goes. */
