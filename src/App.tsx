@@ -57,6 +57,12 @@ interface WindowTransfer {
   snapshot: unknown;
 }
 
+/** A launch that found only the notification area icon, with the folder it asked for. */
+interface LaunchTransfer {
+  kind: "launch";
+  folder?: string | null;
+}
+
 /** Windows that keep tabs in the session: the main one and the windows opened for tabs. */
 const savesSession = !isAdministrator && !isQuickTerminal;
 const windowLabel = isTauri() ? getCurrentWindow().label : "main";
@@ -579,7 +585,10 @@ export default function App() {
     const request = administratorLaunch();
     const launch: Promise<Launch> = request
       ? Promise.resolve({ folder: request.folder ?? undefined, profileId: request.profileId ?? undefined, forHandoff: false, handoffs: [] })
-      : nativeHost && !isQuickTerminal && !isTabsWindow
+      : nativeHost && isTabsWindow
+      // A window opened later can still take a console Windows handed over.
+      ? invoke<HandoffInfo[]>("take_handoffs").catch(() => []).then((handoffs): Launch => ({ forHandoff: handoffs.length > 0, handoffs }))
+      : nativeHost && !isQuickTerminal
       ? Promise.all([
         invoke<string | null>("launch_folder").catch(() => null),
         invoke<boolean>("launched_for_handoff").catch(() => false),
@@ -588,7 +597,10 @@ export default function App() {
       : Promise.resolve({ forHandoff: false, handoffs: [] });
     splash.advance("shells", "Finding your shells");
     void Promise.all([detectProfiles(), launch])
-      .then(async ([detected, started]) => hydrateWorkspace(detected, { ...started, restored: await windowTabs(detected) }))
+      .then(async ([detected, started]) => {
+        const own = await windowTabs(detected);
+        hydrateWorkspace(detected, { ...started, ...own, folder: own.folder ?? started.folder });
+      })
       .catch(() => hydrateWorkspace([]))
       // A console that arrived while the workspace was loading.
       .then(() => openHandoffsRef.current());
@@ -598,20 +610,21 @@ export default function App() {
    * The tabs this window opens with, when they aren't the main session: a tab moved into
    * a new window, or the other windows saved at exit, which the main window opens again.
    */
-  const windowTabs = useCallback(async (detected: TerminalProfile[]): Promise<Launch["restored"]> => {
+  const windowTabs = useCallback(async (detected: TerminalProfile[]): Promise<Pick<Launch, "restored" | "folder">> => {
     if (isTabsWindow) {
-      const transfer = transferId ? await invoke<TabTransfer | WindowTransfer | null>("take_transfer", { id: transferId }).catch(() => null) : null;
-      if (transfer?.kind === "tab") return { tabs: [tabFromTransfer(transfer.tab)], activeTabId: transfer.tab.id };
-      if (transfer?.kind === "window") return restoreSnapshot(transfer.snapshot, detected);
-      return null;
+      const transfer = transferId ? await invoke<TabTransfer | WindowTransfer | LaunchTransfer | null>("take_transfer", { id: transferId }).catch(() => null) : null;
+      if (transfer?.kind === "tab") return { restored: { tabs: [tabFromTransfer(transfer.tab)], activeTabId: transfer.tab.id } };
+      if (transfer?.kind === "window") return { restored: restoreSnapshot(transfer.snapshot, detected) };
+      if (transfer?.kind === "launch") return { restored: null, folder: transfer.folder ?? undefined };
+      return { restored: null };
     }
-    if (!nativeHost || !savesSession || !preferencesRef.current.restoreSession) return undefined;
+    if (!nativeHost || !savesSession || !preferencesRef.current.restoreSession) return {};
     const others = takeWindowSessions();
     const own = loadSession(detected);
     // With no tabs of its own, the main window takes the first saved window's.
     const first = own ?? (others.length ? restoreSnapshot(others.shift(), detected) : null);
     if (others.length) void invoke("restore_windows", { snapshots: others.map((snapshot): WindowTransfer => ({ kind: "window", snapshot })) }).catch(() => undefined);
-    return first;
+    return { restored: first };
   }, [nativeHost]);
 
   /** Moves a tab, its shells still running, to the window under the pointer or a new one. */
@@ -681,10 +694,10 @@ export default function App() {
   const [quickTerminalProblem, setQuickTerminalProblem] = useState<string | null>(null);
   useEffect(() => {
     if (!nativeHost || isAdministrator || isQuickTerminal) return;
-    invoke("set_quick_terminal", { enabled: preferences.quickTerminal, shortcut: preferences.quickTerminalShortcut, height: preferences.quickTerminalHeight })
+    invoke("set_quick_terminal", { enabled: preferences.quickTerminal, shortcut: preferences.quickTerminalShortcut, height: preferences.quickTerminalHeight, keepRunning: preferences.quickTerminalKeepRunning })
       .then(() => setQuickTerminalProblem(null))
       .catch((error: unknown) => setQuickTerminalProblem(String(error)));
-  }, [nativeHost, preferences.quickTerminal, preferences.quickTerminalShortcut, preferences.quickTerminalHeight]);
+  }, [nativeHost, preferences.quickTerminal, preferences.quickTerminalShortcut, preferences.quickTerminalHeight, preferences.quickTerminalKeepRunning]);
 
   // Settings changed in the other window (main or quick) apply here too.
   useEffect(() => {
