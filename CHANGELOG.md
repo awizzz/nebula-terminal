@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0
+
+Several windows, images in the terminal, and programs that can show progress on the taskbar and copy to your clipboard.
+
+### Added
+
+- several windows: drag a tab out of the window to give it one of its own, or onto another window to move it there. Move to new window in a tab's menu does the same. The shells keep running and the tab keeps what it showed. Each window comes back at the next launch; one you close while others stay open takes its tabs with it
+- images in the terminal: Sixel and the iTerm2 protocol, for `chafa`, `timg`, `viu` and the like (Settings → Terminal → What programs can do)
+- progress on the taskbar: when a program reports its progress (winget does, with OSC 9;4), a bar fills under its tab and on the taskbar button, red if it fails. It goes when the next prompt shows
+- programs can copy to your clipboard with OSC 52: vim, tmux or a shell on an SSH server. They can never read it, and the switch is in Settings → Terminal
+
+### Changed
+
+- emoji and symbols take the width today's programs give them, so prompts and table borders stay in line
+
 ## 1.7.0
 
 A terminal that drops down on a shortcut, profiles with a look of their own, and a Nebula prompt you can shape.

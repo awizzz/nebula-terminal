@@ -1,19 +1,10 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, profiles with their own look, SSH connections, workspaces, a quick terminal, clickable file paths, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, profiles with their own look, SSH connections, workspaces, a quick terminal, images, clickable file paths, shell integration, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (1.8)
+## Next (1.9)
 
-More than one window, and terminal output that does more.
-
-- **Several windows:** drag a tab out to make a new window, or onto another window to move it there.
-- **Images in the terminal** (Sixel and the iTerm2 protocol), for tools like `chafa`, `viu` or `timg`.
-- **Progress on the taskbar:** programs that report their progress (winget, for one, with OSC 9;4) show it on the taskbar button and on their tab.
-- **Copy from programs over SSH:** OSC 52 lets vim, tmux or a remote shell put text on your clipboard.
-- **Emoji and symbols at their real width**, so table borders and prompts don't shift.
-- **The winget package:** `winget install Awizz.NebulaTerminal`, once Microsoft's reviewers get to it. Scoop already works (see the README).
-
-## Soon (1.9)
+More done in fewer keys, in the terminal and in Nebula.
 
 ### Terminal
 
@@ -26,6 +17,10 @@ More than one window, and terminal output that does more.
 - **Completion for more programs:** kubectl, gh, az, terraform and the rest, and your own completions in a simple file.
 - **`help <command>`** with short, practical examples, the way tldr does it.
 - **Ctrl+Z** to pause the command in front, then `fg` or `bg` to resume it.
+
+### Packages
+
+- **The winget package:** `winget install Awizz.NebulaTerminal`, once Microsoft's reviewers get to it. Scoop already works (see the README).
 
 ## Later
 
