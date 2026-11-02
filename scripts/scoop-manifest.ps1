@@ -5,6 +5,7 @@
 param(
     [Parameter(Mandatory)] [string] $Version,
     [Parameter(Mandatory)] [string] $Zip,
+    [string] $Arm64Zip,
     [Parameter(Mandatory)] [string] $Repository,
     [Parameter(Mandatory)] [string] $Out
 )
@@ -29,6 +30,13 @@ $manifest = [ordered]@{
     # The leading commas keep each pair as one entry instead of two.
     bin          = @(, @('Nebula Terminal.exe', 'nebula-terminal')) + @('nebula-sh.exe')
     shortcuts    = @(, @('Nebula Terminal.exe', 'Nebula Terminal'))
+}
+
+if ($Arm64Zip) {
+    $manifest.architecture['arm64'] = [ordered]@{
+        url  = "https://github.com/$Repository/releases/download/v$Version/$(Split-Path $Arm64Zip -Leaf)"
+        hash = (Get-FileHash $Arm64Zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
 }
 
 $manifest | ConvertTo-Json -Depth 5 | Set-Content $Out -Encoding utf8NoBOM
