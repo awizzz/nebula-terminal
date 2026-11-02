@@ -1054,7 +1054,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </div>
                   </Row>
                 </Group>
-                <Group title="Saved commands" description="Run them from the command palette in the pane in front: each line runs as if you typed it and pressed Enter.">
+                <Group title="Saved commands" description="Run them from the command palette in the pane in front: each line runs as if you typed it and pressed Enter. Write {{host}} or {{branch}} for a part to fill in each time.">
                   {preferences.savedCommands.map((saved, index) => (
                     <div key={saved.id} className="row saved-command">
                       <input

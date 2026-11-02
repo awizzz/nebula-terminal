@@ -21,7 +21,7 @@ import * as splash from "./splash";
 import { isQuickTerminal, isTabsWindow, transferId } from "./windowKind";
 import { lookFor, windowLook, withLook } from "./looks";
 import { windowProgress, type Progress } from "./progress";
-import { commandInput, savedCommandLabel } from "./savedCommands";
+import { blanksIn, commandInput, fillBlanks, lastBlankValues, rememberBlankValues, savedCommandLabel } from "./savedCommands";
 import { folderParts, loadRecentFolders, rememberFolder, saveRecentFolders } from "./recentFolders";
 import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
@@ -31,7 +31,7 @@ import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SavedCommand, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
@@ -87,7 +87,7 @@ type OpenMenu =
   | { kind: "terminal"; x: number; y: number };
 
 /** A question before an action; `input` asks for a value (a name) first. */
-type Confirmation = { title: string; body: string; action: string; input?: { label: string; value: string }; run: (value: string) => void };
+type Confirmation = { title: string; body: string; action: string; inputs?: { label: string; value: string; maxLength?: number }[]; run: (values: string[]) => void };
 
 function makePane(profile: TerminalProfile, cwd?: string): TerminalPaneModel {
   return { id: crypto.randomUUID(), profile, cwd };
@@ -497,8 +497,8 @@ export default function App() {
       title: "Save these tabs as a workspace",
       body: `${live.length} tab${live.length === 1 ? "" : "s"}, with their splits and folders. Open them again from the new-tab menu or the command palette; a workspace with the same name is replaced.`,
       action: "Save",
-      input: { label: "Name", value: suggestName(live, workspaces) },
-      run: (name) => {
+      inputs: [{ label: "Name", value: suggestName(live, workspaces) }],
+      run: ([name = ""]) => {
         changeWorkspaces(withWorkspace(workspaces, name, tabsRef.current.filter((tab) => !closingRef.current.has(tab.id)), activeTabIdRef.current));
         setNotice(`Saved “${name.trim()}”`);
       },
@@ -890,11 +890,27 @@ export default function App() {
     setActiveTabId(tabId);
   }, []);
 
-  /** Types a saved command into the pane in front, each line followed by Enter. */
-  const runSavedCommand = useCallback((command: string) => {
-    const pane = getPane(tabsRef.current.find((tab) => tab.id === activeTabIdRef.current)?.activePaneId);
-    pane?.write(commandInput(command));
-    pane?.focus();
+  /** Types a saved command into the pane in front, each line followed by Enter, once its blanks are filled in. */
+  const runSavedCommand = useCallback((saved: SavedCommand) => {
+    const type = (command: string) => {
+      const pane = getPane(tabsRef.current.find((tab) => tab.id === activeTabIdRef.current)?.activePaneId);
+      pane?.write(commandInput(command));
+      pane?.focus();
+    };
+    const blanks = blanksIn(saved.command);
+    if (!blanks.length) return type(saved.command);
+    const last = lastBlankValues(saved.id);
+    setConfirmation({
+      title: savedCommandLabel(saved),
+      body: "Fill in the blanks, and it runs in the pane in front.",
+      action: "Run",
+      inputs: blanks.map((name) => ({ label: name, value: last[name] ?? "", maxLength: 500 })),
+      run: (values) => {
+        const filled = Object.fromEntries(blanks.map((name, index) => [name, values[index]!]));
+        rememberBlankValues(saved.id, filled);
+        type(fillBlanks(saved.command, filled));
+      },
+    });
   }, []);
 
   /** The pane in front fills its tab, or gives the room back. */
@@ -1126,7 +1142,7 @@ export default function App() {
       ...workspaces.map((workspace): PaletteCommand => ({ id: `workspace-${workspace.id}`, group: "Workspaces", label: `Open workspace: ${workspace.name}`, detail: describeWorkspace(workspace), icon: <LayoutPanelTop size={15} />, keywords: "layout session tabs", run: () => openSavedWorkspace(workspace) })),
       ...preferences.savedCommands.filter((saved) => saved.command.trim()).map((saved): PaletteCommand => ({
         id: `saved-${saved.id}`, group: "Saved commands", label: savedCommandLabel(saved), detail: saved.name.trim() ? saved.command.split(/\r?\n/)[0] : undefined,
-        icon: <TerminalSquare size={15} />, keywords: `run snippet ${saved.command}`, run: () => runSavedCommand(saved.command),
+        icon: <TerminalSquare size={15} />, keywords: `run snippet ${saved.command}`, run: () => runSavedCommand(saved),
       })),
       { id: "save-command", group: "Saved commands", label: "Save a command…", icon: <Plus size={15} />, keywords: "snippet saved commands", run: () => openSettings("behavior") },
       ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
@@ -1510,22 +1526,23 @@ export default function App() {
               className="dialog__form"
               onSubmit={(event) => {
                 event.preventDefault();
-                const value = String(new FormData(event.currentTarget).get("value") ?? "").trim();
-                if (confirmation.input && !value) return;
+                const form = new FormData(event.currentTarget);
+                const values = (confirmation.inputs ?? []).map((_, index) => String(form.get(`value-${index}`) ?? "").trim());
+                if (values.some((value) => !value)) return;
                 const { run } = confirmation;
                 setConfirmation(null);
-                run(value);
+                run(values);
               }}
             >
-              {confirmation.input && (
-                <label className="dialog__field">
-                  <span>{confirmation.input.label}</span>
-                  <input className="field" name="value" defaultValue={confirmation.input.value} maxLength={60} spellCheck={false} autoFocus onFocus={(event) => event.currentTarget.select()} />
+              {confirmation.inputs?.map((input, index) => (
+                <label className="dialog__field" key={input.label}>
+                  <span>{input.label}</span>
+                  <input className="field" name={`value-${index}`} defaultValue={input.value} maxLength={input.maxLength ?? 60} required spellCheck={false} autoFocus={index === 0} onFocus={(event) => event.currentTarget.select()} />
                 </label>
-              )}
+              ))}
               <div className="dialog__actions">
                 <button className="button" type="button" onClick={() => setConfirmation(null)}>Cancel</button>
-                <button className="button button--primary" type="submit" autoFocus={!confirmation.input}>{confirmation.action}</button>
+                <button className="button button--primary" type="submit" autoFocus={!confirmation.inputs?.length}>{confirmation.action}</button>
               </div>
             </form>
           </div>
