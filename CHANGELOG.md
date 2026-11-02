@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.0
+
+More out of what's on screen: command blocks, find in every tab, recent folders and saved output.
+
+### Added
+
+- command blocks: point at a finished command to see it as one block, prompt to end of output, and copy the command, copy its output or run it again (shell integration: Nebula, PowerShell, Git Bash, WSL). Settings → Terminal → Commands
+- find in every tab: `Ctrl+Shift+Alt+F` searches the output of every pane, lists the lines by tab, and shows the one you pick, selected
+- recent folders: the folders your shells were in lately open a new tab from the new-tab menu and the command palette
+- save output: Save output… in a pane's right-click menu writes what it shows, scrollback included, to a text file; the palette can save the last command's output alone
+
 ## 2.0.0
 
 Your settings on every PC, Nebula Terminal for Windows on Arm and for screen reader users, and the quick terminal in the notification area.

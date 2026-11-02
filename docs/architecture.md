@@ -35,6 +35,7 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entries, and the `nebula-terminal` command on the user's PATH. |
 | `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
+| `save.rs` | Saving a pane's output to a text file the user picks. |
 | `sync.rs` | Settings sync: the file dialog to pick the file, and reading and writing it (through a temporary file, so a sync client never uploads half of it). |
 | `tray.rs` | The notification area icon, while the quick terminal keeps the app running without a window. |
 | `quick.rs` | The quick terminal: its global shortcut, registered on a thread of its own, and the window that drops down from the top of the screen. |
@@ -105,6 +106,10 @@ The main window owns the sync file. A moment after a setting changes, it writes 
 ### Windows on Arm
 
 The release workflow builds a second time for `aarch64-pc-windows-msvc` on the x64 runner, NSIS only (WiX 3 can't make an ARM64 MSI). `scripts/build-sidecar.mjs` builds Nebula for the target Tauri builds for (`TAURI_ENV_TARGET_TRIPLE`), and the updater picks `_arm64-setup.exe` or `_x64-setup.exe` by the architecture it was compiled for.
+
+### Command blocks
+
+With shell integration, each command has three OSC 133 marks: its prompt (A), the start of its output (C) and its end (D). Moving the pointer over a pane finds the finished command whose lines are under it, draws a thin line along them and shows three actions. The command itself isn't marked, so it's read back from the last line before its output, without the prompt (`commandOnPromptLine` knows Nebula's, PowerShell's, cmd's and bash's).
 
 ### Ctrl+Z in Nebula
 
@@ -214,6 +219,8 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `workspaces.ts` | Saved workspaces: named snapshots of the tabs (the same format as the session), kept in local storage, 30 at most. |
 | `progress.ts` | OSC 9;4 progress reports, and which one the taskbar button shows. |
 | `sync.ts` | What settings sync writes (everything but what belongs to one PC), reads back, and how it merges what another PC wrote. |
+| `recentFolders.ts` | The folders shells reported lately (OSC 7), newest first, for the new-tab menu and the palette. |
+| `components/FindEverywhere.tsx` | Find in every tab: every pane's buffer searched line by line, results grouped by tab. |
 | `savedCommands.ts` | Saved commands: checks on what comes back from storage, and the input that runs one. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
