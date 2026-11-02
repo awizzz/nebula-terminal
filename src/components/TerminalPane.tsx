@@ -6,6 +6,8 @@ import { SearchAddon } from "@xterm/addon-search";
 import { validPattern } from "./SearchBar";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { adjacentPrompt, joinLines } from "../commandMarks";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
@@ -15,6 +17,7 @@ import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
 import { drawsText } from "../splash";
+import { parseProgress, type Progress } from "../progress";
 import { resolveTheme, xtermTheme } from "../themes";
 import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
 
@@ -44,6 +47,8 @@ interface TerminalPaneProps {
   onNotice?: (text: string) => void;
   /** Called once, when the shell first draws something or fails to start. */
   onReady?: () => void;
+  /** OSC 9;4 progress from a program, or null when it's done. */
+  onProgress?: (progress: Progress | null) => void;
   onClose: () => void;
 }
 
@@ -102,6 +107,17 @@ function highlightCommand(line: string): string {
  * Browser-only stand-in for a shell: replays real Nebula output recorded by
  * scripts/record-preview.py. `#screenshot` drops the notice for documentation images.
  */
+/** OSC 52: programs may put text on the clipboard, never read what's there. */
+function writeOnlyClipboard(allowed: () => boolean): IClipboardProvider {
+  return {
+    readText: () => "",
+    writeText: async (_selection, text) => {
+      if (!allowed() || text.length > 1_000_000) return;
+      await navigator.clipboard?.writeText(text).catch(() => undefined);
+    },
+  };
+}
+
 function writePreview(terminal: Terminal, profile: TerminalProfile) {
   if (location.hash !== "#screenshot") {
     terminal.writeln(`\x1b[2m${profile.name} · browser preview. Shells only run inside the desktop app.\x1b[0m`);
@@ -140,6 +156,7 @@ export default function TerminalPane({
   onFolderChange,
   onNotice,
   onReady,
+  onProgress,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -153,7 +170,7 @@ export default function TerminalPane({
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -165,7 +182,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -215,6 +232,10 @@ export default function TerminalPane({
     const search = new SearchAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(search);
+    // Emoji and symbols measured as today's programs measure them.
+    terminal.loadAddon(new Unicode11Addon());
+    terminal.unicode.activeVersion = "11";
+    terminal.loadAddon(new ClipboardAddon(undefined, writeOnlyClipboard(() => preferencesRef.current.clipboardWrite)));
     // Links open with Ctrl+click so a plain click can still start a selection.
     terminal.loadAddon(new WebLinksAddon((event, uri) => {
       if (event.ctrlKey || !isTauri()) openExternal(uri);
@@ -273,6 +294,8 @@ export default function TerminalPane({
       const cursorMarker = () => terminal.registerMarker(0);
       if (mark === "A") {
         remember({ prompt: cursorMarker() });
+        // Back at the prompt, whatever reported progress is over, even if it never said so.
+        if (progress) reportProgress(null);
       } else if (mark === "C") {
         running = { command: lastTitle, startedAt: Date.now() };
         const current = commands.at(-1);
@@ -346,8 +369,18 @@ export default function TerminalPane({
     host.addEventListener("mousedown", noteSelection, true);
     host.addEventListener("click", selectOutputAt);
     // Programs can ask for a notification: OSC 9;text (iTerm2) and OSC 777;notify;title;body.
+    let progress: Progress | undefined;
+    const reportProgress = (report: Progress | null) => {
+      progress = report ?? undefined;
+      callbacksRef.current.onProgress?.(report);
+    };
     const notification = terminal.parser.registerOscHandler(9, (data) => {
       // OSC 9;4;… is a progress report (ConEmu, Windows Terminal), not a message.
+      const report = parseProgress(data, progress);
+      if (report !== undefined) {
+        reportProgress(report);
+        return true;
+      }
       if (/^\d;/.test(data)) return false;
       callbacksRef.current.onNotify(profile.name, data.slice(0, 300));
       return true;
@@ -442,6 +475,7 @@ export default function TerminalPane({
           if (!visibleRef.current) callbacksRef.current.onActivity();
         } else if (message.event === "exit") {
           ready();
+          if (progress) reportProgress(null);
           setExitCode(message.data.code ?? null);
           setConnectionState("closed");
           exited = true;
@@ -607,6 +641,30 @@ export default function TerminalPane({
       }
     });
   }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback]);
+
+  // Sixel and iTerm2 images. The decoder is loaded the first time a pane wants it.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !preferences.terminalImages) return;
+    let addon: { dispose(): void } | undefined;
+    let cancelled = false;
+    void import("@xterm/addon-image")
+      .then(({ ImageAddon }) => {
+        if (cancelled || terminalRef.current !== terminal) return;
+        const images = new ImageAddon({ sixelSupport: true, iipSupport: true, storageLimit: 64, showPlaceholder: true });
+        terminal.loadAddon(images);
+        addon = images;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      try {
+        addon?.dispose();
+      } catch {
+        // The terminal may already be disposed.
+      }
+    };
+  }, [paneId, profile.id, restartNonce, preferences.terminalImages]);
 
   // GPU rendering can be switched off live; xterm falls back to its DOM renderer.
   useEffect(() => {

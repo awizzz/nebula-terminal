@@ -173,6 +173,10 @@ export interface AppearancePreferences {
   lightThemeId: string;
   /** Admin windows get a red accent. */
   markAdministratorWindows: boolean;
+  /** Sixel and iTerm2 images that programs print. */
+  terminalImages: boolean;
+  /** OSC 52: programs may put text on the clipboard (never read it). */
+  clipboardWrite: boolean;
   keybindings: KeybindingPreferences;
 }
 
