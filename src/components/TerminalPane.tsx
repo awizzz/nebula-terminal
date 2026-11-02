@@ -706,6 +706,14 @@ export default function TerminalPane({
       jumpToCommand,
       copyLastOutput,
       hasCommandOutput: () => lastOutputLines() !== undefined,
+      copyWithColors: () => {
+        if (!terminal.hasSelection()) return false;
+        const html = serializer.serializeAsHTML({ onlySelection: true, includeGlobalBackground: true });
+        const plain = terminal.getSelection();
+        const item = new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }), "text/plain": new Blob([plain], { type: "text/plain" }) });
+        void navigator.clipboard?.write([item]).catch(() => navigator.clipboard?.writeText(plain));
+        return true;
+      },
       text: allText,
       lastOutput: lastOutputText,
       findAll: (query, caseSensitive) => {

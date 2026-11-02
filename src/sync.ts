@@ -6,7 +6,7 @@ import type { AppearancePreferences } from "./types";
  * one PC stays on it: Explorer and PATH entries, the starting folder, what opens files
  * (a command that runs), the background image (heavy), and the sync file itself.
  */
-const LOCAL_ONLY = ["explorerMenu", "pathCommand", "startingFolder", "workingDirectory", "fileOpener", "fileOpenerCommand", "backgroundImage", "syncFile"] as const satisfies ReadonlyArray<keyof AppearancePreferences>;
+const LOCAL_ONLY = ["explorerMenu", "pathCommand", "windowsTerminalProfile", "startingFolder", "workingDirectory", "fileOpener", "fileOpenerCommand", "backgroundImage", "syncFile"] as const satisfies ReadonlyArray<keyof AppearancePreferences>;
 
 const STATE_KEY = "nebula-terminal.sync.v1";
 

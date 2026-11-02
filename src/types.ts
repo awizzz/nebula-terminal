@@ -100,6 +100,7 @@ export interface KeybindingPreferences {
   previousCommand: string;
   togglePaneZoom: string;
   findEverywhere: string;
+  switchTab: string;
   nextCommand: string;
 }
 
@@ -148,6 +149,8 @@ export interface AppearancePreferences {
   explorerMenu: boolean | null;
   /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
   pathCommand: boolean | null;
+  /** Nebula in Windows Terminal's profiles. Null until the user decides: then it's off. */
+  windowsTerminalProfile: boolean | null;
   copyOnSelect: boolean;
   /** What Ctrl+Click on a file path in the output opens it with. */
   fileOpener: FileOpener;
@@ -199,6 +202,8 @@ export interface AppearancePreferences {
   syncFile: string;
   /** Pointing at a finished command shows its block and actions (shell integration). */
   commandBlocks: boolean;
+  /** The workspace the main window opens at startup, instead of the last session; "" for none. */
+  startupWorkspace: string;
   keybindings: KeybindingPreferences;
 }
 
@@ -279,6 +284,7 @@ export interface PtyEvent {
 export interface Launchers {
   explorerMenu: boolean;
   command: boolean;
+  windowsTerminal: boolean;
 }
 
 /** A console Windows handed over, waiting for a tab (Rust's `take_handoffs`). */

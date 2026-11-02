@@ -11,6 +11,8 @@ export interface FoundLine {
 /** Imperative actions a mounted terminal pane exposes to menus and shortcuts. */
 export interface PaneHandle {
   copy: () => void;
+  /** Copies the selection as HTML with its colors, and as plain text. False without one. */
+  copyWithColors: () => boolean;
   paste: () => void;
   selectAll: () => void;
   clear: () => void;

@@ -164,6 +164,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState<SettingsPage | undefined>();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The palette also switches tabs: the same list, with the open tabs only.
+  const [switchingTabs, setSwitchingTabs] = useState(false);
   const [findEverywhereOpen, setFindEverywhereOpen] = useState(false);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -622,6 +624,11 @@ export default function App() {
       if (transfer?.kind === "launch") return { restored: null, folder: transfer.folder ?? undefined };
       return { restored: null };
     }
+    // A workspace chosen for startup wins over the last session.
+    const startup = savesSession && preferencesRef.current.startupWorkspace
+      ? loadWorkspaces().find((workspace) => workspace.id === preferencesRef.current.startupWorkspace)
+      : undefined;
+    if (startup) return { restored: openWorkspace(startup, detected) };
     if (!nativeHost || !savesSession || !preferencesRef.current.restoreSession) return {};
     const others = takeWindowSessions();
     const own = loadSession(detected);
@@ -689,10 +696,10 @@ export default function App() {
   const [launchers, setLaunchers] = useState<Launchers | null>(null);
   useEffect(() => {
     if (!nativeHost || isAdministrator || isQuickTerminal) return;
-    invoke<Launchers>("sync_launchers", { explorerMenu: preferences.explorerMenu, command: preferences.pathCommand })
+    invoke<Launchers>("sync_launchers", { explorerMenu: preferences.explorerMenu, command: preferences.pathCommand, windowsTerminal: preferences.windowsTerminalProfile })
       .then(setLaunchers)
       .catch((error) => setNotice(String(error)));
-  }, [nativeHost, preferences.explorerMenu, preferences.pathCommand]);
+  }, [nativeHost, preferences.explorerMenu, preferences.pathCommand, preferences.windowsTerminalProfile]);
 
   // The main window owns the quick terminal's shortcut, so there's one, whichever window changed it.
   const [quickTerminalProblem, setQuickTerminalProblem] = useState<string | null>(null);
@@ -1093,6 +1100,24 @@ export default function App() {
   }, [activePane?.id]);
 
   const keys = preferences.keybindings;
+  const tabCommands = useMemo(() => tabs.filter((tab) => !closing.has(tab.id)).map((tab, index): PaletteCommand => {
+    const pane = tab.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab.panes[0];
+    return {
+      id: `tab-${tab.id}`,
+      group: "Tabs",
+      label: tabTitle(tab),
+      detail: pane?.cwd ? folderParts(pane.cwd).name : pane?.profile.name,
+      icon: pane ? <ProfileIcon kind={pane.profile.kind} accent={pane.profile.accent} size={15} /> : undefined,
+      shortcut: index < 9 ? `Ctrl+Alt+${index + 1}` : undefined,
+      keywords: tab.panes.map((candidate) => `${candidate.profile.name} ${candidate.cwd ?? ""}`).join(" "),
+      run: () => setActiveTabId(tab.id),
+    };
+  }), [closing, tabs]);
+  const openTabSwitcher = useCallback(() => {
+    setSwitchingTabs(true);
+    setPaletteOpen(true);
+  }, []);
+
   const commands = useMemo<PaletteCommand[]>(() => {
     const defaultProfile = resolveProfile();
     return [
@@ -1131,12 +1156,14 @@ export default function App() {
       })),
       { id: "find", group: "Terminal", label: "Find", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "copy", group: "Terminal", label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", run: () => getPane(activePane?.id)?.copy() },
+      { id: "copy-colors", group: "Terminal", label: "Copy with colors", icon: <Palette size={15} />, keywords: "html rich formatted", run: () => { if (!getPane(activePane?.id)?.copyWithColors()) setNotice("Select some text first"); } },
       { id: "paste", group: "Terminal", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => getPane(activePane?.id)?.paste() },
       { id: "select-all", group: "Terminal", label: "Select all", icon: <TextSelect size={15} />, run: () => getPane(activePane?.id)?.selectAll() },
       { id: "clear", group: "Terminal", label: "Clear scrollback", icon: <Eraser size={15} />, run: () => getPane(activePane?.id)?.clear() },
       { id: "previous-command", group: "Terminal", label: "Previous command", icon: <ArrowUpToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.previousCommand, run: () => jumpToCommand(-1) },
       { id: "next-command", group: "Terminal", label: "Next command", icon: <ArrowDownToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.nextCommand, run: () => jumpToCommand(1) },
       { id: "copy-output", group: "Terminal", label: "Copy last command output", icon: <ClipboardCheck size={15} />, keywords: "result", run: copyLastOutput },
+      { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput(false) },
       { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput(true) },
@@ -1182,6 +1209,7 @@ export default function App() {
       if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
       if (action(keys.findEverywhere, () => setFindEverywhereOpen(true))) return;
+      if (action(keys.switchTab, openTabSwitcher)) return;
       if (action(keys.nextTab, () => cycleTab(1))) return;
       if (action(keys.previousTab, () => cycleTab(-1))) return;
       if (action(keys.zoomIn, () => adjustFontSize(1))) return;
@@ -1216,7 +1244,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
@@ -1284,6 +1312,7 @@ export default function App() {
     const full = (activeTab?.panes.length ?? 0) >= MAX_PANES;
     return [
       { id: "copy", label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", disabled: !pane?.hasSelection(), run: () => pane?.copy() },
+      { id: "copy-colors", label: "Copy with colors", icon: <Palette size={15} />, disabled: !pane?.hasSelection(), run: () => pane?.copyWithColors() },
       { id: "paste", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => pane?.paste() },
       { id: "select-all", label: "Select all", icon: <TextSelect size={15} />, run: () => pane?.selectAll() },
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
@@ -1463,7 +1492,13 @@ export default function App() {
           onWorkspacesChange={changeWorkspaces}
           administrator={isAdministrator}
         />
-        <CommandPalette open={paletteOpen} commands={commands} onClose={() => { setPaletteOpen(false); closeOverlayFocus(); }} />
+        <CommandPalette
+          open={paletteOpen}
+          commands={switchingTabs ? tabCommands : commands}
+          placeholder={switchingTabs ? "Type part of a tab's name, folder or shell" : undefined}
+          empty={switchingTabs ? "No tab matches" : undefined}
+          onClose={() => { setPaletteOpen(false); setSwitchingTabs(false); closeOverlayFocus(); }}
+        />
       </Suspense>
 
       {confirmation && (
