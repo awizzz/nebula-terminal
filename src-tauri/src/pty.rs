@@ -6,7 +6,7 @@ use crate::{
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     io::{self, Read, Write},
     path::PathBuf,
     sync::{
@@ -14,6 +14,7 @@ use std::{
         mpsc, Arc, Mutex,
     },
     thread,
+    time::Duration,
 };
 use tauri::{ipc::Channel, State};
 
@@ -91,6 +92,98 @@ enum Request {
 struct SessionHandle {
     requests: Mutex<mpsc::Sender<Request>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    events: Arc<Events>,
+}
+
+/// How much output a session keeps while its tab moves to another window.
+const MAX_PARKED_BYTES: usize = 4 * 1024 * 1024;
+/// A parked session nobody attaches to within this time is stopped.
+const PARKED_FOR_AT_MOST: Duration = Duration::from_secs(30);
+
+/// Where a session's events go: the pane that shows it, or a queue while that pane moves
+/// to another window. The shell keeps running either way.
+enum Sink {
+    Pane(Channel<PtyEvent>),
+    Parked {
+        queue: VecDeque<PtyEvent>,
+        bytes: usize,
+        generation: u64,
+    },
+}
+
+struct Events {
+    sink: Mutex<Sink>,
+    parkings: AtomicU64,
+}
+
+impl Events {
+    fn new(channel: Channel<PtyEvent>) -> Arc<Self> {
+        Arc::new(Self {
+            sink: Mutex::new(Sink::Pane(channel)),
+            parkings: AtomicU64::new(0),
+        })
+    }
+
+    /// False once the pane's window is gone, so the reader can stop.
+    fn send(&self, event: PtyEvent) -> bool {
+        let Ok(mut sink) = self.sink.lock() else {
+            return false;
+        };
+        match &mut *sink {
+            Sink::Pane(channel) => channel.send(event).is_ok(),
+            Sink::Parked { queue, bytes, .. } => {
+                *bytes += event.size();
+                queue.push_back(event);
+                // The oldest output goes first; the pane gets its screen from the old window anyway.
+                while *bytes > MAX_PARKED_BYTES {
+                    match queue.pop_front() {
+                        Some(dropped) => *bytes -= dropped.size(),
+                        None => break,
+                    }
+                }
+                true
+            }
+        }
+    }
+
+    /// Queues events from now on, and says which parking this is.
+    fn park(&self) -> Result<u64, String> {
+        let generation = self.parkings.fetch_add(1, Ordering::Relaxed) + 1;
+        *self.sink.lock().map_err(|_| lock_error("event"))? = Sink::Parked {
+            queue: VecDeque::new(),
+            bytes: 0,
+            generation,
+        };
+        Ok(generation)
+    }
+
+    /// Sends what was queued to the new pane, then everything that follows.
+    fn attach(&self, channel: Channel<PtyEvent>) -> Result<(), String> {
+        let mut sink = self.sink.lock().map_err(|_| lock_error("event"))?;
+        if let Sink::Parked { queue, .. } = &mut *sink {
+            for event in queue.drain(..) {
+                let _ = channel.send(event);
+            }
+        }
+        *sink = Sink::Pane(channel);
+        Ok(())
+    }
+
+    fn still_parked(&self, generation: u64) -> bool {
+        self.sink
+            .lock()
+            .is_ok_and(|sink| matches!(&*sink, Sink::Parked { generation: current, .. } if *current == generation))
+    }
+}
+
+impl PtyEvent {
+    fn size(&self) -> usize {
+        match self {
+            PtyEvent::Output { chunk, .. } => chunk.len(),
+            PtyEvent::Error { message, .. } => message.len(),
+            PtyEvent::Exit { .. } => 0,
+        }
+    }
 }
 
 /// The console behind a session, which takes its resizes: the pseudo-console the app
@@ -136,7 +229,7 @@ fn run_io(
     receiver: mpsc::Receiver<Request>,
     mut writer: Box<dyn Write + Send>,
     mut console: Box<dyn Console>,
-    channel: Channel<PtyEvent>,
+    events: Arc<Events>,
     session_id: String,
 ) {
     for request in receiver {
@@ -150,7 +243,7 @@ fn run_io(
                 .map_err(|error| format!("PTY resize failed: {error}")),
         };
         if let Err(message) = result {
-            let _ = channel.send(PtyEvent::Error {
+            events.send(PtyEvent::Error {
                 session_id: session_id.clone(),
                 message,
             });
@@ -300,12 +393,14 @@ fn spawn_session(
     } = parts;
     let session_id = format!("s{}", state.inner.next_id.fetch_add(1, Ordering::Relaxed));
     let (requests, receiver) = mpsc::channel();
-    let io_channel = on_event.clone();
+    let events = Events::new(on_event);
+    let io_events = events.clone();
     let io_session_id = session_id.clone();
-    thread::spawn(move || run_io(receiver, writer, console, io_channel, io_session_id));
+    thread::spawn(move || run_io(receiver, writer, console, io_events, io_session_id));
     let handle = Arc::new(SessionHandle {
         requests: Mutex::new(requests),
         killer: Mutex::new(killer),
+        events: events.clone(),
     });
 
     state
@@ -315,7 +410,7 @@ fn spawn_session(
         .map_err(|_| lock_error("session"))?
         .insert(session_id.clone(), handle);
 
-    let output_channel = on_event.clone();
+    let output_events = events.clone();
     let output_session_id = session_id.clone();
     thread::spawn(move || {
         let mut buffer = [0_u8; 8192];
@@ -325,7 +420,7 @@ fn spawn_session(
                 Ok(0) => {
                     let chunk = decoder.finish();
                     if !chunk.is_empty() {
-                        let _ = output_channel.send(PtyEvent::Output {
+                        output_events.send(PtyEvent::Output {
                             session_id: output_session_id.clone(),
                             chunk,
                         });
@@ -337,18 +432,15 @@ fn spawn_session(
                     if chunk.is_empty() {
                         continue;
                     }
-                    if output_channel
-                        .send(PtyEvent::Output {
-                            session_id: output_session_id.clone(),
-                            chunk,
-                        })
-                        .is_err()
-                    {
+                    if !output_events.send(PtyEvent::Output {
+                        session_id: output_session_id.clone(),
+                        chunk,
+                    }) {
                         break;
                     }
                 }
                 Err(error) => {
-                    let _ = output_channel.send(PtyEvent::Error {
+                    output_events.send(PtyEvent::Error {
                         session_id: output_session_id.clone(),
                         message: format!("PTY read failed: {error}"),
                     });
@@ -359,18 +451,18 @@ fn spawn_session(
     });
 
     let state_inner = state.inner.clone();
-    let wait_channel = on_event;
+    let wait_events = events;
     let wait_session_id = session_id.clone();
     thread::spawn(move || {
         let result = wait();
         let code = *result.as_ref().unwrap_or(&1);
         if let Err(error) = result {
-            let _ = wait_channel.send(PtyEvent::Error {
+            wait_events.send(PtyEvent::Error {
                 session_id: wait_session_id.clone(),
                 message: format!("Process wait failed: {error}"),
             });
         }
-        let _ = wait_channel.send(PtyEvent::Exit {
+        wait_events.send(PtyEvent::Exit {
             session_id: wait_session_id.clone(),
             code,
         });
@@ -460,6 +552,54 @@ pub fn attach_handoff(
     Ok(session_id)
 }
 
+/// Holds a session's output while its tab moves to another window. If no window takes
+/// it in time, the shell is stopped rather than left running out of sight.
+#[tauri::command]
+pub fn park_session(session_id: String, state: State<'_, PtyState>) -> Result<(), String> {
+    let handle = session(&state, &session_id)?;
+    let generation = handle.events.park()?;
+    let inner = state.inner.clone();
+    thread::spawn(move || {
+        thread::sleep(PARKED_FOR_AT_MOST);
+        if !handle.events.still_parked(generation) {
+            return;
+        }
+        let removed = inner
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| sessions.remove(&session_id));
+        if let Some(removed) = removed {
+            if let Ok(mut killer) = removed.killer.lock() {
+                let _ = killer.kill();
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Connects a parked session to the pane that shows it now, at that pane's size.
+#[tauri::command]
+pub fn attach_session(
+    session_id: String,
+    cols: u16,
+    rows: u16,
+    on_event: Channel<PtyEvent>,
+    state: State<'_, PtyState>,
+) -> Result<(), String> {
+    session(&state, &session_id)?.events.attach(on_event)?;
+    send(
+        &state,
+        &session_id,
+        Request::Resize(PtySize {
+            rows: rows.max(1),
+            cols: cols.max(1),
+            pixel_width: 0,
+            pixel_height: 0,
+        }),
+    )
+}
+
 fn session(state: &PtyState, session_id: &str) -> Result<Arc<SessionHandle>, String> {
     state
         .inner
@@ -532,7 +672,65 @@ pub async fn close_session(session_id: String, state: State<'_, PtyState>) -> Re
 
 #[cfg(test)]
 mod tests {
-    use super::Utf8StreamDecoder;
+    use super::{Events, PtyEvent, Utf8StreamDecoder, MAX_PARKED_BYTES};
+    use std::sync::{Arc, Mutex};
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    fn recording() -> (Channel<PtyEvent>, Arc<Mutex<Vec<String>>>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let channel = Channel::new(move |body| {
+            if let InvokeResponseBody::Json(json) = body {
+                log.lock().unwrap().push(json);
+            }
+            Ok(())
+        });
+        (channel, seen)
+    }
+
+    fn output(chunk: &str) -> PtyEvent {
+        PtyEvent::Output {
+            session_id: "s1".into(),
+            chunk: chunk.into(),
+        }
+    }
+
+    #[test]
+    fn a_parked_session_catches_up_in_its_new_pane() {
+        let (first, first_seen) = recording();
+        let events = Events::new(first);
+        assert!(events.send(output("one")));
+        let generation = events.park().unwrap();
+        assert!(events.still_parked(generation));
+        assert!(events.send(output("two")));
+        assert!(events.send(output("three")));
+        assert_eq!(first_seen.lock().unwrap().len(), 1);
+
+        let (second, second_seen) = recording();
+        events.attach(second).unwrap();
+        assert!(!events.still_parked(generation));
+        assert!(events.send(output("four")));
+        let seen = second_seen.lock().unwrap();
+        assert_eq!(seen.len(), 3);
+        assert!(seen[0].contains("two") && seen[1].contains("three") && seen[2].contains("four"));
+    }
+
+    #[test]
+    fn a_parked_session_keeps_only_recent_output() {
+        let (channel, _) = recording();
+        let events = Events::new(channel);
+        events.park().unwrap();
+        let chunk = "x".repeat(1024 * 1024);
+        for _ in 0..6 {
+            events.send(output(&chunk));
+        }
+        events.send(output("last"));
+        let (next, seen) = recording();
+        events.attach(next).unwrap();
+        let seen = seen.lock().unwrap();
+        assert!(seen.len() <= MAX_PARKED_BYTES / chunk.len() + 1);
+        assert!(seen.last().unwrap().contains("last"));
+    }
 
     #[test]
     fn preserves_characters_split_across_reads() {

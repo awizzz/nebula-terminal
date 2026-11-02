@@ -166,12 +166,20 @@ pub fn create_window(app: &tauri::App, administrator: bool) -> tauri::Result<()>
         builder = builder
             .title("Administrator: Nebula Terminal")
             .initialization_script(format!("window.__NEBULA_ADMIN__ = {request};"));
-        if let Ok(dir) = app.path().app_local_data_dir() {
-            builder = builder.data_directory(dir.join(DATA_FOLDER));
+        if let Some(dir) = admin_data_dir(app.handle()) {
+            builder = builder.data_directory(dir);
         }
     }
     builder.build()?;
     Ok(())
+}
+
+/// Where the windows of an admin copy keep their web data.
+pub fn admin_data_dir(app: &AppHandle) -> Option<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .ok()
+        .map(|dir| dir.join(DATA_FOLDER))
 }
 
 /// Opens an admin window on `profile_id`, through UAC. Fails with "cancelled" when the

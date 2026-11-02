@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -13,12 +13,12 @@ import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, isPreferencesKey, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
-import { clearSession, loadSession, saveSession } from "./session";
+import { clearSession, forgetWindowSession, loadSession, restoreSnapshot, saveSession, saveWindowSession, takeWindowSessions } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
 import * as splash from "./splash";
-import { isQuickTerminal } from "./windowKind";
+import { isQuickTerminal, isTabsWindow, transferId } from "./windowKind";
 import { lookFor, windowLook, withLook } from "./looks";
 import { windowProgress, type Progress } from "./progress";
 import { readableOn } from "./color";
@@ -40,6 +40,28 @@ interface Launch {
   profileId?: string;
   forHandoff: boolean;
   handoffs: HandoffInfo[];
+  /** Tabs to open instead of the saved session: a window's own, or those moved into it. */
+  restored?: { tabs: TerminalTab[]; activeTabId: string } | null;
+}
+
+/** A tab on its way to another window (windows.rs keeps it until that window asks). */
+interface TabTransfer {
+  kind: "tab";
+  tab: Pick<TerminalTab, "id" | "title" | "customTitle" | "color" | "layout" | "activePaneId" | "panes">;
+}
+
+/** The tabs another window had when the app closed. */
+interface WindowTransfer {
+  kind: "window";
+  snapshot: unknown;
+}
+
+/** Windows that keep tabs in the session: the main one and the windows opened for tabs. */
+const savesSession = !isAdministrator && !isQuickTerminal;
+const windowLabel = isTauri() ? getCurrentWindow().label : "main";
+
+function tabFromTransfer(transfer: TabTransfer["tab"]): TerminalTab {
+  return { ...transfer, broadcast: false };
 }
 
 const TAB_CLOSE_MS = 150;
@@ -143,6 +165,7 @@ export default function App() {
   const deferredTabsRef = useRef(deferredTabs);
   deferredTabsRef.current = deferredTabs;
   const hydratedRef = useRef(false);
+  const removeTabsRef = useRef<(ids: string[]) => void>(() => undefined);
   const closingWindowRef = useRef(false);
   /** Tabs playing their close animation; they are gone as far as every action is concerned. */
   const closingRef = useRef(new Set<string>());
@@ -186,7 +209,9 @@ export default function App() {
       hydratedRef.current = true;
       setReady(true);
       // An admin window opens what it was asked for, never the tabs of a past session.
-      const restored = preferencesRef.current.restoreSession && !isAdministrator && !isQuickTerminal ? loadSession(detected) : null;
+      const restored = launch.restored !== undefined
+        ? launch.restored
+        : preferencesRef.current.restoreSession && savesSession && !isTabsWindow ? loadSession(detected) : null;
       const first = pickProfile(detected, launch.profileId ?? preferencesRef.current.defaultProfileId);
       const wantsTab = launch.folder || (!restored && !launch.forHandoff);
       const opened = first && wantsTab ? [makeTab(first, launch.folder)] : [];
@@ -311,7 +336,9 @@ export default function App() {
   }, [nativeHost, preferences.backgroundMode, theme.scheme]);
 
   useEffect(() => {
-    if (hydratedRef.current && preferences.restoreSession && tabs.length && !isAdministrator && !isQuickTerminal) saveSession(tabs, activeTabId);
+    if (!hydratedRef.current || !preferences.restoreSession || !tabs.length || !savesSession) return;
+    if (isTabsWindow) saveWindowSession(windowLabel, tabs, activeTabId);
+    else saveSession(tabs, activeTabId);
   }, [tabs, activeTabId, preferences.restoreSession]);
 
   useEffect(() => {
@@ -380,11 +407,19 @@ export default function App() {
     if (!nativeHost) return;
     let unlisten: (() => void) | undefined;
     let disposed = false;
-    void getCurrentWindow().onCloseRequested((event) => {
+    void getCurrentWindow().onCloseRequested(async (event) => {
       const count = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id)).length;
-      if (closingWindowRef.current || !preferencesRef.current.confirmCloseMultipleTabs || count <= 1) return;
-      event.preventDefault();
-      setConfirmation({ title: `Close ${count} tabs?`, body: "Every shell running in this window will be stopped.", action: "Close all", run: closeWindow });
+      if (!closingWindowRef.current && preferencesRef.current.confirmCloseMultipleTabs && count > 1) {
+        event.preventDefault();
+        setConfirmation({ title: `Close ${count} tabs?`, body: "Every shell running in this window will be stopped.", action: "Close all", run: closeWindow });
+        return;
+      }
+      // A window closed while others stay open takes its tabs with it, as in Windows
+      // Terminal. The last one keeps them for the next launch.
+      if (savesSession && await invoke<number>("terminal_window_count").catch(() => 1) > 1) {
+        if (isTabsWindow) forgetWindowSession(windowLabel);
+        else clearSession();
+      }
     }).then((dispose) => { if (disposed) dispose(); else unlisten = dispose; });
     return () => { disposed = true; unlisten?.(); };
   }, [closeWindow, nativeHost]);
@@ -526,7 +561,7 @@ export default function App() {
     const request = administratorLaunch();
     const launch: Promise<Launch> = request
       ? Promise.resolve({ folder: request.folder ?? undefined, profileId: request.profileId ?? undefined, forHandoff: false, handoffs: [] })
-      : nativeHost && !isQuickTerminal
+      : nativeHost && !isQuickTerminal && !isTabsWindow
       ? Promise.all([
         invoke<string | null>("launch_folder").catch(() => null),
         invoke<boolean>("launched_for_handoff").catch(() => false),
@@ -535,11 +570,76 @@ export default function App() {
       : Promise.resolve({ forHandoff: false, handoffs: [] });
     splash.advance("shells", "Finding your shells");
     void Promise.all([detectProfiles(), launch])
-      .then(([detected, started]) => hydrateWorkspace(detected, started))
+      .then(async ([detected, started]) => hydrateWorkspace(detected, { ...started, restored: await windowTabs(detected) }))
       .catch(() => hydrateWorkspace([]))
       // A console that arrived while the workspace was loading.
       .then(() => openHandoffsRef.current());
   }, [hydrateWorkspace, nativeHost]);
+
+  /**
+   * The tabs this window opens with, when they aren't the main session: a tab moved into
+   * a new window, or the other windows saved at exit, which the main window opens again.
+   */
+  const windowTabs = useCallback(async (detected: TerminalProfile[]): Promise<Launch["restored"]> => {
+    if (isTabsWindow) {
+      const transfer = transferId ? await invoke<TabTransfer | WindowTransfer | null>("take_transfer", { id: transferId }).catch(() => null) : null;
+      if (transfer?.kind === "tab") return { tabs: [tabFromTransfer(transfer.tab)], activeTabId: transfer.tab.id };
+      if (transfer?.kind === "window") return restoreSnapshot(transfer.snapshot, detected);
+      return null;
+    }
+    if (!nativeHost || !savesSession || !preferencesRef.current.restoreSession) return undefined;
+    const others = takeWindowSessions();
+    const own = loadSession(detected);
+    // With no tabs of its own, the main window takes the first saved window's.
+    const first = own ?? (others.length ? restoreSnapshot(others.shift(), detected) : null);
+    if (others.length) void invoke("restore_windows", { snapshots: others.map((snapshot): WindowTransfer => ({ kind: "window", snapshot })) }).catch(() => undefined);
+    return first;
+  }, [nativeHost]);
+
+  /** Moves a tab, its shells still running, to the window under the pointer or a new one. */
+  const moveTabOut = useCallback(async (tabId: string, newWindow: boolean) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    const live = tabsRef.current.filter((candidate) => !closingRef.current.has(candidate.id));
+    // A window's only tab is the window: dragging it out would only move the window.
+    if (!nativeHost || !tab || (newWindow && live.length <= 1)) return;
+    const panes = await Promise.all(tab.panes.map(async (pane) => ({
+      ...pane,
+      handoffId: undefined,
+      moved: await getPane(pane.id)?.detach() ?? { screen: "" },
+    })));
+    const transfer: TabTransfer = {
+      kind: "tab",
+      tab: { id: tab.id, title: tab.title, customTitle: tab.customTitle, color: tab.color, layout: tab.layout, activePaneId: tab.activePaneId, panes },
+    };
+    try {
+      await invoke("move_tab", { transfer, newWindow });
+    } catch (error) {
+      tab.panes.forEach((pane) => getPane(pane.id)?.undoDetach());
+      setNotice(`The tab couldn't be moved: ${String(error)}`);
+      return;
+    }
+    removeTabsRef.current([tabId]);
+  }, [nativeHost]);
+
+  const tearOffTab = useCallback((tabId: string) => {
+    void invoke<boolean>("window_under_cursor")
+      .then((overAnother) => moveTabOut(tabId, !overAnother))
+      .catch(() => undefined);
+  }, [moveTabOut]);
+
+  // A tab dragged here from another window.
+  useEffect(() => {
+    if (!nativeHost || isQuickTerminal) return;
+    const stop = listen<string>("tab-arrived", (event) => {
+      void invoke<TabTransfer | null>("take_transfer", { id: event.payload }).then((transfer) => {
+        if (transfer?.kind !== "tab") return;
+        const tab = tabFromTransfer(transfer.tab);
+        setTabs((current) => [...current, tab]);
+        setActiveTabId(tab.id);
+      }).catch(() => undefined);
+    });
+    return () => void stop.then((unlisten) => unlisten());
+  }, [nativeHost]);
 
   const [defaultTerminal, setDefaultTerminal] = useState<DefaultTerminal | null>(null);
   // Both belong to the main window: admin windows and the quick terminal leave them alone.
@@ -644,6 +744,7 @@ export default function App() {
     if (preferencesRef.current.animationLevel === "off") finish();
     else window.setTimeout(finish, TAB_CLOSE_MS);
   }, [closeWindow, hideQuickTerminal, nativeHost, resolveProfile]);
+  removeTabsRef.current = removeTabs;
 
   const closeTab = useCallback((id: string) => removeTabs([id]), [removeTabs]);
 
@@ -986,6 +1087,7 @@ export default function App() {
       return [
         { id: "rename", label: "Rename tab", icon: <Pencil size={15} />, run: () => setRenamingTabId(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
+        ...(nativeHost && tabs.length > 1 ? [{ id: "new-window", label: "Move to new window", icon: <AppWindow size={15} />, run: () => void moveTabOut(open.tabId, true) }] : []),
         ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
         { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
@@ -1056,6 +1158,7 @@ export default function App() {
         onSelectTab={setActiveTabId}
         onCloseTab={closeTab}
         onMoveTab={moveTab}
+        onTearOff={nativeHost ? tearOffTab : undefined}
         onNewTab={() => openNewTab()}
         onOpenProfileMenu={(x, y) => setMenu({ kind: "profiles", x, y })}
         onTabContextMenu={(tabId, x, y) => setMenu({ kind: "tab", tabId, x, y })}
@@ -1085,6 +1188,7 @@ export default function App() {
                         profile={pane.profile}
                         startIn={pane.cwd}
                         handoffId={pane.handoffId}
+                        moved={pane.moved}
                         preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible}
