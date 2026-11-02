@@ -31,7 +31,10 @@ pub fn run(shell: &mut Shell, argv: &[String], io: &Io) -> i32 {
             let _ = write!(out, "\x1b[H\x1b[2J\x1b[3J");
             Ok(0)
         }
-        "help" => help(&mut out),
+        "help" => match args.first() {
+            Some(name) => help_for(name, &mut out),
+            None => help(&mut out),
+        },
         "echo" => echo(args, &mut out),
         "true" | ":" => Ok(0),
         "false" => Ok(1),
@@ -119,17 +122,25 @@ fn jobs(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
             for pid in &job.pids {
                 let _ = writeln!(out, "{pid}");
             }
-        } else if long {
-            let pid = job
-                .pids
-                .last()
-                .map_or(String::new(), |pid| format!("{pid} "));
-            let _ = writeln!(out, "[{}]{marker} {pid}{state:<24}{} &", job.id, job.text);
         } else {
-            let _ = writeln!(out, "[{}]{marker}  {state:<24}{} &", job.id, job.text);
+            // A paused job is shown as bash shows it, without the "&".
+            let ampersand = if job.stopped { "" } else { " &" };
+            let pid = if long {
+                job.pids
+                    .last()
+                    .map_or(String::new(), |pid| format!("{pid} "))
+            } else {
+                String::new()
+            };
+            let gap = if long { " " } else { "  " };
+            let _ = writeln!(
+                out,
+                "[{}]{marker}{gap}{pid}{state:<24}{}{ampersand}",
+                job.id, job.text
+            );
         }
-        // A finished job is shown once, then forgotten.
-        if state == "Running" {
+        // A finished job is shown once, then forgotten; running and paused ones stay.
+        if state == "Running" || state == "Stopped" {
             index += 1;
         } else {
             shell.jobs.remove(index);
@@ -159,8 +170,9 @@ fn wait(shell: &mut Shell, args: &[String]) -> Outcome {
         }
     }
     if args.is_empty() {
-        while !shell.jobs.is_empty() {
-            if shell.wait_job(0, false) == 130
+        // Paused jobs would never finish: like bash, wait leaves them be.
+        while let Some(index) = shell.jobs.iter().position(|job| !job.stopped) {
+            if shell.wait_job(index, false) == 130
                 && shell.interrupted.load(std::sync::atomic::Ordering::SeqCst)
             {
                 return Ok(130);
@@ -193,22 +205,34 @@ fn job_index(shell: &Shell, args: &[String]) -> Result<usize, String> {
     })
 }
 
-/// `fg [%job]`: waits for the job as if it ran in the foreground; Ctrl+C stops it.
+/// `fg [%job]`: resumes the job if it was paused and waits for it as if it ran in the
+/// foreground. Ctrl+C stops it, Ctrl+Z pauses it again.
 fn fg(shell: &mut Shell, args: &[String], out: &mut dyn Write) -> Outcome {
     let index = job_index(shell, args)?;
-    let _ = writeln!(out, "{}", shell.jobs[index].text);
+    let (id, text) = (shell.jobs[index].id, shell.jobs[index].text.clone());
+    let _ = writeln!(out, "{text}");
     let _ = out.flush();
-    Ok(shell.wait_job(index, true))
+    let status = shell.wait_job(index, true);
+    if status == crate::exec::SUSPENDED && shell.jobs.iter().any(|job| job.id == id && job.stopped)
+    {
+        let _ = writeln!(out, "\n[{id}]+  {:<24}{text}", "Stopped");
+    }
+    Ok(status)
 }
 
-/// Jobs never stop in Nebula, so there is nothing to resume.
+/// `bg [%job]`: lets a paused job run on in the background.
 fn bg(shell: &mut Shell, args: &[String]) -> Outcome {
     let index = job_index(shell, args)?;
-    let job = &shell.jobs[index];
-    Err(format!(
-        "job {} is already running in the background",
-        job.id
-    ))
+    let job = &mut shell.jobs[index];
+    if !job.stopped {
+        return Err(format!(
+            "job {} is already running in the background",
+            job.id
+        ));
+    }
+    job.set_stopped(false);
+    eprintln!("[{}]+ {} &", job.id, job.text);
+    Ok(0)
 }
 
 /// `disown [%job]`: lets the job run on, out of the job list.
@@ -1417,6 +1441,70 @@ fn let_(shell: &mut Shell, args: &[String]) -> Outcome {
     Ok(i32::from(last == 0))
 }
 
+const EXAMPLES: &str = include_str!("examples.txt");
+
+/// A command's examples in examples.txt: its summary, then (what it does, command) pairs.
+fn examples(name: &str) -> Option<(&'static str, Vec<(&'static str, &'static str)>)> {
+    let mut summary = None;
+    let mut pairs = Vec::new();
+    let mut what: Option<&str> = None;
+    for line in EXAMPLES.lines() {
+        if line.starts_with('#') || line.trim().is_empty() {
+            continue;
+        }
+        if let Some(text) = line.strip_prefix("- ") {
+            what = summary.is_some().then(|| text.trim_end_matches(':'));
+        } else if let Some(command) = line.strip_prefix("  ") {
+            if let Some(text) = what.take() {
+                pairs.push((text, command.trim()));
+            }
+        } else if summary.is_some() {
+            break;
+        } else if let Some((command, text)) = line.split_once(": ") {
+            if command == name {
+                summary = Some(text);
+            }
+        }
+    }
+    summary.map(|text| (text, pairs))
+}
+
+/// `help ls`: a few examples of what the command is used for, the way tldr shows them.
+fn help_for(name: &str, out: &mut dyn Write) -> Outcome {
+    if let Some((summary, pairs)) = examples(name) {
+        let _ = writeln!(
+            out,
+            "{} {}\n",
+            name.paint(style::COMMAND).bold(),
+            format!("— {summary}").dim()
+        );
+        for (what, command) in pairs {
+            let _ = writeln!(out, "  {what}");
+            let _ = writeln!(out, "  {}\n", command.paint(style::ACCENT));
+        }
+        let _ = writeln!(out, "{}", format!("Every option: {name} --help").dim());
+        return Ok(0);
+    }
+    if commands::is_builtin(name)
+        || crate::coreutils::NAMES.contains(&name)
+        || commands::EXTRAS.contains(&name)
+    {
+        let _ = writeln!(
+            out,
+            "No examples for {name} yet. {name} --help lists what it can do."
+        );
+        return Ok(0);
+    }
+    if sys::find_executable(name).is_some() {
+        let _ = writeln!(
+            out,
+            "{name} is a program of its own: try {name} --help, or {name} /? for Windows tools."
+        );
+        return Ok(0);
+    }
+    Err(format!("{name}: not a command Nebula knows"))
+}
+
 fn help(out: &mut dyn Write) -> Outcome {
     let groups: &[(&str, &[&str])] = &[
         (
@@ -1457,7 +1545,7 @@ fn help(out: &mut dyn Write) -> Outcome {
     let _ = writeln!(out, "{}", "Nebula — Linux commands on Windows".bold());
     let _ = writeln!(
         out,
-        "Every command supports --help. Windows programs (git, node, python…) run as usual."
+        "Every command supports --help, and help <command> shows examples. Windows programs (git, node, python…) run as usual."
     );
     let _ = writeln!(
         out,
@@ -1489,6 +1577,36 @@ fn help(out: &mut dyn Write) -> Outcome {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_command_in_the_examples_has_some() {
+        let names: Vec<&str> = EXAMPLES
+            .lines()
+            .filter(|line| !line.starts_with(['#', ' ', '-']) && !line.trim().is_empty())
+            .map(|line| line.split_once(": ").expect("name: summary").0)
+            .collect();
+        assert!(names.len() > 30);
+        for name in names {
+            let (_, pairs) = examples(name).unwrap();
+            assert!(!pairs.is_empty(), "{name} has no examples");
+            assert!(
+                pairs
+                    .iter()
+                    .all(|(what, command)| !what.is_empty() && !command.is_empty()),
+                "{name}"
+            );
+        }
+        let (summary, pairs) = examples("grep").unwrap();
+        assert_eq!(summary, "find lines that match");
+        assert_eq!(
+            pairs[1],
+            (
+                "In every file of a folder, with line numbers",
+                "grep -rn TODO src"
+            )
+        );
+        assert!(examples("nope").is_none());
+    }
 
     #[test]
     fn splits_read_fields_like_bash() {

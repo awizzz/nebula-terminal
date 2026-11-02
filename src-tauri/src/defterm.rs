@@ -289,6 +289,7 @@ mod server {
             }),
             killer: Box::new(ClientKiller(client.clone())),
             wait: Box::new(move || wait_for(client)),
+            pid: None,
         };
         app.state::<PtyState>()
             .receive_handoff(title, hidden, parts);

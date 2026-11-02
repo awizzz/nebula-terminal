@@ -452,6 +452,8 @@ fn folder_url(path: &str, host: &str) -> String {
 
 pub fn interactive(shell: &mut Shell) -> i32 {
     shell.interactive = true;
+    // Ctrl+Z from Nebula Terminal pauses the program in front (suspend.rs).
+    crate::suspend::listen();
     let integration = shell_integration();
     let data = sys::data_dir();
     let _ = std::fs::create_dir_all(&data);
@@ -582,6 +584,7 @@ pub fn interactive(shell: &mut Shell) -> i32 {
                 }
                 let started = Instant::now();
                 let status = shell.run_line(&line);
+                shell.adopt_stopped(&line, &mut std::io::stderr());
                 last_duration = Some(started.elapsed());
                 if integration {
                     mark(&format!("D;{status}"));
