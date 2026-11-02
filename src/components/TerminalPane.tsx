@@ -8,6 +8,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
+import { SerializeAddon } from "@xterm/addon-serialize";
 import { adjacentPrompt, joinLines } from "../commandMarks";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
@@ -19,7 +20,7 @@ import { previewSession } from "../preview-session";
 import { drawsText } from "../splash";
 import { parseProgress, type Progress } from "../progress";
 import { resolveTheme, xtermTheme } from "../themes";
-import type { AppearancePreferences, PtyEvent, TerminalProfile } from "../types";
+import type { AppearancePreferences, MovedPane, PtyEvent, TerminalProfile } from "../types";
 
 interface TerminalPaneProps {
   paneId: string;
@@ -28,6 +29,8 @@ interface TerminalPaneProps {
   startIn?: string;
   /** A console Windows handed over. The pane shows it first; a restart runs the profile. */
   handoffId?: string;
+  /** The screen and shell of a pane that comes from another window. */
+  moved?: MovedPane;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -140,6 +143,7 @@ export default function TerminalPane({
   profile,
   startIn,
   handoffId,
+  moved,
   preferences,
   focused,
   visible,
@@ -170,6 +174,7 @@ export default function TerminalPane({
   const preferencesRef = useRef(preferences);
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
+  const movedRef = useRef(moved);
   const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
@@ -230,8 +235,10 @@ export default function TerminalPane({
     });
     const fit = new FitAddon();
     const search = new SearchAddon();
+    const serializer = new SerializeAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(search);
+    terminal.loadAddon(serializer);
     // Emoji and symbols measured as today's programs measure them.
     terminal.loadAddon(new Unicode11Addon());
     terminal.unicode.activeVersion = "11";
@@ -407,6 +414,9 @@ export default function TerminalPane({
     // Input typed while the shell starts waits here instead of being lost.
     let queued: string[] = [];
     let exited = false;
+    // Set when the shell moved to another window: it must outlive this pane.
+    let keepSession = false;
+    let reattach: (() => void) | undefined;
     const send = (sessionId: string, data: string) => {
       void invoke("write_session", { sessionId, data }).catch((error) => {
         if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
@@ -487,11 +497,24 @@ export default function TerminalPane({
       };
 
       resize();
+      reattach = () => {
+        const sessionId = sessionRef.current;
+        if (!sessionId) return;
+        keepSession = false;
+        void invoke("attach_session", { sessionId, cols: terminal.cols, rows: terminal.rows, onEvent: channel }).catch(() => undefined);
+      };
       const { startingFolder, workingDirectory, shellIntegration } = preferencesRef.current;
       const handoff = handoffRef.current;
-      // A handed-over console can only be attached once.
+      // A handed-over console, or a shell from another window, can only be attached once.
       handoffRef.current = undefined;
-      const started = handoff
+      const arriving = movedRef.current;
+      movedRef.current = undefined;
+      if (arriving) terminal.write(arriving.screen);
+      const started = arriving
+        ? arriving.sessionId
+          ? invoke("attach_session", { sessionId: arriving.sessionId, cols: terminal.cols, rows: terminal.rows, onEvent: channel }).then(() => arriving.sessionId!)
+          : Promise.reject(new Error("its shell had already exited"))
+        : handoff
         ? invoke<string>("attach_handoff", { handoffId: handoff, cols: terminal.cols, rows: terminal.rows, onEvent: channel })
         : invoke<string>("start_session", {
           profileId: profile.id,
@@ -517,7 +540,11 @@ export default function TerminalPane({
         queued = [];
       }).catch((error) => {
         if (disposed) return;
-        terminal.writeln(`\x1b[31mCould not ${handoff ? "open this console" : `start ${profile.name}`}: ${String(error)}\x1b[0m`, ready);
+        if (arriving && !arriving.sessionId) {
+          terminal.write("", ready);
+        } else {
+          terminal.writeln(`\x1b[31mCould not ${handoff ? "open this console" : arriving ? "move this shell" : `start ${profile.name}`}: ${String(error)}\x1b[0m`, ready);
+        }
         setConnectionState("closed");
       });
     } else {
@@ -589,6 +616,15 @@ export default function TerminalPane({
       jumpToCommand,
       copyLastOutput,
       hasCommandOutput: () => lastOutputLines() !== undefined,
+      detach: async () => {
+        const screen = serializer.serialize({ scrollback: Math.min(preferencesRef.current.scrollback, 5_000) });
+        const sessionId = sessionRef.current;
+        if (!sessionId || !isTauri()) return { screen };
+        await invoke("park_session", { sessionId });
+        keepSession = true;
+        return { sessionId, screen };
+      },
+      undoDetach: () => reattach?.(),
     });
 
     return () => {
@@ -612,7 +648,7 @@ export default function TerminalPane({
       window.removeEventListener("nebula:insert-paths", insertDropped);
       const sessionId = sessionRef.current;
       sessionRef.current = null;
-      if (isTauri() && sessionId) void invoke("close_session", { sessionId }).catch(() => undefined);
+      if (isTauri() && sessionId && !keepSession) void invoke("close_session", { sessionId }).catch(() => undefined);
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;

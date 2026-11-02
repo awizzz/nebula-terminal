@@ -1,3 +1,5 @@
+import type { MovedPane } from "./types";
+
 /** Imperative actions a mounted terminal pane exposes to menus and shortcuts. */
 export interface PaneHandle {
   copy: () => void;
@@ -13,6 +15,11 @@ export interface PaneHandle {
   /** Copies the output of the last finished command. False when there is none. */
   copyLastOutput: () => boolean;
   hasCommandOutput: () => boolean;
+  /** Keeps the shell running for another window and gives its screen. The pane then
+   * unmounts without stopping the shell. */
+  detach: () => Promise<MovedPane>;
+  /** Takes the shell back after a move that failed. */
+  undoDetach: () => void;
 }
 
 const panes = new Map<string, PaneHandle>();

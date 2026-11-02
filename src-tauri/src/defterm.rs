@@ -293,8 +293,8 @@ mod server {
         app.state::<PtyState>()
             .receive_handoff(title, hidden, parts);
         if !hidden {
-            let _ = app.emit_to("main", "handoff", ());
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = crate::windows::launch_target(app) {
+                let _ = app.emit_to(window.label(), "handoff", ());
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();

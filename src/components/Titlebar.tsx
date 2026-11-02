@@ -29,6 +29,8 @@ interface TitlebarProps {
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onMoveTab: (fromId: string, toId: string) => void;
+  /** A tab dropped outside the window: to another window, or a new one. */
+  onTearOff?: (tabId: string) => void;
   onNewTab: () => void;
   onOpenProfileMenu: (x: number, y: number) => void;
   onTabContextMenu: (tabId: string, x: number, y: number) => void;
@@ -127,6 +129,7 @@ export default function Titlebar({
   onSelectTab,
   onCloseTab,
   onMoveTab,
+  onTearOff,
   onNewTab,
   onOpenProfileMenu,
   onTabContextMenu,
@@ -140,19 +143,29 @@ export default function Titlebar({
   const stripRef = useRef<HTMLDivElement | null>(null);
   const suppressClickRef = useRef(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [tearingId, setTearingId] = useState<string | null>(null);
 
   // Pointer-driven reordering: WebView2 keeps HTML5 drag-and-drop for native file drops.
   const startDrag = (event: ReactPointerEvent, tabId: string) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest(".tab__close, .tab__rename")) return;
     const startX = event.clientX;
     let dragging = false;
+    let outside = false;
     const move = (moveEvent: PointerEvent) => {
       if (!dragging) {
-        if (Math.abs(moveEvent.clientX - startX) < 6) return;
+        if (Math.abs(moveEvent.clientX - startX) < 6 && Math.abs(moveEvent.clientY - event.clientY) < 6) return;
         dragging = true;
         setDraggingId(tabId);
         onSelectTab(tabId);
       }
+      // Well below the tabs, or out of the window: the tab is leaving it.
+      const strip = stripRef.current?.getBoundingClientRect();
+      const leaving = onTearOff !== undefined && (moveEvent.clientY > (strip?.bottom ?? 40) + 48 || moveEvent.clientY < -8 || moveEvent.clientX < -8 || moveEvent.clientX > window.innerWidth + 8);
+      if (leaving !== outside) {
+        outside = leaving;
+        setTearingId(leaving ? tabId : null);
+      }
+      if (outside) return;
       const target = [...(stripRef.current?.querySelectorAll<HTMLElement>(".tab[data-tab-id]") ?? [])].find((element) => {
         const rect = element.getBoundingClientRect();
         return moveEvent.clientX >= rect.left && moveEvent.clientX <= rect.right;
@@ -167,7 +180,9 @@ export default function Titlebar({
       if (dragging) {
         suppressClickRef.current = true;
         setDraggingId(null);
+        setTearingId(null);
         requestAnimationFrame(() => { suppressClickRef.current = false; });
+        if (outside) onTearOff?.(tabId);
       }
     };
     window.addEventListener("pointermove", move);
@@ -220,6 +235,7 @@ export default function Titlebar({
                 nextActive && "is-before-active",
                 closing.has(tab.id) && "is-closing",
                 draggingId === tab.id && "is-dragging",
+                tearingId === tab.id && "is-tearing",
                 color && "has-color",
               ].filter(Boolean).join(" ")}
               style={color ? { "--tab-color": color } as CSSProperties : undefined}

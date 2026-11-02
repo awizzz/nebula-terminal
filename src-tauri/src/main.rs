@@ -12,6 +12,7 @@ mod pty;
 mod quick;
 mod ssh;
 mod updater;
+mod windows;
 mod wsl;
 
 use std::path::Path;
@@ -54,16 +55,18 @@ fn windows_build() -> Option<u32> {
 /// A second launch (Explorer's "Open in Nebula Terminal", or the app started again)
 /// opens a tab in this window instead of a second copy of the app.
 fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    let Some(window) = windows::launch_target(app) else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    let label = window.label().to_owned();
     // With UAC off, "Run as administrator" starts an ordinary copy, which lands here;
     // this window is elevated already, so the tab opens in it.
     if let Some(request) = elevation::take_request(app, &args) {
         let _ = app.emit_to(
-            "main",
+            label.as_str(),
             "open-request",
             serde_json::json!({ "profileId": request.profile_id, "folder": request.folder }),
         );
@@ -71,7 +74,7 @@ fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
     }
     let folder = launcher::folder_argument(&args, Path::new(&cwd));
     let _ = app.emit_to(
-        "main",
+        label.as_str(),
         "open-tab",
         folder.map(|path| path.display().to_string()),
     );
@@ -103,6 +106,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(pty::PtyState::default())
+        .manage(windows::Transfers::default())
         .setup(move |app| {
             let path = app
                 .path()
@@ -125,10 +129,21 @@ fn main() {
             }
             Ok(())
         })
-        // The quick terminal goes with the main window: no app without a window to find it in.
+        // The app ends with its last terminal window, quick terminal included: there would
+        // be no window left to find it in.
         .on_window_event(|window, event| {
-            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
-                window.app_handle().exit(0);
+            if !matches!(event, tauri::WindowEvent::Destroyed)
+                || !windows::is_terminal_window(window.label())
+            {
+                return;
+            }
+            let app = window.app_handle();
+            let others = app
+                .webview_windows()
+                .keys()
+                .any(|label| label != window.label() && windows::is_terminal_window(label));
+            if !others {
+                app.exit(0);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -156,6 +171,13 @@ fn main() {
             files::open_path,
             quick::set_quick_terminal,
             quick::hide_quick_terminal,
+            pty::park_session,
+            pty::attach_session,
+            windows::move_tab,
+            windows::window_under_cursor,
+            windows::take_transfer,
+            windows::restore_windows,
+            windows::terminal_window_count,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");

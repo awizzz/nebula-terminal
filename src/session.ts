@@ -129,3 +129,50 @@ export function clearSession(): void {
   localStorage.removeItem(STORAGE_KEY);
   for (const key of LEGACY_STORAGE_KEYS) localStorage.removeItem(key);
 }
+
+const WINDOWS_KEY = "nebula-terminal.windows.v1";
+const MAX_WINDOWS = 8;
+
+type SavedWindows = Record<string, { savedAt: number; snapshot: SessionSnapshot }>;
+
+function readWindows(): SavedWindows {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(WINDOWS_KEY) ?? "{}");
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed as SavedWindows : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeWindows(windows: SavedWindows): void {
+  try {
+    localStorage.setItem(WINDOWS_KEY, JSON.stringify(windows));
+  } catch {
+    // Like the main session: a convenience that must never block a shell.
+  }
+}
+
+/** The tabs of a window other than the main one, by its label, for the next launch. */
+export function saveWindowSession(label: string, tabs: TerminalTab[], activeTabId: string): void {
+  const windows = readWindows();
+  windows[label] = { savedAt: Date.now(), snapshot: snapshotOf(tabs, activeTabId) };
+  writeWindows(Object.fromEntries(Object.entries(windows).sort(([, a], [, b]) => b.savedAt - a.savedAt).slice(0, MAX_WINDOWS)));
+}
+
+/** A window closed while others stay open: like in Windows Terminal, its tabs go with it. */
+export function forgetWindowSession(label: string): void {
+  const windows = readWindows();
+  if (!Object.hasOwn(windows, label)) return;
+  delete windows[label];
+  writeWindows(windows);
+}
+
+/** The other windows saved at exit, oldest first, taken out: each saves itself again once open. */
+export function takeWindowSessions(): SessionSnapshot[] {
+  const windows = readWindows();
+  writeWindows({});
+  return Object.values(windows)
+    .filter((saved) => typeof saved === "object" && saved !== null && typeof saved.savedAt === "number")
+    .sort((a, b) => a.savedAt - b.savedAt)
+    .map((saved) => saved.snapshot);
+}

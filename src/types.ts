@@ -180,9 +180,17 @@ export interface AppearancePreferences {
   keybindings: KeybindingPreferences;
 }
 
+/** A pane on its way from another window: its screen, and its shell if it still runs. */
+export interface MovedPane {
+  sessionId?: string;
+  screen: string;
+}
+
 export interface TerminalPaneModel {
   id: string;
   profile: TerminalProfile;
+  /** Set while the pane arrives from another window; it then attaches to that shell. */
+  moved?: MovedPane;
   /** The last folder the shell reported, or the one the pane should start in. */
   cwd?: string;
   /** A console Windows handed over (Nebula as the default terminal). The pane shows it
