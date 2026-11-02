@@ -225,6 +225,8 @@ export interface TerminalPaneModel {
   handoffId?: string;
 }
 
+export type TabWatch = "output" | "silence";
+
 export interface TerminalTab {
   id: string;
   /** The shell's latest title, or the profile name. */
@@ -240,6 +242,8 @@ export interface TerminalTab {
   broadcast?: boolean;
   /** The pane that fills the tab for now, the others hidden. Not saved. */
   zoomedPaneId?: string;
+  /** Tell the user when the tab prints something, or goes quiet. Not saved. */
+  watch?: TabWatch;
 }
 
 export interface PersistedPane {
