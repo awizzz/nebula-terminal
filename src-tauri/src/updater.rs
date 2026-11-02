@@ -117,7 +117,11 @@ pub fn install_kind() -> InstallKind {
 }
 
 /// The machine this copy was built for, as the installers' names spell it.
-const ARCH: &str = if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" };
+const ARCH: &str = if cfg!(target_arch = "aarch64") {
+    "arm64"
+} else {
+    "x64"
+};
 
 fn installer_asset(release: &Release, kind: InstallKind) -> Option<&Asset> {
     release.assets.iter().find(|asset| {
