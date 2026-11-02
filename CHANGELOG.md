@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.0
+
+Pane zoom, saved commands and ligatures, and in Nebula: Ctrl+Z, `help` with examples and many more completions.
+
+### Added
+
+- zoom a pane: `Ctrl+Shift+Z` makes the pane in front fill its tab, and gives the room back. Moving to another pane, splitting or closing one ends the zoom, and the tab shows 1/3 while it lasts
+- saved commands: keep the commands you type often in Settings → Behavior, and run them from the command palette in the pane in front, each line as if you typed it
+- font ligatures: `=>`, `!=`, `===` and the like drawn as one symbol in fonts that have them, such as Cascadia Code, Fira Code or JetBrains Mono (Settings → Terminal → Text)
+- Nebula: `Ctrl+Z` pauses the command in front and makes it a stopped job, as in bash; `fg` brings it back, `bg` lets it run in the background, and `kill -STOP` and `kill -CONT` pause and resume any job instead of ending it
+- Nebula: `help <command>` shows a few practical examples, the way tldr does, for 40 commands
+- Nebula: completion for the commands of kubectl (and the resources after `get` or `describe`), gh (pull requests, issues, repositories, runs), az, terraform, helm, dotnet, go, pip, uv, rustup, deno, podman, scoop and docker compose, and your own in `~/.nebula-completions`
+
 ## 1.8.0
 
 Several windows, images in the terminal, and programs that can show progress on the taskbar and copy to your clipboard.

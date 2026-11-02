@@ -45,9 +45,10 @@ If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`,
 - **A real `awk`.** The POSIX language (patterns, fields, arrays, functions, `printf`, `getline`, pipes to and from commands) and the gawk functions people reach for: `gensub`, `strftime`, `asort`, `match` with groups. It was checked line by line against GNU awk.
 - **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, `**/*.rs` for every subfolder, `{a,b}` and `{1..10}`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
 - **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, arrays and associative arrays, `$((…))`, `[[ … ]]`, `read`, `mapfile`, `${name%.txt}` and the other `${…}` forms, `getopts`, `set -e`, `trap`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
-- **Background jobs.** `cmd &` runs while you keep typing; `jobs`, `wait`, `fg` and `kill %1` handle them. A job can't take the keyboard, and Ctrl+C only stops what runs in front.
+- **Jobs, as in bash.** `cmd &` runs while you keep typing; `jobs`, `wait`, `fg` and `kill %1` handle them. `Ctrl+Z` pauses the command in front (in Nebula Terminal), then `fg` or `bg` resumes it, and `kill -STOP` and `kill -CONT` work too. A job can't take the keyboard, and Ctrl+C only stops what runs in front.
 - **Nicer than a plain prompt, and yours to shape.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes; `~/.nebularc` can add the time, background jobs, an admin marker or the Node, Python and Rust versions of your project, reorder and recolor it all, or hand it to Starship. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
-- **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, the scripts of your `package.json` (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets, `$VARIABLES` and your SSH hosts.
+- **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, the scripts of your `package.json` (`npm run`, `pnpm`, `yarn`, `bun`), the commands of `cargo`, `winget`, `docker`, `kubectl`, `gh`, `az`, `terraform`, `helm`, `dotnet`, `go`, `pip`, `uv` and more, Makefile targets, `$VARIABLES` and your SSH hosts. Add your own in `~/.nebula-completions`.
+- **Examples when you need them.** `help grep` shows a few commands for what people do with grep, the way tldr does, for 40 commands.
 - **Finds what you did before.** `Ctrl+R` searches your history as you type, fuzzily: `gpo` finds `git push origin`. `z proj` jumps to the folder you visit most that matches, learned from your `cd`s.
 - **`ls` and `tree` with icons and colors** on screen. When the output goes to a file or another command, it stays plain.
 - **Helpful errors.** Typing `gti` suggests `git`, and `dir`, `cls` or `findstr` point to `ls`, `clear` and `grep`.
@@ -82,7 +83,13 @@ for file in *.log; do
 done
 ```
 
-Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git Bash or WSL.
+Your own completions go in `~/.nebula-completions`, one per line: the command, the words before the one to complete, that word, and what it means after a colon.
+
+```text
+deploy staging: the staging servers
+deploy production: the real thing
+deploy production eu
+```
 
 ## What you get
 
@@ -124,6 +131,8 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 | Find (`Alt+C` match case, `Alt+W` whole word, `Alt+R` regex) | `Ctrl+Shift+F` |
 | Previous / next command | `Ctrl+↑` / `Ctrl+↓` |
 | Type in every pane | `Ctrl+Shift+B` |
+| Zoom the pane in front | `Ctrl+Shift+Z` |
+| Pause the command in front (Nebula) | `Ctrl+Z` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
@@ -134,7 +143,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: pane zoom, saved commands and font ligatures, then more completions, `help` with examples and Ctrl+Z in Nebula. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: settings sync through a file you choose, a tray icon for the quick terminal, a screen-reader mode with a high-contrast theme, and ARM64 builds. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
