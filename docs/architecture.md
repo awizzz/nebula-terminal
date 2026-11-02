@@ -96,6 +96,10 @@ With UAC turned off, every program of an admin user runs elevated, so there's no
 
 A request from File Explorer carries no settings, since no window asked. The admin window then uses the settings it was last given, which its own web data keeps.
 
+### Ctrl+Z in Nebula
+
+While a command runs, the console's input belongs to the program, so a Ctrl+Z key would only reach it as a character. When the pane runs Nebula and a command is between its OSC 133 C and D marks, the page doesn't send the key: it asks `suspend_foreground`, which sets `Local\NebulaTerminal.Suspend.<pid>`, an event the interactive shell creates at startup. The shell waits for each program with `WaitForMultipleObjects` on the process and that event, so nothing polls. When the event fires, it suspends the program's threads and its children's, makes them a stopped job, and the rest of the command line doesn't run. If the shell doesn't listen (another shell, an older Nebula), the key goes through as usual.
+
 ### Windows
 
 Besides the main window, a window can be opened for tabs, labelled `tabs-<uuid>`. Dropping a tab outside its window sends it to the terminal window under the pointer, or to a new one placed there (`windows.rs`). Every terminal window runs the same page and keeps its own tabs; the app ends when the last one closes.
@@ -161,6 +165,8 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | `coreutils.rs` | The uutils coreutils commands, dispatched by name. |
 | `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `awk`, `ps`, `kill`, `open`, `xargs`, `less`; and `sed`, `diff` and `cmp` on top of the uutils libraries. |
 | `extras/awk/` | `awk`: a lexer, a recursive-descent parser for the POSIX grammar, and a tree-walking interpreter. Fields split lazily, arrays keep insertion order, `print \| cmd`, `cmd \| getline` and `system()` run through `nebula-sh -c`. |
+| `suspend.rs` | Pausing programs, which Windows has no signal for: every thread of a process and of the ones it started is suspended (Toolhelp snapshots). Ctrl+Z arrives as an event named after the shell's process, which the shell waits on next to the program it runs. |
+| `examples.txt` | The examples `help <command>` shows, built into the binary. |
 | `editor.rs` | reedline setup: highlighting, history hints, multi-line input, history expansion, window title, and the OSC 133 marks around each command. |
 | `fuzzy.rs` | Fuzzy matching for `Ctrl+R`: substrings first, then letters in order, with bonuses for word starts and runs. |
 | `frecency.rs` | The folders `z` knows, ranked by visits and age as rupa's z does, in `dirs.txt`. |
@@ -197,6 +203,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview, and the editor's SSH draft: its checks and the ssh command it shows. |
 | `workspaces.ts` | Saved workspaces: named snapshots of the tabs (the same format as the session), kept in local storage, 30 at most. |
 | `progress.ts` | OSC 9;4 progress reports, and which one the taskbar button shows. |
+| `savedCommands.ts` | Saved commands: checks on what comes back from storage, and the input that runs one. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
