@@ -1,6 +1,7 @@
 import { normalizeThemeId, type TerminalTheme } from "./themes";
 import { isCustomTheme, MAX_CUSTOM_THEMES } from "./themeImport";
 import { defaultQuickShortcut, isGlobalShortcut } from "./quickShortcut";
+import { sanitizeLooks } from "./looks";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 export const defaultKeybindings: KeybindingPreferences = {
@@ -85,6 +86,11 @@ export const defaultPreferences: AppearancePreferences = {
   quickTerminalShortcut: defaultQuickShortcut,
   quickTerminalHeight: 0.5,
   quickTerminalHideOnBlur: true,
+  profileLooks: {},
+  followSystemTheme: false,
+  darkThemeId: "nebula",
+  lightThemeId: "nebula-light",
+  markAdministratorWindows: true,
   keybindings: defaultKeybindings,
 };
 
@@ -175,6 +181,11 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     quickTerminalShortcut: typeof value.quickTerminalShortcut === "string" && value.quickTerminalShortcut.length <= 48 && isGlobalShortcut(value.quickTerminalShortcut) ? value.quickTerminalShortcut : defaultPreferences.quickTerminalShortcut,
     quickTerminalHeight: numberIn(value.quickTerminalHeight, defaultPreferences.quickTerminalHeight, 0.25, 0.9),
     quickTerminalHideOnBlur: booleanFrom(value.quickTerminalHideOnBlur, defaultPreferences.quickTerminalHideOnBlur),
+    profileLooks: sanitizeLooks(value.profileLooks, customThemes),
+    followSystemTheme: booleanFrom(value.followSystemTheme, defaultPreferences.followSystemTheme),
+    darkThemeId: normalizeThemeId(value.darkThemeId, customThemes) ?? defaultPreferences.darkThemeId,
+    lightThemeId: normalizeThemeId(value.lightThemeId, customThemes) ?? defaultPreferences.lightThemeId,
+    markAdministratorWindows: booleanFrom(value.markAdministratorWindows, defaultPreferences.markAdministratorWindows),
     keybindings,
   };
 }

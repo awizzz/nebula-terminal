@@ -104,6 +104,13 @@ export interface KeybindingPreferences {
 /** Where new shells start when they have no folder of their own. */
 export type StartingFolder = "home" | "desktop" | "documents" | "custom";
 
+/** A profile's own look; anything it leaves out is the app's. */
+export interface ProfileLook {
+  themeId?: string;
+  fontFamily?: string;
+  fontSize?: number;
+}
+
 export interface AppearancePreferences {
   accent: string;
   themeId: string;
@@ -157,6 +164,15 @@ export interface AppearancePreferences {
   /** Share of the screen's height, from 0.25 to 0.9. */
   quickTerminalHeight: number;
   quickTerminalHideOnBlur: boolean;
+  /** Profiles with a theme or font of their own, by profile id. */
+  profileLooks: Record<string, ProfileLook>;
+  /** Wear `darkThemeId` or `lightThemeId`, whichever matches Windows' app mode. */
+  followSystemTheme: boolean;
+  /** The theme last picked for each scheme, which "Follow Windows" goes back to. */
+  darkThemeId: string;
+  lightThemeId: string;
+  /** Admin windows get a red accent. */
+  markAdministratorWindows: boolean;
   keybindings: KeybindingPreferences;
 }
 

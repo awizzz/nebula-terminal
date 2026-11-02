@@ -19,6 +19,7 @@ import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profil
 import { detectProfiles } from "./customProfiles";
 import * as splash from "./splash";
 import { isQuickTerminal } from "./windowKind";
+import { lookFor, windowLook, withLook } from "./looks";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
@@ -150,7 +151,22 @@ export default function App() {
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
   const activePane = activeTab?.panes.find((pane) => pane.id === activeTab.activePaneId) ?? activeTab?.panes[0];
-  const theme = resolveTheme(preferences.themeId, preferences.customThemes);
+  // What the window draws with: an admin window's red accent, each profile's own look,
+  // and the chrome in the colors of the pane in front.
+  const drawn = useMemo(() => windowLook(preferences, isAdministrator), [preferences]);
+  const lookOf = useMemo(() => {
+    const cache = new Map<string, AppearancePreferences>();
+    return (profileId: string | undefined) => {
+      if (!profileId) return drawn;
+      const look = cache.get(profileId) ?? lookFor(drawn, profileId);
+      cache.set(profileId, look);
+      return look;
+    };
+  }, [drawn]);
+  const activeLook = lookOf(activePane?.profile.id);
+  const activeProfileIdRef = useRef(activePane?.profile.id);
+  activeProfileIdRef.current = activePane?.profile.id;
+  const theme = resolveTheme(activeLook.themeId, activeLook.customThemes);
   const overlayOpen = settingsOpen || paletteOpen || confirmation !== null;
   // A tab closed mid-rename takes its editor with it, so only a live tab counts.
   const renaming = renamingTabId !== null && tabs.some((tab) => tab.id === renamingTabId && !closing.has(tab.id));
@@ -206,7 +222,7 @@ export default function App() {
   useEffect(() => {
     savePreferences(preferences);
     const root = document.documentElement;
-    root.style.setProperty("--accent", preferences.accent);
+    root.style.setProperty("--accent", activeLook.accent);
     root.style.setProperty("--term-bg", theme.background);
     root.style.setProperty("--term-fg", theme.foreground);
     root.dataset.scheme = theme.scheme;
@@ -214,11 +230,31 @@ export default function App() {
     root.dataset.density = preferences.tabDensity;
     root.dataset.background = preferences.backgroundMode === "mica" && micaFailed ? "solid" : preferences.backgroundMode;
     root.dataset.host = nativeHost ? "native" : "browser";
-    root.style.setProperty("--on-accent", readableOn(preferences.accent));
+    root.style.setProperty("--on-accent", readableOn(activeLook.accent));
     root.style.setProperty("--term-surface", preferences.terminalOpacity >= 1 ? theme.background : `color-mix(in srgb, ${theme.background} ${Math.round(preferences.terminalOpacity * 100)}%, transparent)`);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme.background);
-    splash.rememberLook({ background: theme.background, foreground: theme.foreground, accent: preferences.accent, scheme: theme.scheme, animation: preferences.animationLevel });
-  }, [micaFailed, nativeHost, preferences, theme]);
+    splash.rememberLook({ background: theme.background, foreground: theme.foreground, accent: activeLook.accent, scheme: theme.scheme, animation: preferences.animationLevel });
+  }, [activeLook.accent, micaFailed, nativeHost, preferences, theme]);
+
+  // The theme picked last for each scheme is the one "Follow Windows" comes back to.
+  useEffect(() => {
+    const slot = resolveTheme(preferences.themeId, preferences.customThemes).scheme === "dark" ? "darkThemeId" : "lightThemeId";
+    if (preferences[slot] !== preferences.themeId) setPreferences((current) => ({ ...current, [slot]: current.themeId }));
+  }, [preferences]);
+
+  useEffect(() => {
+    if (!preferences.followSystemTheme) return;
+    const media = matchMedia("(prefers-color-scheme: dark)");
+    const follow = () => setPreferences((current) => {
+      const id = media.matches ? current.darkThemeId : current.lightThemeId;
+      if (id === current.themeId) return current;
+      const next = resolveTheme(id, current.customThemes);
+      return { ...current, themeId: next.id, accent: next.accent };
+    });
+    follow();
+    media.addEventListener("change", follow);
+    return () => media.removeEventListener("change", follow);
+  }, [preferences.followSystemTheme]);
 
   // Once the shell in front is up and the loading screen gone, the other restored tabs
   // start, one at a time so typing in the first one stays smooth.
@@ -747,8 +783,16 @@ export default function App() {
     window.addEventListener("pointercancel", finish);
   };
 
+  /** Zooms the pane in front: its profile's own size if it has one, the app's otherwise. */
   const adjustFontSize = useCallback((delta: number) => {
-    setPreferences((current) => ({ ...current, fontSize: Math.min(32, Math.max(8, current.fontSize + delta)) }));
+    const profileId = activeProfileIdRef.current;
+    const size = (value: number) => Math.min(32, Math.max(8, value + delta));
+    setPreferences((current) => {
+      const own = profileId && Object.hasOwn(current.profileLooks, profileId) ? current.profileLooks[profileId]?.fontSize : undefined;
+      return own !== undefined && profileId
+        ? { ...current, profileLooks: withLook(current.profileLooks, profileId, { fontSize: size(own) }) }
+        : { ...current, fontSize: size(current.fontSize) };
+    });
   }, []);
 
   const openSettings = useCallback((page?: SettingsPage) => {
@@ -1016,7 +1060,7 @@ export default function App() {
                         profile={pane.profile}
                         startIn={pane.cwd}
                         handoffId={pane.handoffId}
-                        preferences={preferences}
+                        preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible}
                         searchRequest={visible && pane.id === tab.activePaneId && searchOpen ? { query: searchQuery, nonce: searchSignal.nonce, backwards: searchSignal.backwards, ...searchOptions } : undefined}

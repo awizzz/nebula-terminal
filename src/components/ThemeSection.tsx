@@ -15,11 +15,20 @@ interface ThemeSectionProps {
   onChange: Dispatch<SetStateAction<AppearancePreferences>>;
 }
 
+const systemIsDark = () => typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+
 /** Settings → Appearance → Theme: the themes you have, the gallery, and the editor. */
 export default function ThemeSection({ preferences, onChange }: ThemeSectionProps) {
   const [view, setView] = useState<View>({ kind: "grid" });
+  const follow = preferences.followSystemTheme;
 
-  const select = (theme: TerminalTheme) => onChange((current) => ({ ...current, themeId: theme.id, accent: theme.accent }));
+  // Following Windows, a theme becomes the one for its scheme, and shows only if Windows is in that mode.
+  const select = (theme: TerminalTheme) => onChange((current) => {
+    if (!current.followSystemTheme) return { ...current, themeId: theme.id, accent: theme.accent };
+    const slot = theme.scheme === "dark" ? "darkThemeId" : "lightThemeId";
+    const showing = (theme.scheme === "dark") === systemIsDark();
+    return showing ? { ...current, [slot]: theme.id, themeId: theme.id, accent: theme.accent } : { ...current, [slot]: theme.id };
+  });
 
   const remove = (id: string) => onChange((current) => {
     const customThemes = current.customThemes.filter((theme) => theme.id !== id);
@@ -77,13 +86,17 @@ export default function ThemeSection({ preferences, onChange }: ThemeSectionProp
     <>
       <div className="theme-grid" role="radiogroup" aria-label="Theme">
         {[...themes, ...preferences.customThemes].map((theme) => {
-          const selected = preferences.themeId === theme.id;
+          const slot = theme.scheme === "dark" ? preferences.darkThemeId : preferences.lightThemeId;
+          const selected = follow ? slot === theme.id : preferences.themeId === theme.id;
           const custom = theme.id.startsWith("custom-");
           return (
             <div key={theme.id} className="theme-card-wrap">
               <button type="button" role="radio" aria-checked={selected} className="theme-card" onClick={() => select(theme)}>
                 <ThemePreview theme={theme} />
-                <span className="theme-card__name">{theme.name}{selected && <Check size={14} strokeWidth={2.2} />}</span>
+                <span className="theme-card__name">
+                  {theme.name}
+                  {selected && (follow ? <span className="theme-card__mode">{theme.scheme === "dark" ? "Dark mode" : "Light mode"}</span> : <Check size={14} strokeWidth={2.2} />)}
+                </span>
               </button>
               <div className="theme-card__actions">
                 <button type="button" aria-label={`Edit ${theme.name}`} title={custom ? "Edit" : "Edit a copy"} onClick={() => edit(theme)}><Pencil size={13} /></button>

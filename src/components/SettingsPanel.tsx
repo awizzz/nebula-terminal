@@ -1,5 +1,5 @@
-import { useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
-import { Check, ChevronRight, Globe, Info, Keyboard, Monitor, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
+import { Fragment, useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
+import { Check, ChevronRight, Globe, Info, Keyboard, Monitor, Paintbrush, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
 import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
 import { deleteCustomProfile, draftOf, listCustomProfiles, newDraft, saveCustomProfile, splitArguments, sshCommand } from "../customProfiles";
@@ -9,14 +9,15 @@ import { globalShortcutFromEvent, globalShortcutLabel, keyboardLayout } from "..
 import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
-import { accentSwatches, themes, type TerminalTheme } from "../themes";
+import { accentSwatches, resolveTheme, themes, type TerminalTheme } from "../themes";
+import { withLook } from "../looks";
 import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeImport";
 import Keys from "./Keys";
 import Segmented from "./Segmented";
 import ThemeSection from "./ThemeSection";
 import { describe as describeWorkspace, renamed, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, SshDraft, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, ProfileLook, SshDraft, TerminalProfile } from "../types";
 
 const quickHeights = [0.3, 0.5, 0.7, 0.9];
 
@@ -276,18 +277,80 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const NEW_PROFILE = "new";
 const NEW_CONNECTION = "new-ssh";
 
-/** One detected profile: icon, name and what it runs. */
-function ProfileRow({ profile }: { profile: TerminalProfile }) {
+type LookProps = { preferences: AppearancePreferences; onChange: Dispatch<SetStateAction<AppearancePreferences>> };
+
+function ownLook(preferences: AppearancePreferences, profileId: string): ProfileLook | undefined {
+  return Object.hasOwn(preferences.profileLooks, profileId) ? preferences.profileLooks[profileId] : undefined;
+}
+
+/** A chip with the profile's own theme, and the button that opens its look. */
+function LookControls({ profileId, name, preferences, open, onToggle }: { profileId: string; name: string; preferences: AppearancePreferences; open: boolean; onToggle: () => void }) {
+  const look = ownLook(preferences, profileId);
+  const theme = look?.themeId ? resolveTheme(look.themeId, preferences.customThemes) : undefined;
+  return (
+    <>
+      {look && (
+        <span className="look-chip" title={`${name} has a look of its own`}>
+          {theme && <span className="look-chip__swatch" style={{ background: theme.background, borderColor: theme.accent }} aria-hidden="true" />}
+          {theme?.name ?? "Own font"}
+        </span>
+      )}
+      <button className={`icon-button ${open ? "is-active" : ""}`} type="button" aria-expanded={open} aria-label={`Look of ${name}`} title="Theme and font for this profile" onClick={onToggle}>
+        <Paintbrush size={15} strokeWidth={1.8} />
+      </button>
+    </>
+  );
+}
+
+/** A profile's own theme, font and size. Whatever is left empty is the app's. */
+function ProfileLookEditor({ profileId, name, preferences, onChange }: LookProps & { profileId: string; name: string }) {
+  const look = ownLook(preferences, profileId) ?? {};
+  const set = (change: ProfileLook) => onChange((current) => ({ ...current, profileLooks: withLook(current.profileLooks, profileId, change) }));
+  const all = [...themes, ...preferences.customThemes];
+  const id = useId();
+  const byScheme = (scheme: TerminalTheme["scheme"]) => all.filter((theme) => theme.scheme === scheme).map((theme) => <option key={theme.id} value={theme.id}>{theme.name}</option>);
+  return (
+    <div className="look-editor" role="group" aria-label={`Look of ${name}`}>
+      <div className="editor-field">
+        <label className="editor-field__label" htmlFor={`${id}-theme`}>Theme</label>
+        <select id={`${id}-theme`} className="field" value={look.themeId ?? ""} onChange={(event) => set({ themeId: event.target.value || undefined })}>
+          <option value="">Same as the app</option>
+          <optgroup label="Dark">{byScheme("dark")}</optgroup>
+          <optgroup label="Light">{byScheme("light")}</optgroup>
+        </select>
+      </div>
+      <div className="editor-field">
+        <label className="editor-field__label" htmlFor={`${id}-font`}>Font</label>
+        <input id={`${id}-font`} className="field" value={look.fontFamily ?? ""} maxLength={240} spellCheck={false} placeholder="Same as the app" onChange={(event) => set({ fontFamily: event.target.value || undefined })} />
+      </div>
+      <div className="editor-field look-editor__size">
+        <label className="editor-field__label" htmlFor={`${id}-size`}>Size</label>
+        <input id={`${id}-size`} className="field" type="number" min={8} max={32} value={look.fontSize ?? ""} placeholder={String(preferences.fontSize)} onChange={(event) => set({ fontSize: event.target.value ? Math.min(32, Math.max(8, Math.round(Number(event.target.value)))) : undefined })} />
+      </div>
+      <p className="field-note look-editor__note">Tabs of this profile use it, and the window takes its colors when one is in front.</p>
+    </div>
+  );
+}
+
+/** One detected profile: icon, name, what it runs, and its look. */
+function ProfileRow({ profile, preferences, onChange }: LookProps & { profile: TerminalProfile }) {
+  const [open, setOpen] = useState(false);
   const missing = profileGroup(profile) === "custom" ? "Program not found" : "Not installed";
   return (
-    <div className={`shell-row ${profile.available ? "" : "is-missing"}`}>
-      <ProfileIcon kind={profile.kind} accent={profile.accent} size={20} />
-      <div className="row__text">
-        <span className="row__label">{profile.name}</span>
-        <span className="row__description" title={profile.commandLine ?? profile.executable ?? undefined}>{profile.available ? profile.commandLine ?? profile.executable : missing}</span>
+    <>
+      <div className={`shell-row shell-row--actions ${profile.available ? "" : "is-missing"}`}>
+        <ProfileIcon kind={profile.kind} accent={profile.accent} size={20} />
+        <div className="row__text">
+          <span className="row__label">{profile.name}</span>
+          <span className="row__description" title={profile.commandLine ?? profile.executable ?? undefined}>{profile.available ? profile.commandLine ?? profile.executable : missing}</span>
+        </div>
+        <div className="shell-row__actions">
+          {profile.available && <span className="badge"><Check size={12} strokeWidth={2.4} />Ready</span>}
+          <LookControls profileId={profile.id} name={profile.name} preferences={preferences} open={open} onToggle={() => setOpen((current) => !current)} />
+        </div>
       </div>
-      {profile.available && <span className="badge"><Check size={12} strokeWidth={2.4} />Ready</span>}
-    </div>
+      {open && <ProfileLookEditor profileId={profile.id} name={profile.name} preferences={preferences} onChange={onChange} />}
+    </>
   );
 }
 
@@ -456,8 +519,9 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
 }
 
 /** The user's own profiles, with an inline editor to add, change and remove them. */
-function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onProfilesChanged }: { profiles: TerminalProfile[]; defaultProfileId: string; onDefaultRemoved: () => void; onProfilesChanged: () => Promise<void> }) {
+function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onProfilesChanged, preferences, onChange }: LookProps & { profiles: TerminalProfile[]; defaultProfileId: string; onDefaultRemoved: () => void; onProfilesChanged: () => Promise<void> }) {
   const [entries, setEntries] = useState<CustomProfile[] | null>(null);
+  const [lookOpen, setLookOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -516,7 +580,8 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
         const command = [entry.executable, entry.arguments].filter(Boolean).join(" ");
         const missing = entry.ssh ? "The OpenSSH client isn't installed" : `Program not found: ${entry.executable}`;
         return (
-          <div key={entry.id} className={`shell-row shell-row--actions ${available ? "" : "is-missing"}`}>
+          <Fragment key={entry.id}>
+          <div className={`shell-row shell-row--actions ${available ? "" : "is-missing"}`}>
             <ProfileIcon kind={entry.ssh ? "ssh" : "custom"} accent={entry.accent} size={20} />
             <div className="row__text">
               <span className="row__label">{entry.name}</span>
@@ -528,10 +593,13 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
                   <button className="button button--danger" type="button" autoFocus onClick={() => void remove(entry.id)}>Remove</button>
                 </div>
               : <div className="shell-row__actions">
+                  <LookControls profileId={entry.id} name={entry.name} preferences={preferences} open={lookOpen === entry.id} onToggle={() => setLookOpen((current) => current === entry.id ? null : entry.id)} />
                   <button className="icon-button" type="button" aria-label={`Edit ${entry.name}`} title="Edit" disabled={editing !== null} onClick={() => { setEditing(entry.id); setRemoving(null); }}><Pencil size={15} strokeWidth={1.8} /></button>
                   <button className="icon-button" type="button" aria-label={`Remove ${entry.name}`} title="Remove" disabled={editing !== null} onClick={() => setRemoving(entry.id)}><Trash size={15} strokeWidth={1.8} /></button>
                 </div>}
           </div>
+          {lookOpen === entry.id && <ProfileLookEditor profileId={entry.id} name={entry.name} preferences={preferences} onChange={onChange} />}
+          </Fragment>
         );
       })}
       {editing === NEW_PROFILE || editing === NEW_CONNECTION
@@ -664,6 +732,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
             <div className="settings__page" key={page}>
               {page === "appearance" && <>
                 <Group title="Theme">
+                  <Row label="Follow Windows" description={preferences.followSystemTheme ? "Pick one dark and one light theme below. The window wears the one that matches Windows' app mode." : "Switch between a dark and a light theme with Windows' app mode."}>
+                    <Switch label="Follow Windows" checked={preferences.followSystemTheme} onChange={(value) => patch("followSystemTheme", value)} />
+                  </Row>
                   <ThemeSection preferences={preferences} onChange={onChange} />
                 </Group>
 
@@ -677,6 +748,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                         <input type="color" value={preferences.accent} onChange={(event) => patch("accent", event.target.value)} aria-label="Custom accent color" />
                       </label>
                     </div>
+                  </Row>
+                  <Row label="Mark administrator windows" description="Administrator windows get a red accent, so you always know which shells are elevated.">
+                    <Switch label="Mark administrator windows" checked={preferences.markAdministratorWindows} onChange={(value) => patch("markAdministratorWindows", value)} />
                   </Row>
                   <Row label="Background" description="Mica lets your desktop color show through on Windows 11.">
                     <Segmented label="Background" value={preferences.backgroundMode} onChange={(value) => value === "image" && !preferences.backgroundImage ? imageInputRef.current?.click() : patch("backgroundMode", value)} options={[{ value: "mica", label: "Mica" }, { value: "solid", label: "Solid" }, { value: "image", label: "Image" }]} />
@@ -799,14 +873,15 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <Switch label="Shell integration" checked={preferences.shellIntegration} onChange={(value) => patch("shellIntegration", value)} />
                   </Row>
                 </Group>
-                <CustomProfilesGroup profiles={profiles} defaultProfileId={preferences.defaultProfileId} onDefaultRemoved={() => patch("defaultProfileId", "")} onProfilesChanged={onProfilesChanged} />
-                {groupProfiles(profiles).filter(({ group }) => group !== "custom").map(({ group, profiles: members }) => (
+                <CustomProfilesGroup profiles={profiles} defaultProfileId={preferences.defaultProfileId} onDefaultRemoved={() => patch("defaultProfileId", "")} onProfilesChanged={onProfilesChanged} preferences={preferences} onChange={onChange} />
+                {/* Custom profiles, SSH connections included, are listed in their own group above. */}
+                {groupProfiles(profiles.filter((profile) => !profile.id.startsWith("custom:"))).map(({ group, profiles: members }) => (
                   <Group
                     key={group}
                     title={group === "shell" ? "Detected on this PC" : profileGroupLabels[group]}
                     description={group === "wsl" ? "One profile for each installed distribution." : group === "ssh" ? "Hosts from your ~/.ssh/config. Edit that file to add more." : undefined}
                   >
-                    {members.map((profile) => <ProfileRow key={profile.id} profile={profile} />)}
+                    {members.map((profile) => <ProfileRow key={profile.id} profile={profile} preferences={preferences} onChange={onChange} />)}
                   </Group>
                 ))}
               </>}
