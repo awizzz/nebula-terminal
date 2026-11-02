@@ -1102,6 +1102,12 @@ kbd { font: inherit; }
 .theme-card__preview b { font-weight: 600; }
 .theme-card__name { display: flex; align-items: center; justify-content: space-between; height: 34px; padding: 0 12px; font-size: 12px; }
 .theme-card__name svg { color: var(--accent); animation: pop-in var(--dur-3) var(--ease-spring); }
+.look-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 160px; padding: 2px 8px; border-radius: 999px; background: var(--hover-strong); color: var(--text-2); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.look-chip__swatch { flex: none; width: 10px; height: 10px; border: 2px solid; border-radius: 50%; }
+.look-editor { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) 88px; gap: 12px; padding: 4px 16px 16px 50px; }
+.look-editor__note { grid-column: 1 / -1; }
+.icon-button.is-active { background: var(--hover-strong); color: var(--text); }
+.theme-card__mode { padding: 1px 7px; border-radius: 999px; background: color-mix(in oklab, var(--accent) 22%, transparent); color: var(--text); font-size: 11px; animation: pop-in var(--dur-3) var(--ease-spring); }
 
 .shortcut { display: flex; align-items: center; gap: 12px; }
 .shortcut__conflict { color: var(--warning); font-size: 12px; }
@@ -1176,6 +1182,7 @@ kbd { font: inherit; }
   .row__control { flex-wrap: wrap; }
   .field--select { width: 100%; }
   .editor-field-row:not(:has(input[inputmode="numeric"])) { grid-template-columns: minmax(0, 1fr); }
+  .look-editor { grid-template-columns: minmax(0, 1fr); padding-left: 16px; }
   .profile-editor__head { flex-wrap: wrap; }
   .palette__footer { display: none; }
 }
