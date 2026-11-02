@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.0
+
+Your settings on every PC, Nebula Terminal for Windows on Arm and for screen reader users, and the quick terminal in the notification area.
+
+### Added
+
+- settings sync: Settings → Behavior → Sync settings keeps your settings in a file you choose, in OneDrive, Dropbox or a Git repository, and every PC that uses it gets the same themes, fonts, shortcuts, profile looks and saved commands. There's no account and nothing goes anywhere else. What belongs to one PC stays there: the Explorer and PATH entries, the starting folder, what opens files and the background image
+- Windows on Arm: an ARM64 installer and portable zip in every release, and the updater picks the one for your machine
+- screen reader support (Settings → Terminal → Accessibility) for Narrator, NVDA and JAWS
+- High Contrast Dark and High Contrast Light, with every color at 7:1 or more against the background. When a Windows contrast theme is on, terminals wear them on their own
+- the quick terminal can keep the app running in the notification area after its last window closes, so its shortcut still works; the icon opens a window, shows the quick terminal or quits
+- the documentation, the changelog and the roadmap on [nebula.awizz.space](https://nebula.awizz.space/docs/)
+
 ## 1.9.0
 
 Pane zoom, saved commands and ligatures, and in Nebula: Ctrl+Z, `help` with examples and many more completions.
