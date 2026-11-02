@@ -115,8 +115,10 @@ deploy production eu
 - **Click a path to open it.** `Ctrl+Click` on `src/main.rs:42` in a compiler error or a `grep` result opens the file at that line, in VS Code, Cursor, the app Windows uses or a command you choose. Folders open in File Explorer.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths.
 - **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, to run the same command on several servers or shells. A colored outline shows when it's on.
+- **Every command is a block.** Point at a finished command to copy it, copy its output or run it again.
+- **Find in every tab** (`Ctrl+Shift+Alt+F`), and save a pane's output to a file from its right-click menu.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
-- **Opens where you are.** New tabs and splits start in the folder of the shell you're in. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.
+- **Opens where you are.** New tabs and splits start in the folder of the shell you're in, and the new-tab menu keeps the folders you were in lately. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.
 - **Picks up where you left off.** Your tabs, their names and colors, your splits and the folder each one was in are restored on launch. The shells themselves start fresh.
 
 ## Keyboard shortcuts
@@ -134,6 +136,7 @@ deploy production eu
 | Previous / next command | `Ctrl+↑` / `Ctrl+↓` |
 | Type in every pane | `Ctrl+Shift+B` |
 | Zoom the pane in front | `Ctrl+Shift+Z` |
+| Find in every tab | `Ctrl+Shift+Alt+F` |
 | Pause the command in front (Nebula) | `Ctrl+Z` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
@@ -145,7 +148,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: command blocks, find in every tab, recent folders and saving output to a file. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: Nebula in Windows Terminal, a workspace that opens at startup, copying with colors and a tab switcher. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
