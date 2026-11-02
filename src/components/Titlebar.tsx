@@ -219,7 +219,11 @@ export default function Titlebar({
               {renaming
                 ? <TabRename tab={tab} onCommit={(name) => { onRename(tab.id, name); onRenameEnd(); }} onCancel={onRenameEnd} />
                 : <span className="tab__title">{title}</span>}
-              {tab.panes.length > 1 && <span className="tab__panes" aria-label={`${tab.panes.length} panes`}>{tab.panes.length}</span>}
+              {tab.panes.length > 1 && (
+                <span className={`tab__panes ${tab.zoomedPaneId ? "is-zoomed" : ""}`} aria-label={tab.zoomedPaneId ? `1 of ${tab.panes.length} panes shown` : `${tab.panes.length} panes`} title={tab.zoomedPaneId ? "One pane fills the tab" : undefined}>
+                  {tab.zoomedPaneId ? `1/${tab.panes.length}` : tab.panes.length}
+                </span>
+              )}
               {!active && finished.has(tab.id)
                 ? <span className={`tab__done ${finished.get(tab.id) ? "" : "is-failed"}`} aria-label={finished.get(tab.id) ? "Command finished" : "Command failed"} />
                 : activity.has(tab.id) && !active && <span className="tab__activity" aria-label="New output" />}

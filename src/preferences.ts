@@ -2,6 +2,7 @@ import { normalizeThemeId, type TerminalTheme } from "./themes";
 import { isCustomTheme, MAX_CUSTOM_THEMES } from "./themeImport";
 import { defaultQuickShortcut, isGlobalShortcut } from "./quickShortcut";
 import { sanitizeLooks } from "./looks";
+import { sanitizeSavedCommands } from "./savedCommands";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 export const defaultKeybindings: KeybindingPreferences = {
@@ -21,6 +22,7 @@ export const defaultKeybindings: KeybindingPreferences = {
   zoomReset: "Ctrl+0",
   toggleBroadcast: "Ctrl+Shift+B",
   previousCommand: "Ctrl+ArrowUp",
+  togglePaneZoom: "Ctrl+Shift+Z",
   nextCommand: "Ctrl+ArrowDown",
 };
 
@@ -41,6 +43,7 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   zoomReset: "Reset zoom",
   toggleBroadcast: "Type in every pane",
   previousCommand: "Previous command",
+  togglePaneZoom: "Zoom pane",
   nextCommand: "Next command",
 };
 
@@ -93,6 +96,8 @@ export const defaultPreferences: AppearancePreferences = {
   markAdministratorWindows: true,
   terminalImages: true,
   clipboardWrite: true,
+  fontLigatures: true,
+  savedCommands: [],
   keybindings: defaultKeybindings,
 };
 
@@ -190,6 +195,8 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     markAdministratorWindows: booleanFrom(value.markAdministratorWindows, defaultPreferences.markAdministratorWindows),
     terminalImages: booleanFrom(value.terminalImages, defaultPreferences.terminalImages),
     clipboardWrite: booleanFrom(value.clipboardWrite, defaultPreferences.clipboardWrite),
+    fontLigatures: booleanFrom(value.fontLigatures, defaultPreferences.fontLigatures),
+    savedCommands: sanitizeSavedCommands(value.savedCommands),
     keybindings,
   };
 }
