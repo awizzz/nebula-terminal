@@ -9,6 +9,7 @@ use crate::parse::{
     Redirect, RedirectKind, RedirectTarget, Simple, TestToken, Word,
 };
 use crate::suggest;
+use crate::suspend::{self, Waited};
 use crate::sys;
 use crate::test;
 use indexmap::IndexMap;
@@ -189,10 +190,26 @@ enum Running {
     Done(i32),
 }
 
+/// Programs paused by Ctrl+Z while the shell waited for them, until the prompt makes
+/// them a stopped job.
+static STOPPED: std::sync::Mutex<Vec<Child>> = std::sync::Mutex::new(Vec::new());
+
+/// The status of a command paused by Ctrl+Z, as bash gives it (128 + SIGTSTP).
+pub const SUSPENDED: i32 = 148;
+
 impl Running {
     fn wait(self) -> i32 {
         match self {
-            Running::Child(mut child) => child.wait().map(|status| exit_code(&status)).unwrap_or(1),
+            Running::Child(mut child) => match suspend::wait(&mut child) {
+                Ok(Waited::Exited(status)) => exit_code(&status),
+                Ok(Waited::Suspended) => {
+                    if let Ok(mut stopped) = STOPPED.lock() {
+                        stopped.push(child);
+                    }
+                    SUSPENDED
+                }
+                Err(_) => 1,
+            },
             Running::Thread(handle) => handle.join().unwrap_or(1),
             Running::Done(code) => code,
         }
@@ -340,6 +357,8 @@ pub struct Job {
     pub pids: Vec<u32>,
     stages: Vec<Running>,
     status: Option<i32>,
+    /// Paused by Ctrl+Z or `kill -STOP`, until `fg`, `bg` or `kill -CONT`.
+    pub stopped: bool,
 }
 
 impl Job {
@@ -372,14 +391,45 @@ impl Job {
         }
     }
 
-    /// `Running`, `Done` or `Exit 2`, as `jobs` shows it.
+    /// Pauses or resumes every process of the job.
+    pub fn set_stopped(&mut self, stopped: bool) {
+        for pid in &self.pids {
+            if stopped {
+                suspend::suspend_tree(*pid);
+            } else {
+                suspend::resume_tree(*pid);
+            }
+        }
+        self.stopped = stopped;
+    }
+
+    /// `Running`, `Stopped`, `Done` or `Exit 2`, as `jobs` shows it.
     pub fn state(&mut self, pipefail: bool) -> String {
         match self.poll(pipefail) {
+            None if self.stopped => "Stopped".to_owned(),
             None => "Running".to_owned(),
             Some(0) => "Done".to_owned(),
             Some(code) => format!("Exit {code}"),
         }
     }
+}
+
+/// Whether `kill` arguments ask to pause (Some(true)) or resume (Some(false)) processes.
+fn pause_signal(args: &[String]) -> Option<bool> {
+    let mut words = args.iter().map(String::as_str);
+    while let Some(word) = words.next() {
+        let name = match word {
+            "-s" | "-n" => words.next().unwrap_or_default(),
+            other if other.starts_with('-') => &other[1..],
+            _ => continue,
+        };
+        match name.trim_start_matches("SIG") {
+            "STOP" | "19" | "TSTP" | "20" => return Some(true),
+            "CONT" | "18" => return Some(false),
+            _ => {}
+        }
+    }
+    None
 }
 
 fn exit_code(status: &std::process::ExitStatus) -> i32 {
@@ -557,9 +607,35 @@ impl Shell {
         self.interrupted.load(Ordering::SeqCst)
     }
 
-    /// True once `exit`, `break`, `continue`, `return` or Ctrl+C stops the current list.
+    /// True once `exit`, `break`, `continue`, `return`, Ctrl+C or Ctrl+Z stops the current list.
     fn stopped(&self) -> bool {
-        self.exit_code.is_some() || self.flow.is_some() || self.interrupted()
+        self.exit_code.is_some()
+            || self.flow.is_some()
+            || self.interrupted()
+            || suspend::suspending()
+    }
+
+    /// Back at the prompt: what Ctrl+Z paused becomes a stopped job, as in bash.
+    pub fn adopt_stopped(&mut self, text: &str, out: &mut dyn Write) {
+        let children: Vec<Child> = STOPPED
+            .lock()
+            .map(|mut stopped| std::mem::take(&mut *stopped))
+            .unwrap_or_default();
+        suspend::settle();
+        if children.is_empty() {
+            return;
+        }
+        let id = self.jobs.iter().map(|job| job.id).max().unwrap_or(0) + 1;
+        let pids = children.iter().map(Child::id).collect();
+        self.jobs.push(Job {
+            id,
+            text: text.trim().to_owned(),
+            pids,
+            stages: children.into_iter().map(Running::Child).collect(),
+            status: None,
+            stopped: true,
+        });
+        let _ = writeln!(out, "\n[{id}]+  {:<24}{}", "Stopped", text.trim());
     }
 
     /// Runs one line (or a whole script) from the top level and returns its exit status.
@@ -755,6 +831,7 @@ impl Shell {
             pids,
             stages,
             status: None,
+            stopped: false,
         });
         i32::from(failed)
     }
@@ -795,10 +872,18 @@ impl Shell {
     /// Waits for a job, giving up on Ctrl+C. With `stop`, Ctrl+C also ends the job,
     /// as it would a program in the foreground.
     pub fn wait_job(&mut self, index: usize, stop: bool) -> i32 {
+        if stop && self.jobs[index].stopped {
+            self.jobs[index].set_stopped(false);
+        }
         loop {
             if let Some(status) = self.poll_job(index) {
                 self.jobs.remove(index);
                 return status;
+            }
+            // Ctrl+Z on a job brought back with fg pauses it again.
+            if stop && suspend::suspending() {
+                self.jobs[index].set_stopped(true);
+                return SUSPENDED;
             }
             if self.interrupted() {
                 if !stop {
@@ -1211,6 +1296,19 @@ impl Shell {
             return Running::Done(self.subst_status.unwrap_or(0));
         }
         if argv[0] == "kill" && argv[1..].iter().any(|arg| arg.starts_with('%')) {
+            // Windows has no STOP and CONT: the shell pauses and resumes its jobs itself.
+            if let Some(stopped) = pause_signal(&argv[1..]) {
+                for arg in argv[1..].iter().filter(|arg| arg.starts_with('%')) {
+                    match self.find_job(arg) {
+                        Some(index) => self.jobs[index].set_stopped(stopped),
+                        None => {
+                            let _ = writeln!(io.stderr.writer(), "kill: {arg}: no such job");
+                            return Running::Done(1);
+                        }
+                    }
+                }
+                return Running::Done(0);
+            }
             // Job numbers mean nothing to the kill command: give it the process ids.
             let mut resolved = vec![argv[0].clone()];
             for arg in &argv[1..] {

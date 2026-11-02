@@ -172,6 +172,7 @@ fn main() {
             quick::set_quick_terminal,
             quick::hide_quick_terminal,
             pty::park_session,
+            pty::suspend_foreground,
             pty::attach_session,
             windows::move_tab,
             windows::window_under_cursor,

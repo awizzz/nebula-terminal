@@ -22,6 +22,7 @@ mod pathnames;
 mod prompt;
 mod style;
 mod suggest;
+mod suspend;
 mod sys;
 mod test;
 

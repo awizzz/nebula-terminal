@@ -82,7 +82,7 @@ function withSymbols(fontFamily: string): string {
 }
 
 /** Ctrl+<letter> on any keyboard layout: Cyrillic or Greek layouts report another `key`. */
-function isControlLetter(event: KeyboardEvent, letter: "c" | "v"): boolean {
+function isControlLetter(event: KeyboardEvent, letter: "c" | "v" | "z"): boolean {
   if (!event.ctrlKey || event.altKey) return false;
   const key = event.key.toLowerCase();
   if (key === letter) return true;
@@ -575,6 +575,16 @@ export default function TerminalPane({
       if (event.shiftKey && !event.ctrlKey && event.key === "Insert") {
         event.preventDefault();
         paste();
+        return false;
+      }
+      // Ctrl+Z while Nebula runs a command pauses it, as in bash. The program has the
+      // keyboard then, so the shell hears it through the host instead of the key.
+      const sessionId = sessionRef.current;
+      if (isControlLetter(event, "z") && !event.shiftKey && running && sessionId && isTauri() && profile.id === "nebula") {
+        event.preventDefault();
+        void invoke<boolean>("suspend_foreground", { sessionId })
+          .then((paused) => { if (!paused) writeRef.current("\x1a"); })
+          .catch(() => writeRef.current("\x1a"));
         return false;
       }
       return true;

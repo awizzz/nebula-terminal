@@ -93,6 +93,7 @@ struct SessionHandle {
     requests: Mutex<mpsc::Sender<Request>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     events: Arc<Events>,
+    pid: Option<u32>,
 }
 
 /// How much output a session keeps while its tab moves to another window.
@@ -206,6 +207,8 @@ pub struct SessionParts {
     pub killer: Box<dyn ChildKiller + Send + Sync>,
     /// Blocks until the program exits, then gives its exit code.
     pub wait: Box<dyn FnOnce() -> io::Result<u32> + Send>,
+    /// The shell's process, for Ctrl+Z in Nebula; None for a console Windows handed over.
+    pub pid: Option<u32>,
 }
 
 /// A console Windows handed over, waiting for a tab to attach to it.
@@ -367,12 +370,14 @@ pub async fn start_session(
         .take_writer()
         .map_err(|error| format!("Unable to open PTY input: {error}"))?;
     let killer = child.clone_killer();
+    let pid = child.process_id();
     let parts = SessionParts {
         reader,
         writer,
         console: Box::new(pair.master),
         killer,
         wait: Box::new(move || child.wait().map(|status| status.exit_code())),
+        pid,
     };
     spawn_session(&state, parts, on_event)
 }
@@ -390,6 +395,7 @@ fn spawn_session(
         console,
         killer,
         wait,
+        pid,
     } = parts;
     let session_id = format!("s{}", state.inner.next_id.fetch_add(1, Ordering::Relaxed));
     let (requests, receiver) = mpsc::channel();
@@ -401,6 +407,7 @@ fn spawn_session(
         requests: Mutex::new(requests),
         killer: Mutex::new(killer),
         events: events.clone(),
+        pid,
     });
 
     state
@@ -550,6 +557,42 @@ pub fn attach_handoff(
         }),
     )?;
     Ok(session_id)
+}
+
+/// Ctrl+Z for a Nebula shell: sets the event it waits on next to the program in front
+/// (crates/nebula-sh/src/suspend.rs), which pauses that program. False when the shell
+/// doesn't listen for it; the key then goes to the program as usual.
+#[tauri::command]
+pub fn suspend_foreground(session_id: String, state: State<'_, PtyState>) -> Result<bool, String> {
+    Ok(session(&state, &session_id)?
+        .pid
+        .is_some_and(signal_suspend))
+}
+
+#[cfg(windows)]
+fn signal_suspend(pid: u32) -> bool {
+    use windows_sys::Win32::{
+        Foundation::CloseHandle,
+        System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE},
+    };
+    let name: Vec<u16> = format!("Local\\NebulaTerminal.Suspend.{pid}\0")
+        .encode_utf16()
+        .collect();
+    // SAFETY: a NUL-terminated name, and a handle closed before returning.
+    unsafe {
+        let event = OpenEventW(EVENT_MODIFY_STATE, 0, name.as_ptr());
+        if event.is_null() {
+            return false;
+        }
+        let set = SetEvent(event) != 0;
+        CloseHandle(event);
+        set
+    }
+}
+
+#[cfg(not(windows))]
+fn signal_suspend(_pid: u32) -> bool {
+    false
 }
 
 /// Holds a session's output while its tab moves to another window. If no window takes

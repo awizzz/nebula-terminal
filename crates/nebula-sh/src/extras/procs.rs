@@ -90,7 +90,7 @@ fn signal(spec: &str) -> Option<Option<Signal>> {
         "12" | "USR2" => Signal::User2,
         "15" | "TERM" => Signal::Term,
         "18" | "CONT" => Signal::Continue,
-        "19" | "STOP" => Signal::Stop,
+        "19" | "STOP" | "20" | "TSTP" => Signal::Stop,
         _ => return None,
     }))
 }
@@ -111,7 +111,7 @@ pub fn kill(args: &[String]) -> i32 {
                 return 0;
             }
             "--help" => {
-                println!("Usage: kill [-s SIGNAL | -SIGNAL] PID…\nStop processes. On Windows every signal except 0 ends the process.");
+                println!("Usage: kill [-s SIGNAL | -SIGNAL] PID…\nStop processes. On Windows STOP pauses a process and CONT resumes it; every other signal except 0 ends it.");
                 return 0;
             }
             "-s" | "-n" => {
@@ -150,6 +150,9 @@ pub fn kill(args: &[String]) -> i32 {
     for pid in pids {
         match (system.process(Pid::from_u32(pid)), chosen) {
             (Some(_), None) => {}
+            // Windows has no STOP or CONT: the process and what it started are paused or resumed.
+            (Some(_), Some(Signal::Stop)) if crate::suspend::suspend_tree(pid) => {}
+            (Some(_), Some(Signal::Continue)) if crate::suspend::resume_tree(pid) => {}
             (Some(process), Some(signal)) if send(process, signal) => {}
             (Some(_), Some(_)) => {
                 eprintln!("kill: ({pid}) - Operation not permitted");

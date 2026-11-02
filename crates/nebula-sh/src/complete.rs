@@ -563,6 +563,349 @@ const DOCKER_COMMANDS: &[(&str, &str)] = &[
     ("system", "disk use and cleanup"),
 ];
 
+const KUBECTL_COMMANDS: &[(&str, &str)] = &[
+    ("get", "list resources"),
+    ("describe", "show a resource in detail"),
+    ("logs", "a container's logs"),
+    ("apply", "create or update from a file"),
+    ("delete", "remove resources"),
+    ("exec", "run a command in a container"),
+    ("port-forward", "forward a local port to a pod"),
+    ("rollout", "manage a rollout"),
+    ("scale", "change the number of replicas"),
+    ("create", "create a resource"),
+    ("edit", "edit a resource"),
+    ("config", "kubeconfig contexts and settings"),
+    ("top", "CPU and memory use"),
+    ("explain", "documentation of a resource"),
+    ("cp", "copy files to or from a container"),
+    ("label", "change labels"),
+    ("annotate", "change annotations"),
+    ("cordon", "mark a node unschedulable"),
+    ("drain", "empty a node"),
+    ("version", "client and server versions"),
+];
+
+const KUBERNETES_RESOURCES: &[(&str, &str)] = &[
+    ("pods", "pods"),
+    ("deployments", "deployments"),
+    ("services", "services"),
+    ("nodes", "nodes"),
+    ("namespaces", "namespaces"),
+    ("configmaps", "config maps"),
+    ("secrets", "secrets"),
+    ("ingresses", "ingresses"),
+    ("statefulsets", "stateful sets"),
+    ("daemonsets", "daemon sets"),
+    ("jobs", "jobs"),
+    ("cronjobs", "cron jobs"),
+    ("events", "events"),
+    ("persistentvolumeclaims", "volume claims"),
+    ("all", "the usual resources"),
+];
+
+const GH_COMMANDS: &[(&str, &str)] = &[
+    ("pr", "pull requests"),
+    ("issue", "issues"),
+    ("repo", "repositories"),
+    ("run", "workflow runs"),
+    ("workflow", "workflows"),
+    ("release", "releases"),
+    ("auth", "sign in and out"),
+    ("api", "call the GitHub API"),
+    ("browse", "open the repository in the browser"),
+    ("search", "search GitHub"),
+    ("gist", "gists"),
+    ("codespace", "codespaces"),
+    ("secret", "Actions secrets"),
+    ("label", "labels"),
+    ("status", "what needs you"),
+];
+
+const GH_PR_COMMANDS: &[(&str, &str)] = &[
+    ("list", "open pull requests"),
+    ("view", "a pull request"),
+    ("create", "open a pull request"),
+    ("checkout", "check out a pull request"),
+    ("status", "your pull requests"),
+    ("diff", "a pull request's changes"),
+    ("checks", "CI results"),
+    ("merge", "merge a pull request"),
+    ("review", "review a pull request"),
+    ("comment", "comment on a pull request"),
+    ("close", "close a pull request"),
+    ("edit", "change a pull request"),
+    ("ready", "mark it ready for review"),
+];
+
+const GH_ISSUE_COMMANDS: &[(&str, &str)] = &[
+    ("list", "open issues"),
+    ("view", "an issue"),
+    ("create", "open an issue"),
+    ("comment", "comment on an issue"),
+    ("close", "close an issue"),
+    ("reopen", "reopen an issue"),
+    ("edit", "change an issue"),
+    ("status", "issues that concern you"),
+];
+
+const GH_REPO_COMMANDS: &[(&str, &str)] = &[
+    ("clone", "clone a repository"),
+    ("view", "a repository"),
+    ("create", "create a repository"),
+    ("fork", "fork a repository"),
+    ("list", "your repositories"),
+    ("sync", "sync a fork"),
+];
+
+const GH_RUN_COMMANDS: &[(&str, &str)] = &[
+    ("list", "recent runs"),
+    ("view", "a run"),
+    ("watch", "follow a run"),
+    ("rerun", "run it again"),
+    ("cancel", "stop a run"),
+    ("download", "download artifacts"),
+];
+
+const AZ_COMMANDS: &[(&str, &str)] = &[
+    ("login", "sign in"),
+    ("account", "subscriptions"),
+    ("group", "resource groups"),
+    ("vm", "virtual machines"),
+    ("webapp", "App Service apps"),
+    ("functionapp", "Function apps"),
+    ("storage", "storage accounts"),
+    ("aks", "Kubernetes clusters"),
+    ("acr", "container registries"),
+    ("keyvault", "key vaults"),
+    ("network", "networks"),
+    ("sql", "SQL databases"),
+    ("monitor", "logs and metrics"),
+    ("deployment", "template deployments"),
+    ("ad", "Microsoft Entra"),
+    ("devops", "Azure DevOps"),
+];
+
+const TERRAFORM_COMMANDS: &[(&str, &str)] = &[
+    ("init", "prepare the working folder"),
+    ("plan", "show what would change"),
+    ("apply", "make the changes"),
+    ("destroy", "remove everything"),
+    ("validate", "check the configuration"),
+    ("fmt", "format the files"),
+    ("output", "show outputs"),
+    ("state", "inspect the state"),
+    ("import", "adopt an existing resource"),
+    ("workspace", "workspaces"),
+    ("providers", "providers in use"),
+    ("show", "the state or a plan"),
+    ("console", "evaluate expressions"),
+];
+
+const HELM_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install a chart"),
+    ("upgrade", "upgrade a release"),
+    ("uninstall", "remove a release"),
+    ("list", "releases"),
+    ("status", "a release's status"),
+    ("rollback", "go back to a revision"),
+    ("history", "a release's revisions"),
+    ("repo", "chart repositories"),
+    ("search", "find charts"),
+    ("template", "render a chart"),
+    ("show", "a chart's details"),
+    ("dependency", "a chart's dependencies"),
+    ("create", "a new chart"),
+    ("lint", "check a chart"),
+];
+
+const DOTNET_COMMANDS: &[(&str, &str)] = &[
+    ("new", "create a project"),
+    ("build", "build the project"),
+    ("run", "build and run"),
+    ("test", "run the tests"),
+    ("publish", "build for deployment"),
+    ("restore", "restore the dependencies"),
+    ("add", "add a package or reference"),
+    ("remove", "remove a package or reference"),
+    ("clean", "remove build output"),
+    ("watch", "run again on changes"),
+    ("tool", "manage tools"),
+    ("sln", "edit a solution"),
+    ("format", "format the code"),
+    ("ef", "Entity Framework"),
+];
+
+const GO_COMMANDS: &[(&str, &str)] = &[
+    ("build", "compile packages"),
+    ("run", "compile and run"),
+    ("test", "run the tests"),
+    ("mod", "manage modules"),
+    ("get", "add a dependency"),
+    ("install", "compile and install"),
+    ("fmt", "format the code"),
+    ("vet", "find mistakes"),
+    ("generate", "run go:generate"),
+    ("clean", "remove object files"),
+    ("env", "Go's settings"),
+    ("version", "the Go version"),
+    ("work", "workspaces"),
+    ("tool", "run a Go tool"),
+];
+
+const PIP_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install packages"),
+    ("uninstall", "remove packages"),
+    ("list", "installed packages"),
+    ("show", "a package's details"),
+    ("freeze", "installed packages for requirements.txt"),
+    ("download", "download packages"),
+    ("check", "find broken dependencies"),
+    ("cache", "pip's cache"),
+];
+
+const UV_COMMANDS: &[(&str, &str)] = &[
+    ("run", "run a command in the project"),
+    ("add", "add a dependency"),
+    ("remove", "remove a dependency"),
+    ("sync", "install the locked dependencies"),
+    ("lock", "update the lockfile"),
+    ("init", "create a project"),
+    ("venv", "create a virtual environment"),
+    ("pip", "pip-compatible commands"),
+    ("tool", "Python tools"),
+    ("python", "Python versions"),
+    ("tree", "the dependency tree"),
+    ("build", "build the package"),
+    ("publish", "publish the package"),
+];
+
+const RUSTUP_COMMANDS: &[(&str, &str)] = &[
+    ("update", "update the toolchains"),
+    ("default", "choose the default toolchain"),
+    ("toolchain", "manage toolchains"),
+    ("target", "add or remove targets"),
+    ("component", "add or remove components"),
+    ("override", "a toolchain for this folder"),
+    ("show", "installed toolchains"),
+    ("doc", "open the documentation"),
+    ("self", "update or remove rustup"),
+];
+
+const DENO_COMMANDS: &[(&str, &str)] = &[
+    ("run", "run a script"),
+    ("task", "run a task from deno.json"),
+    ("test", "run the tests"),
+    ("fmt", "format the code"),
+    ("lint", "lint the code"),
+    ("check", "type-check"),
+    ("add", "add a dependency"),
+    ("install", "install the dependencies"),
+    ("compile", "make an executable"),
+    ("serve", "serve an HTTP handler"),
+    ("upgrade", "upgrade Deno"),
+];
+
+const COMPOSE_COMMANDS: &[(&str, &str)] = &[
+    ("up", "create and start the services"),
+    ("down", "stop and remove them"),
+    ("ps", "the services' containers"),
+    ("logs", "their logs"),
+    ("build", "build the images"),
+    ("pull", "download the images"),
+    ("restart", "restart the services"),
+    ("exec", "run a command in a service"),
+    ("run", "run a one-off command"),
+    ("stop", "stop the services"),
+    ("config", "the resolved configuration"),
+];
+
+const SCOOP_COMMANDS: &[(&str, &str)] = &[
+    ("install", "install an app"),
+    ("update", "update apps"),
+    ("uninstall", "remove an app"),
+    ("search", "find apps"),
+    ("list", "installed apps"),
+    ("info", "an app's details"),
+    ("bucket", "manage buckets"),
+    ("status", "outdated apps"),
+    ("cleanup", "remove old versions"),
+];
+
+/// Subcommands by what is typed before them, for programs that don't need anything else.
+const SUBCOMMANDS: &[(&str, &[(&str, &str)])] = &[
+    ("cargo", CARGO_COMMANDS),
+    ("winget", WINGET_COMMANDS),
+    ("docker", DOCKER_COMMANDS),
+    ("podman", DOCKER_COMMANDS),
+    ("docker compose", COMPOSE_COMMANDS),
+    ("podman compose", COMPOSE_COMMANDS),
+    ("kubectl", KUBECTL_COMMANDS),
+    ("kubectl get", KUBERNETES_RESOURCES),
+    ("kubectl describe", KUBERNETES_RESOURCES),
+    ("kubectl delete", KUBERNETES_RESOURCES),
+    ("kubectl edit", KUBERNETES_RESOURCES),
+    ("gh", GH_COMMANDS),
+    ("gh pr", GH_PR_COMMANDS),
+    ("gh issue", GH_ISSUE_COMMANDS),
+    ("gh repo", GH_REPO_COMMANDS),
+    ("gh run", GH_RUN_COMMANDS),
+    ("az", AZ_COMMANDS),
+    ("terraform", TERRAFORM_COMMANDS),
+    ("tofu", TERRAFORM_COMMANDS),
+    ("helm", HELM_COMMANDS),
+    ("dotnet", DOTNET_COMMANDS),
+    ("go", GO_COMMANDS),
+    ("pip", PIP_COMMANDS),
+    ("pip3", PIP_COMMANDS),
+    ("uv", UV_COMMANDS),
+    ("rustup", RUSTUP_COMMANDS),
+    ("deno", DENO_COMMANDS),
+    ("scoop", SCOOP_COMMANDS),
+];
+
+/// What is typed so far, without options: `kubectl -n prod get` reads as `kubectl get`.
+fn subcommand_path(words: &[String]) -> String {
+    words
+        .iter()
+        .filter(|word| !word.starts_with('-'))
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The words of `~/.nebula-completions` that follow what is typed. Each line is a
+/// command, the words before the one to complete, and an optional description:
+///
+/// ```text
+/// deploy staging: the staging servers
+/// deploy production
+/// ```
+fn user_completions(path: &str) -> Vec<(String, String)> {
+    let Some(file) = sys::home().map(|home| home.join(".nebula-completions")) else {
+        return Vec::new();
+    };
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return Vec::new();
+    };
+    completions_in(&text, path)
+}
+
+fn completions_in(text: &str, path: &str) -> Vec<(String, String)> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            let (words, help) = line
+                .split_once(':')
+                .map_or((line, ""), |(words, help)| (words, help.trim()));
+            let mut words: Vec<&str> = words.split_whitespace().collect();
+            let candidate = words.pop()?;
+            (words.join(" ") == path).then(|| (candidate.to_owned(), help.to_owned()))
+        })
+        .collect()
+}
+
 fn table(
     entries: &'static [(&'static str, &'static str)],
 ) -> impl Iterator<Item = (String, String)> {
@@ -867,13 +1210,6 @@ impl Completer for NebulaCompleter {
                     }
                     _ => self.paths(token, span, false),
                 },
-                "cargo" if words.len() == 1 => word_suggestions(table(CARGO_COMMANDS), token, span),
-                "winget" if words.len() == 1 => {
-                    word_suggestions(table(WINGET_COMMANDS), token, span)
-                }
-                "docker" if words.len() == 1 => {
-                    word_suggestions(table(DOCKER_COMMANDS), token, span)
-                }
                 "make" => word_suggestions(make_targets(), token, span),
                 "z" => {
                     let typed: Vec<String> = words[1..]
@@ -901,7 +1237,19 @@ impl Completer for NebulaCompleter {
                     word_suggestions(names.into_iter().map(|n| (n, String::new())), token, span)
                 }
                 "type" | "which" | "command" | "help" => self.commands(token, span),
-                _ => self.paths(token, span, false),
+                _ => {
+                    let path = subcommand_path(&words);
+                    let mut candidates = user_completions(&path);
+                    if let Some((_, entries)) = SUBCOMMANDS.iter().find(|(typed, _)| *typed == path)
+                    {
+                        candidates.extend(table(entries));
+                    }
+                    if candidates.is_empty() {
+                        self.paths(token, span, false)
+                    } else {
+                        word_suggestions(candidates, token, span)
+                    }
+                }
             }
         };
         CompletionResult::fresh(suggestions)
@@ -938,6 +1286,48 @@ mod tests {
         let targets: Vec<String> = make_targets_in(&dir).into_iter().map(|(t, _)| t).collect();
         assert_eq!(targets, ["all", "build", "test"]);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn finds_subcommands_past_options() {
+        let words = |text: &str| {
+            text.split_whitespace()
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(subcommand_path(&words("kubectl -A get")), "kubectl get");
+        assert!(SUBCOMMANDS
+            .iter()
+            .any(|(typed, _)| *typed == subcommand_path(&words("gh pr"))));
+        // Every table is reachable once, and never empty.
+        for (index, (typed, entries)) in SUBCOMMANDS.iter().enumerate() {
+            assert!(!entries.is_empty(), "{typed}");
+            assert!(
+                SUBCOMMANDS.iter().position(|(other, _)| other == typed) == Some(index),
+                "{typed} twice"
+            );
+        }
+    }
+
+    #[test]
+    fn reads_the_users_completions() {
+        let text = "# mine\ndeploy staging: the staging servers\ndeploy production\ndeploy production eu: Europe\n\nbroken\n";
+        assert_eq!(
+            completions_in(text, "deploy"),
+            [
+                ("staging".to_owned(), "the staging servers".to_owned()),
+                ("production".to_owned(), String::new())
+            ]
+        );
+        assert_eq!(
+            completions_in(text, "deploy production"),
+            [("eu".to_owned(), "Europe".to_owned())]
+        );
+        assert_eq!(
+            completions_in(text, ""),
+            [("broken".to_owned(), String::new())]
+        );
+        assert!(completions_in(text, "other").is_empty());
     }
 
     #[test]
