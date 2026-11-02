@@ -91,7 +91,8 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette.
-- **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them.
+- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. Drag a tab out of the window to give it its own, or onto another window: the shells keep running.
+- **Images and progress.** Sixel and iTerm2 images show in the terminal, programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
 - **Nine themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
@@ -133,7 +134,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: several windows, images in the terminal, progress on the taskbar and copying from programs over SSH, then pane zoom, saved commands and more for Nebula. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: pane zoom, saved commands and font ligatures, then more completions, `help` with examples and Ctrl+Z in Nebula. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

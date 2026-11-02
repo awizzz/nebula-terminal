@@ -38,7 +38,8 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `quick.rs` | The quick terminal: its global shortcut, registered on a thread of its own, and the window that drops down from the top of the screen. |
 | `defterm.rs` | Nebula Terminal as the default terminal of Windows 11: the COM class Windows hands consoles to, and the registry values that choose it. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
-| `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
+| `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. While a tab moves to another window, a session's events wait in a queue (4 MB at most) until the new pane attaches. |
+| `windows.rs` | Terminal windows beyond the main one: opening them, sending a tab to the window under the pointer, the transfers they open with, and which window a launch goes to. |
 | `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. |
 
 The webview cannot start arbitrary programs. It sends a **profile id**, and Rust decides which executable that means:
@@ -94,6 +95,20 @@ The title bar says Administrator, and the window title starts with it, as Window
 With UAC turned off, every program of an admin user runs elevated, so there's nothing to keep apart: the app runs as usual (`is_admin_copy` checks for a full token from UAC, not just an elevated one), and the copy that Run as administrator starts hands its request to the open window, which opens the tab itself. If no window is open, that copy becomes the window and `launch_folder` reads the folder from the request.
 
 A request from File Explorer carries no settings, since no window asked. The admin window then uses the settings it was last given, which its own web data keeps.
+
+### Windows
+
+Besides the main window, a window can be opened for tabs, labelled `tabs-<uuid>`. Dropping a tab outside its window sends it to the terminal window under the pointer, or to a new one placed there (`windows.rs`). Every terminal window runs the same page and keeps its own tabs; the app ends when the last one closes.
+
+A tab moves with its shells running:
+
+1. Each pane serializes its screen and scrollback (xterm's serialize addon, 5,000 lines at most) and asks `park_session`: from then on the session's output waits in a queue.
+2. The page sends the tab (layout, panes, screens) to `move_tab`, which keeps it and tells the target window, or opens a new one with the transfer's id.
+3. The target takes the transfer once (`take_transfer`), writes each screen and calls `attach_session`: the queued output follows, then everything else.
+
+The old window's panes unmount without closing their sessions. A session no window attaches to within 30 seconds is stopped, and a move that fails gives the shells back to their panes.
+
+Each window saves its tabs, the main one in the session key and the others under their label. A window closed while others stay open forgets its tabs; the last one keeps them. At launch, the main window opens the others again with `restore_windows`, and takes the first one's tabs if it has none of its own.
 
 ### Quick terminal
 
@@ -181,6 +196,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
 | `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview, and the editor's SSH draft: its checks and the ssh command it shows. |
 | `workspaces.ts` | Saved workspaces: named snapshots of the tabs (the same format as the session), kept in local storage, 30 at most. |
+| `progress.ts` | OSC 9;4 progress reports, and which one the taskbar button shows. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
@@ -229,4 +245,5 @@ Settings and the tab layout are stored in the webview's local storage under the 
 - A shell that runs as administrator only lives in an admin window of its own, started through UAC (see Admin windows).
 - Links and file paths in terminal output open only on `Ctrl+Click`. A path is checked again in Rust before it opens, only local files and WSL shares count, and programs and scripts are shown in File Explorer instead of being run, unless the user chose a command of their own to open files with.
 - Multi-line pastes are confirmed by default.
-- Process output is rendered by xterm.js as text, never as HTML.
+- Process output is rendered by xterm.js as text, never as HTML. Images (Sixel, iTerm2) are decoded by xterm's image addon, whose decoder is WebAssembly: the CSP allows `'wasm-unsafe-eval'` for that, and still no `eval` or inline scripts.
+- OSC 52 can write the clipboard (1 MB at most) and never read it: a request to read gets an empty answer.
