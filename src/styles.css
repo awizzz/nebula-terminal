@@ -659,6 +659,11 @@ kbd { font: inherit; }
 .palette__label mark { background: none; color: var(--accent); font-weight: 600; }
 .palette__swatch { position: relative; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--line-strong); }
 .palette__swatch--none::after { content: ""; position: absolute; left: 7.25px; top: 3px; bottom: 3px; width: 1.5px; border-radius: 1px; background: var(--text-3); transform: rotate(45deg); }
+/* Find in every tab: lines of output in the palette's frame. */
+.find-everywhere__line { grid-template-columns: minmax(0, 1fr) auto; }
+.find-everywhere__text { min-width: 0; overflow: hidden; white-space: pre; text-overflow: ellipsis; font: 12px/1.5 var(--mono-font); }
+.find-everywhere__text mark { border-radius: 2px; background: color-mix(in oklab, var(--accent) 30%, transparent); color: var(--text); }
+.find-everywhere__line small { color: var(--text-3); font-size: 11px; }
 .palette__empty { padding: 28px 16px; color: var(--text-3); text-align: center; font-size: 13px; }
 .palette__footer { flex: none; display: flex; gap: 16px; padding: 8px 16px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 11px; }
 .palette__footer kbd { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-right: 2px; padding: 0 3px; border-radius: 3px; background: var(--hover-strong); color: var(--text-2); font-size: 10px; vertical-align: -3px; }

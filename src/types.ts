@@ -99,6 +99,7 @@ export interface KeybindingPreferences {
   toggleBroadcast: string;
   previousCommand: string;
   togglePaneZoom: string;
+  findEverywhere: string;
   nextCommand: string;
 }
 
