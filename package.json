@@ -1,7 +1,7 @@
 {
   "name": "nebula-terminal",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "license": "PolyForm-Shield-1.0.0",
   "type": "module",
   "scripts": {
