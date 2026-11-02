@@ -78,7 +78,9 @@ Two things point at the app, and `sync_launchers` adds or removes them when the 
 | Open in Nebula Terminal (Administrator) | `…\shell\NebulaTerminalAdmin` next to it, with `HasLUAShield`, running `"nebula-terminal.exe" --open-as-administrator "%V"`. That copy writes an admin request for the folder, starts the admin copy through UAC and exits before Tauri starts, so it never opens a window or reaches the single-instance check. |
 | `nebula-terminal` command | `%LOCALAPPDATA%\dev.awizz.nebula-terminal\bin`, added to the user's PATH (`HKCU\Environment`). It holds a `.cmd` for cmd, PowerShell and Nebula, and a `sh` script for Git Bash and WSL, like npm's shims. The app's own folder isn't used because it also holds `uninstall.exe`. |
 
-Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes both entries and exits without opening a window. Updates don't run it.
+A third one, off until the user turns it on, puts Nebula in Windows Terminal: a profile fragment in `%LOCALAPPDATA%\Microsoft\Windows Terminal\Fragments\Nebula Terminal\nebula.json`, which runs this copy's `nebula-sh.exe`. Its `guid` never changes, so what the user sets for that profile in Windows Terminal stays attached to it across updates.
+
+Uninstalling runs `nebula-terminal --uninstall` before the files go (an NSIS hook in `src-tauri/windows/hooks.nsh`, a WiX custom action in `launchers.wxs`). It removes every entry and exits without opening a window. Updates don't run it.
 
 ### Admin windows
 
@@ -247,7 +249,7 @@ The loading screen is plain HTML in `index.html`, styled by `public/splash.css`,
 
 The screen's styles live in a file because Tauri gives every `<style>` element of the page a CSP nonce. With a nonce in `style-src`, browsers ignore `'unsafe-inline'`, and the styles xterm.js adds at run time would be blocked.
 
-When a session with several tabs is restored, only the tab in front starts its shells at first. The others start once the loading screen is gone, one tab every 120 ms, or as soon as they're shown.
+When Settings → Workspaces names a workspace to open at startup, the main window opens its tabs instead of the last session; a workspace deleted since then is ignored. When a session with several tabs is restored, only the tab in front starts its shells at first. The others start once the loading screen is gone, one tab every 120 ms, or as soon as they're shown.
 
 ### Split layouts
 
