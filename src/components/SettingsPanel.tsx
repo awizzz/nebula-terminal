@@ -627,15 +627,19 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
 
+  // The panel takes the focus when it opens, and only then: every change of a setting
+  // renders the app again, with a new onClose, and must not pull the focus out of a field.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !event.defaultPrevented) onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) onCloseRef.current();
     };
     window.addEventListener("keydown", closeOnEscape);
     requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>(".settings__nav [aria-current='page']")?.focus());
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [onClose, open]);
+  }, [open]);
 
   useEffect(() => {
     if (open && initialPage) setPage(initialPage);
