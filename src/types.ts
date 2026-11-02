@@ -172,6 +172,8 @@ export interface AppearancePreferences {
   /** Share of the screen's height, from 0.25 to 0.9. */
   quickTerminalHeight: number;
   quickTerminalHideOnBlur: boolean;
+  /** With the quick terminal on, the app stays in the notification area after its last window. */
+  quickTerminalKeepRunning: boolean;
   /** Profiles with a theme or font of their own, by profile id. */
   profileLooks: Record<string, ProfileLook>;
   /** Wear `darkThemeId` or `lightThemeId`, whichever matches Windows' app mode. */

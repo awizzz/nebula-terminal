@@ -11,6 +11,7 @@ mod profiles;
 mod pty;
 mod quick;
 mod ssh;
+mod tray;
 mod updater;
 mod windows;
 mod wsl;
@@ -55,7 +56,11 @@ fn windows_build() -> Option<u32> {
 /// A second launch (Explorer's "Open in Nebula Terminal", or the app started again)
 /// opens a tab in this window instead of a second copy of the app.
 fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
+    // Only the notification area icon left: the launch gets a window of its own.
     let Some(window) = windows::launch_target(app) else {
+        let folder = launcher::folder_argument(&args, Path::new(&cwd));
+        let transfer = serde_json::json!({ "kind": "launch", "folder": folder.map(|path| path.display().to_string()) });
+        let _ = windows::open_window_with(app, transfer);
         return;
     };
     let _ = window.unminimize();
@@ -142,7 +147,8 @@ fn main() {
                 .webview_windows()
                 .keys()
                 .any(|label| label != window.label() && windows::is_terminal_window(label));
-            if !others {
+            // With the quick terminal kept in the notification area, the app stays for its shortcut.
+            if !others && !app.state::<quick::QuickTerminal>().keeps_running() {
                 app.exit(0);
             }
         })
