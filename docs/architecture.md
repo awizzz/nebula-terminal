@@ -35,6 +35,7 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entries, and the `nebula-terminal` command on the user's PATH. |
 | `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
+| `quick.rs` | The quick terminal: its global shortcut, registered on a thread of its own, and the window that drops down from the top of the screen. |
 | `defterm.rs` | Nebula Terminal as the default terminal of Windows 11: the COM class Windows hands consoles to, and the registry values that choose it. |
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. |
@@ -88,11 +89,19 @@ The ordinary copy writes its request (profile id, folder, and its settings, so b
 | Tabs | The one asked for. No session is restored or saved. |
 | Left out | Single instance, default terminal handoffs, the Explorer and PATH entries, update checks and installs. |
 
-The title bar says Administrator, and the window title starts with it, as Windows does for elevated console windows.
+The title bar says Administrator, and the window title starts with it, as Windows does for elevated console windows. Unless that's turned off, the window also draws with a red accent (`looks.ts`).
 
 With UAC turned off, every program of an admin user runs elevated, so there's nothing to keep apart: the app runs as usual (`is_admin_copy` checks for a full token from UAC, not just an elevated one), and the copy that Run as administrator starts hands its request to the open window, which opens the tab itself. If no window is open, that copy becomes the window and `launch_folder` reads the folder from the request.
 
 A request from File Explorer carries no settings, since no window asked. The admin window then uses the settings it was last given, which its own web data keeps.
+
+### Quick terminal
+
+The quick terminal is a second webview window, labelled `quick`, built the first time its shortcut is pressed and hidden rather than closed afterwards. It runs the same page; `window.__NEBULA_WINDOW__` tells it apart. It restores no session, and leaves the Explorer and PATH entries, update checks and the default terminal to the main window. Single-instance launches and handoffs go to the main window only (`emit_to("main", …)`), and closing the main window quits the app, quick terminal included.
+
+Its shortcut names a physical key, as `KeyboardEvent.code` does, so `Win+Backquote` is the key under Escape on any layout. `quick.rs` turns it into the layout's virtual key with `MapVirtualKeyExW` and registers it with `RegisterHotKey` on a thread that does nothing else but wait for `WM_HOTKEY`. The main window registers it from the settings, and shows the error when another app owns the keys. On the shortcut, the window is placed along the top of the work area of the screen the pointer is on, shown and focused; the page slides it in, and slides it out before asking Rust to hide it.
+
+Settings are shared through local storage, and each window reloads them when the other one writes them (`storage` events).
 
 ### Default terminal
 
@@ -140,7 +149,7 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | `editor.rs` | reedline setup: highlighting, history hints, multi-line input, history expansion, window title, and the OSC 133 marks around each command. |
 | `fuzzy.rs` | Fuzzy matching for `Ctrl+R`: substrings first, then letters in order, with bonuses for word starts and runs. |
 | `frecency.rs` | The folders `z` knows, ranked by visits and age as rupa's z does, in `dirs.txt`. |
-| `prompt.rs` | Folder, Git status (with a 300 ms budget), duration and exit code. |
+| `prompt.rs` | The prompt line: folder, Git status (with a 300 ms budget), duration and exit code by default, and the segments, colors and symbol set in `~/.nebularc`. Toolchain versions are asked once per session; `NEBULA_PROMPT=starship` runs `starship prompt` instead. |
 | `suggest.rs` | "command not found" with a close match or the Linux equivalent of a Windows command. |
 | `sys.rs` | Paths (`/c/…`, `/dev/null`, `~`), PATH lookup with PATHEXT, terminal capabilities. |
 
@@ -172,6 +181,8 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `profiles.ts` | Picking a profile, grouping profiles for menus (shells, WSL, SSH, custom), and the fake profiles of the browser preview. |
 | `customProfiles.ts` | Calls to the custom profile commands, with an in-memory stand-in for the browser preview, and the editor's SSH draft: its checks and the ssh command it shows. |
 | `workspaces.ts` | Saved workspaces: named snapshots of the tabs (the same format as the session), kept in local storage, 30 at most. |
+| `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
+| `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
 | `fileLinks.ts` | The xterm link provider that underlines existing paths and opens them on `Ctrl+Click`, reading the pane's current folder when needed. |
 | `keys.ts` | Shortcut parsing, matching and recording. |
@@ -213,7 +224,7 @@ Settings and the tab layout are stored in the webview's local storage under the 
 
 ## Security
 
-- The capability file (`src-tauri/capabilities/default.json`) grants only window controls and opening `http(s)` links.
+- The capability file (`src-tauri/capabilities/default.json`) grants only window controls, notifications and opening `http(s)` links, to the main window and the quick terminal.
 - Profiles are resolved in Rust. The UI never passes a command line. Custom profiles are the one way to run a program of your choice: they are validated and stored by Rust, and started by id.
 - A shell that runs as administrator only lives in an admin window of its own, started through UAC (see Admin windows).
 - Links and file paths in terminal output open only on `Ctrl+Click`. A path is checked again in Rust before it opens, only local files and WSL shares count, and programs and scripts are shown in File Explorer instead of being run, unless the user chose a command of their own to open files with.

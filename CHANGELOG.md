@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.0
+
+A terminal that drops down on a shortcut, profiles with a look of their own, and a Nebula prompt you can shape.
+
+### Added
+
+- a quick terminal: a shortcut (`` Win+` `` by default, the key under Escape on any layout) drops a terminal down from the top of the screen over whatever you're doing, and the same shortcut puts it away. It has tabs of its own, keeps them while hidden, and hides when you click elsewhere unless you turn that off. Settings → Behavior → Quick terminal, with its height and shortcut
+- a look per profile: the brush next to a profile in Settings → Profiles gives it its own theme, font and size. Its tabs use them, and the window takes the profile's colors while one of its tabs is in front, so a production SSH server can look nothing like your local shell
+- Follow Windows in Settings → Appearance → Theme: a dark theme when Windows is in dark mode and a light one in light mode, switching as Windows does
+- administrator windows have a red accent, so you always know which shells are elevated (Settings → Appearance → Window)
+- a configurable Nebula prompt in `~/.nebularc`: `NEBULA_PROMPT` picks and orders the segments (folder, Git, duration, exit status, time, user, host, admin, background jobs, and the Node, Python and Rust versions of the project you're in), `NEBULA_PROMPT_COLORS` restyles them, `NEBULA_PROMPT_SYMBOL` replaces ❯ and `NEBULA_PROMPT_LINES=1` keeps everything on one line. `NEBULA_PROMPT=starship` uses Starship instead
+
+### Changed
+
+- settings changed in one window apply to the other one (main window and quick terminal) at once
+- SSH connections made in the profile editor are listed once in Settings → Profiles, not twice
+- sed 0.3 (the `F`, `W` and `R` commands, GNU-like `n`, `Q` and `-i`, errors that point at the mistake) and diffutils 0.6 (unified and context output closer to GNU, faster `cmp`)
+
 ## 1.6.1
 
 A loading screen that shows where the start is at, and a faster start.
