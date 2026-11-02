@@ -18,7 +18,7 @@ pub fn run(name: &str, args: Vec<OsString>) -> Option<i32> {
     // These take their arguments as they are: file names may not be valid Unicode.
     match name {
         "sed" => {
-            uucore_sed::set_utility_is_second_arg();
+            uucore::set_utility_is_second_arg();
             return Some(sed::sed::uumain(sed_args(args).into_iter()));
         }
         "diff" => return Some(compare::diff(args)),
