@@ -9,6 +9,7 @@ mod integration;
 mod launcher;
 mod profiles;
 mod pty;
+mod quick;
 mod ssh;
 mod updater;
 mod wsl;
@@ -61,14 +62,19 @@ fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
     // With UAC off, "Run as administrator" starts an ordinary copy, which lands here;
     // this window is elevated already, so the tab opens in it.
     if let Some(request) = elevation::take_request(app, &args) {
-        let _ = app.emit(
+        let _ = app.emit_to(
+            "main",
             "open-request",
             serde_json::json!({ "profileId": request.profile_id, "folder": request.folder }),
         );
         return;
     }
     let folder = launcher::folder_argument(&args, Path::new(&cwd));
-    let _ = app.emit("open-tab", folder.map(|path| path.display().to_string()));
+    let _ = app.emit_to(
+        "main",
+        "open-tab",
+        folder.map(|path| path.display().to_string()),
+    );
 }
 
 fn main() {
@@ -111,12 +117,19 @@ fn main() {
                 .ok()
                 .map(|directory| directory.join("shell-integration"));
             app.manage(integration::Scripts::new(scripts));
+            app.manage(quick::QuickTerminal::new(app.handle().clone()));
             elevation::create_window(app, administrator)?;
             // Consoles Windows hands over open in an ordinary window.
             if !administrator {
                 defterm::listen(app.handle().clone());
             }
             Ok(())
+        })
+        // The quick terminal goes with the main window: no app without a window to find it in.
+        .on_window_event(|window, event| {
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().exit(0);
+            }
         })
         .invoke_handler(tauri::generate_handler![
             profiles::detect_profiles,
@@ -141,6 +154,8 @@ fn main() {
             elevation::open_as_administrator,
             files::find_paths,
             files::open_path,
+            quick::set_quick_terminal,
+            quick::hide_quick_terminal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Nebula Terminal");
