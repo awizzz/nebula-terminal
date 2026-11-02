@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandInput, sanitizeSavedCommands, savedCommandLabel } from "./savedCommands";
+import { blanksIn, commandInput, fillBlanks, sanitizeSavedCommands, savedCommandLabel } from "./savedCommands";
 
 describe("saved commands", () => {
   it("run each line as if typed", () => {
@@ -16,5 +16,16 @@ describe("saved commands", () => {
   it("are checked when read back", () => {
     expect(sanitizeSavedCommands([{ id: "a", name: "x", command: "ls" }, { id: "b", command: "   " }, "nope", { name: "no id", command: "ls" }])).toEqual([{ id: "a", name: "x", command: "ls" }]);
     expect(sanitizeSavedCommands({})).toEqual([]);
+  });
+
+  it("find their blanks, each once", () => {
+    expect(blanksIn("ssh {{ user }}@{{host}} -p {{port}}; echo {{host}}")).toEqual(["user", "host", "port"]);
+    expect(blanksIn("echo ${HOME} {a,b} '{print $1}'")).toEqual([]);
+    expect(blanksIn("git checkout {{branch name}}")).toEqual(["branch name"]);
+  });
+
+  it("fill their blanks", () => {
+    expect(fillBlanks("ssh {{user}}@{{ host }}; ping {{host}}", { user: "me", host: "box" })).toBe("ssh me@box; ping box");
+    expect(fillBlanks("echo {{missing}}", {})).toBe("echo {{missing}}");
   });
 });
