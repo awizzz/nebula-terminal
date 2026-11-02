@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -22,6 +22,7 @@ import { isQuickTerminal, isTabsWindow, transferId } from "./windowKind";
 import { lookFor, windowLook, withLook } from "./looks";
 import { windowProgress, type Progress } from "./progress";
 import { commandInput, savedCommandLabel } from "./savedCommands";
+import { folderParts, loadRecentFolders, rememberFolder, saveRecentFolders } from "./recentFolders";
 import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
@@ -899,11 +900,37 @@ export default function App() {
     setTabs((current) => current.map((tab) => tab.id === tabId && tab.activePaneId === pane.id && tab.title !== clean ? { ...tab, title: clean } : tab));
   }, []);
 
+  const [recentFolders, setRecentFolders] = useState(loadRecentFolders);
   const setPaneFolder = useCallback((tabId: string, paneId: string, cwd: string) => {
     setTabs((current) => current.map((tab) => tab.id !== tabId || !tab.panes.some((pane) => pane.id === paneId && pane.cwd !== cwd)
       ? tab
       : { ...tab, panes: tab.panes.map((pane) => pane.id === paneId ? { ...pane, cwd } : pane) }));
+    setRecentFolders((current) => {
+      const next = rememberFolder(current, cwd);
+      if (next[0] !== current[0] || next.length !== current.length) saveRecentFolders(next);
+      return next;
+    });
   }, []);
+
+  /** Saves what the pane in front shows, or its last command's output, to a file. */
+  const saveOutput = useCallback((lastOnly: boolean) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const pane = getPane(tab?.activePaneId);
+    const text = lastOnly ? pane?.lastOutput() : pane?.text();
+    if (text === undefined) {
+      setNotice(lastOnly ? "No command output to save yet" : "Nothing to save");
+      return;
+    }
+    if (!nativeHost) {
+      setNotice("Output saves from the desktop app");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "h");
+    const name = `${tab ? tabTitle(tab) : "Nebula"} ${stamp}`;
+    void invoke<string | null>("save_text_file", { name, contents: text })
+      .then((path) => { if (path) setNotice(`Saved to ${folderParts(path).name}`); })
+      .catch((error: unknown) => setNotice(String(error)));
+  }, [nativeHost]);
 
   const markActivity = useCallback((tabId: string) => {
     if (tabId === activeTabIdRef.current) return;
@@ -1108,6 +1135,9 @@ export default function App() {
       { id: "previous-command", group: "Terminal", label: "Previous command", icon: <ArrowUpToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.previousCommand, run: () => jumpToCommand(-1) },
       { id: "next-command", group: "Terminal", label: "Next command", icon: <ArrowDownToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.nextCommand, run: () => jumpToCommand(1) },
       { id: "copy-output", group: "Terminal", label: "Copy last command output", icon: <ClipboardCheck size={15} />, keywords: "result", run: copyLastOutput },
+      { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput(false) },
+      { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput(true) },
+      ...recentFolders.map((folder): PaletteCommand => ({ id: `recent-${folder}`, group: "Recent folders", label: `Open a tab in ${folderParts(folder).name}`, detail: folderParts(folder).parent, icon: <FolderOpen size={15} />, keywords: `recent folder cd ${folder}`, run: () => openNewTab(undefined, folder) })),
       { id: "zoom-in", group: "View", label: "Zoom in", icon: <ZoomIn size={15} />, shortcut: keys.zoomIn, run: () => adjustFontSize(1) },
       { id: "zoom-out", group: "View", label: "Zoom out", icon: <Minus size={15} />, shortcut: keys.zoomOut, run: () => adjustFontSize(-1) },
       { id: "zoom-reset", group: "View", label: "Reset zoom", shortcut: keys.zoomReset, run: () => setPreferences((current) => ({ ...current, fontSize: defaultPreferences.fontSize })) },
@@ -1122,7 +1152,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, runSavedCommand, preferences.savedCommands]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1204,6 +1234,11 @@ export default function App() {
             alternate: isAdministrator || profileGroup(profile) === "ssh" ? undefined : { label: "Run as administrator", icon: <ShieldCheck size={14} />, run: () => openAsAdmin(profile.id) },
           })),
         ]),
+        ...(recentFolders.length ? [
+          "separator" as const,
+          { heading: "Recent folders" },
+          ...recentFolders.slice(0, 5).map((folder): MenuEntry => ({ id: `recent-${folder}`, label: folderParts(folder).name, detail: folderParts(folder).parent, icon: <FolderOpen size={15} />, run: () => openNewTab(undefined, folder) })),
+        ] : []),
         "separator",
         { heading: "Workspaces" },
         ...workspaces.map((workspace): MenuEntry => ({ id: `workspace-${workspace.id}`, label: workspace.name, detail: describeWorkspace(workspace), icon: <LayoutPanelTop size={15} />, run: () => openSavedWorkspace(workspace) })),
@@ -1248,6 +1283,7 @@ export default function App() {
       { id: "paste", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => pane?.paste() },
       { id: "select-all", label: "Select all", icon: <TextSelect size={15} />, run: () => pane?.selectAll() },
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
+      { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput(false) },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, disabled: full, run: () => splitActive("vertical") },

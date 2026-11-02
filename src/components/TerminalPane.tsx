@@ -347,14 +347,23 @@ export default function TerminalPane({
       return true;
     };
     const lastOutputLines = () => liveCommands().reverse().map(outputLines).find((range) => range !== null);
-    const copyLastOutput = () => {
-      const lines = lastOutputLines();
-      if (!lines) return false;
+    /** Buffer lines as text, wrapped lines joined back into one. */
+    const textOf = (first: number, last: number) => {
       const buffer = terminal.buffer.active;
-      const text = joinLines(Array.from({ length: lines[1] - lines[0] + 1 }, (_, index) => {
-        const line = buffer.getLine(lines[0] + index);
+      return joinLines(Array.from({ length: last - first + 1 }, (_, index) => {
+        const line = buffer.getLine(first + index);
         return { text: line?.translateToString(true) ?? "", wrapped: line?.isWrapped ?? false };
       }));
+    };
+    const lastOutputText = () => {
+      const lines = lastOutputLines();
+      return lines ? textOf(lines[0], lines[1]) : undefined;
+    };
+    /** Everything in the pane, scrollback included, without the empty lines below the cursor. */
+    const allText = () => textOf(0, terminal.buffer.active.length - 1).replace(/\s+$/, "\n");
+    const copyLastOutput = () => {
+      const text = lastOutputText();
+      if (text === undefined) return false;
       void navigator.clipboard?.writeText(text).catch(() => undefined);
       return true;
     };
@@ -627,6 +636,8 @@ export default function TerminalPane({
       jumpToCommand,
       copyLastOutput,
       hasCommandOutput: () => lastOutputLines() !== undefined,
+      text: allText,
+      lastOutput: lastOutputText,
       detach: async () => {
         const screen = serializer.serialize({ scrollback: Math.min(preferencesRef.current.scrollback, 5_000) });
         const sessionId = sessionRef.current;
