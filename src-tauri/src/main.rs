@@ -115,6 +115,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
         .manage(windows::Transfers::default())
+        .manage(save::Logs::default())
         .setup(move |app| {
             let path = app
                 .path()
@@ -183,6 +184,9 @@ fn main() {
             pty::park_session,
             pty::suspend_foreground,
             save::save_text_file,
+            save::start_log,
+            save::append_log,
+            save::stop_log,
             sync::choose_sync_file,
             sync::read_sync_file,
             sync::write_sync_file,

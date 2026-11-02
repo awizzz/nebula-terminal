@@ -10,7 +10,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { adjacentPrompt, commandOnPromptLine, joinLines } from "../commandMarks";
-import { ClipboardCheck, Copy, RotateCcw } from "lucide-react";
+import { ClipboardCheck, Copy, RotateCcw, X } from "lucide-react";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { openPath, registerFileLinks } from "../fileLinks";
@@ -18,6 +18,8 @@ import { registerPane, type FoundLine } from "../paneRegistry";
 import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
+import { startLog, type PaneLog } from "../paneLog";
+import { folderParts } from "../recentFolders";
 import { drawsText } from "../splash";
 import { parseProgress, type Progress } from "../progress";
 import { resolveTheme, xtermTheme } from "../themes";
@@ -55,6 +57,8 @@ interface TerminalPaneProps {
   onReady?: () => void;
   /** OSC 9;4 progress from a program, or null when it's done. */
   onProgress?: (progress: Progress | null) => void;
+  /** The file this pane started logging to, or null once it stopped. */
+  onLog?: (path: string | null) => void;
   onClose: () => void;
 }
 
@@ -165,6 +169,7 @@ export default function TerminalPane({
   onNotice,
   onReady,
   onProgress,
+  onLog,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -179,7 +184,7 @@ export default function TerminalPane({
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
   const movedRef = useRef(moved);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -188,6 +193,9 @@ export default function TerminalPane({
   const [restartNonce, setRestartNonce] = useState(0);
   // The command block under the pointer, in pixels from the top of the pane.
   const [block, setBlock] = useState<{ top: number; height: number } | null>(null);
+  /** The file this pane logs to, while it does. */
+  const [logFile, setLogFile] = useState<{ name: string; path: string } | null>(null);
+  const stopLogRef = useRef<() => void>(() => undefined);
   const blockActionsRef = useRef<{ command: () => string; output: () => string; rerun: () => void }>({ command: () => "", output: () => "", rerun: () => undefined });
   const sectionRef = useRef<HTMLElement | null>(null);
 
@@ -195,7 +203,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -699,11 +707,54 @@ export default function TerminalPane({
     };
     window.addEventListener("nebula:insert-paths", insertDropped);
 
+    // Logging to a file: Rust keeps the file, this side sends it finished lines.
+    let log: { id: number; writer: PaneLog } | undefined;
+    const stopLogging = () => {
+      if (!log) return;
+      const { id, writer } = log;
+      log = undefined;
+      writer.stop();
+      void invoke("stop_log", { id }).catch(() => undefined);
+      if (!disposed) setLogFile(null);
+      callbacksRef.current.onLog?.(null);
+    };
+    stopLogRef.current = stopLogging;
+    const startLogging = async (name: string) => {
+      if (log || !isTauri()) return;
+      const started = await invoke<{ id: number; path: string } | null>("start_log", { name })
+        .catch((error: unknown) => {
+          callbacksRef.current.onNotice?.(String(error));
+          return null;
+        });
+      if (!started) return;
+      if (disposed || log) {
+        void invoke("stop_log", { id: started.id }).catch(() => undefined);
+        return;
+      }
+      log = {
+        id: started.id,
+        writer: startLog(terminal, (text) => {
+          void invoke("append_log", { id: started.id, text }).catch((error: unknown) => {
+            stopLogging();
+            callbacksRef.current.onNotice?.(String(error));
+          });
+        }),
+      };
+      setLogFile({ name: folderParts(started.path).name, path: started.path });
+      callbacksRef.current.onLog?.(started.path);
+    };
+
     const unregister = registerPane(paneId, {
+      startLog: (name: string) => void startLogging(name),
+      stopLog: stopLogging,
+      logging: () => log !== undefined,
       copy,
       paste,
       selectAll: () => terminal.selectAll(),
-      clear: () => terminal.clear(),
+      clear: () => {
+        log?.writer.flush();
+        terminal.clear();
+      },
       hasSelection: () => terminal.hasSelection(),
       focus: () => terminal.focus(),
       write: (data: string) => writeRef.current(data),
@@ -748,6 +799,7 @@ export default function TerminalPane({
     });
 
     return () => {
+      stopLogging();
       disposed = true;
       unregister();
       observer.disconnect();
@@ -952,6 +1004,13 @@ export default function TerminalPane({
       onMouseDown={onFocus}
     >
       <div ref={hostRef} className="terminal__host" />
+      {logFile && (
+        <div className="terminal__log" role="status" title={`Logging to ${logFile.path}`} onMouseDown={(event) => event.stopPropagation()}>
+          <span className="terminal__log-dot" aria-hidden="true" />
+          <span className="terminal__log-name">{logFile.name}</span>
+          <button type="button" title="Stop logging" aria-label="Stop logging" onClick={() => { stopLogRef.current(); terminalRef.current?.focus(); }}><X size={12} strokeWidth={2} /></button>
+        </div>
+      )}
       {block && (
         <>
           <div className="command-block" style={{ top: block.top, height: block.height }} aria-hidden="true" />

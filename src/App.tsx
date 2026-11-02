@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -977,6 +977,32 @@ export default function App() {
       .catch((error: unknown) => setNotice(String(error)));
   }, [nativeHost]);
 
+  /** Panes writing a log, by id. */
+  const [logging, setLogging] = useState<ReadonlySet<string>>(() => new Set());
+  const paneLogged = useCallback((paneId: string, path: string | null) => {
+    setLogging((current) => {
+      const next = new Set(current);
+      if (path) next.add(paneId);
+      else next.delete(paneId);
+      return next;
+    });
+    setNotice(path ? `Logging to ${folderParts(path).name}` : "Stopped logging");
+  }, []);
+
+  /** Starts logging the pane in front to a file the user picks, or stops. */
+  const toggleLog = useCallback(() => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const pane = getPane(tab?.activePaneId);
+    if (!pane) return;
+    if (pane.logging()) return pane.stopLog();
+    if (!nativeHost) {
+      setNotice("Logs are written from the desktop app");
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "h");
+    pane.startLog(`${tab ? tabTitle(tab) : "Nebula"} ${stamp}`);
+  }, [nativeHost]);
+
   const markActivity = useCallback((tabId: string) => {
     if (tabId === activeTabIdRef.current) return;
     setActivity((current) => current.has(tabId) ? current : new Set([...current, tabId]));
@@ -1208,6 +1234,7 @@ export default function App() {
       { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput(false) },
+      { id: "log-output", group: "Terminal", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, keywords: "record transcript script session", run: toggleLog },
       { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput(true) },
       ...recentFolders.map((folder): PaletteCommand => ({ id: `recent-${folder}`, group: "Recent folders", label: `Open a tab in ${folderParts(folder).name}`, detail: folderParts(folder).parent, icon: <FolderOpen size={15} />, keywords: `recent folder cd ${folder}`, run: () => openNewTab(undefined, folder) })),
       { id: "zoom-in", group: "View", label: "Zoom in", icon: <ZoomIn size={15} />, shortcut: keys.zoomIn, run: () => adjustFontSize(1) },
@@ -1224,7 +1251,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1365,6 +1392,7 @@ export default function App() {
       { id: "select-all", label: "Select all", icon: <TextSelect size={15} />, run: () => pane?.selectAll() },
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
       { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput(false) },
+      { id: "log-output", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, run: toggleLog },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, shortcut: keys.splitVertical, disabled: full, run: () => splitActive("vertical") },
@@ -1449,6 +1477,7 @@ export default function App() {
                         onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
                         onActivity={() => markActivity(tab.id)}
                         onOutput={() => watcher.output(tab.id)}
+                        onLog={(path) => paneLogged(pane.id, path)}
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
