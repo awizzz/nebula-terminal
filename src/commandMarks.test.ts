@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adjacentPrompt, joinLines } from "./commandMarks";
+import { adjacentPrompt, joinLines, commandOnPromptLine } from "./commandMarks";
 
 describe("adjacentPrompt", () => {
   const prompts = [0, 12, 30, 47];
@@ -29,5 +29,16 @@ describe("joinLines", () => {
       { text: "src/lib.rs:9: // TODO", wrapped: false },
       { text: "", wrapped: false },
     ])).toBe("src/main.rs:2: // TODO: parse arguments\nsrc/lib.rs:9: // TODO");
+  });
+});
+
+describe("commandOnPromptLine", () => {
+  it("drops the prompt of each shell", () => {
+    expect(commandOnPromptLine("❯ grep -rn TODO src")).toBe("grep -rn TODO src");
+    expect(commandOnPromptLine("PS C:\\Users\\me> git status")).toBe("git status");
+    expect(commandOnPromptLine("C:\\Users\\me>dir /b > list.txt")).toBe("dir /b > list.txt");
+    expect(commandOnPromptLine("me@pc:~/app$ make build")).toBe("make build");
+    expect(commandOnPromptLine("$ ls -la")).toBe("ls -la");
+    expect(commandOnPromptLine("❯ ")).toBe("");
   });
 });

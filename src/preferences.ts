@@ -104,6 +104,7 @@ export const defaultPreferences: AppearancePreferences = {
   screenReaderMode: false,
   followContrastThemes: true,
   syncFile: "",
+  commandBlocks: true,
   keybindings: defaultKeybindings,
 };
 
@@ -206,6 +207,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     savedCommands: sanitizeSavedCommands(value.savedCommands),
     screenReaderMode: booleanFrom(value.screenReaderMode, defaultPreferences.screenReaderMode),
     followContrastThemes: booleanFrom(value.followContrastThemes, defaultPreferences.followContrastThemes),
+    commandBlocks: booleanFrom(value.commandBlocks, defaultPreferences.commandBlocks),
     syncFile: typeof value.syncFile === "string" && value.syncFile.length <= 1024 && /\.json$/i.test(value.syncFile) ? value.syncFile : "",
     keybindings,
   };

@@ -9,7 +9,8 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { adjacentPrompt, joinLines } from "../commandMarks";
+import { adjacentPrompt, commandOnPromptLine, joinLines } from "../commandMarks";
+import { ClipboardCheck, Copy, RotateCcw } from "lucide-react";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { openPath, registerFileLinks } from "../fileLinks";
@@ -182,6 +183,10 @@ export default function TerminalPane({
   const [exitCode, setExitCode] = useState<number | null>(null);
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [restartNonce, setRestartNonce] = useState(0);
+  // The command block under the pointer, in pixels from the top of the pane.
+  const [block, setBlock] = useState<{ top: number; height: number } | null>(null);
+  const blockActionsRef = useRef<{ command: () => string; output: () => string; rerun: () => void }>({ command: () => "", output: () => "", rerun: () => undefined });
+  const sectionRef = useRef<HTMLElement | null>(null);
 
   focusedRef.current = focused;
   visibleRef.current = visible;
@@ -361,6 +366,71 @@ export default function TerminalPane({
     };
     /** Everything in the pane, scrollback included, without the empty lines below the cursor. */
     const allText = () => textOf(0, terminal.buffer.active.length - 1).replace(/\s+$/, "\n");
+    // Command blocks: pointing at a finished command shows it as one block, with what
+    // can be done with it. Listened to on the pane, so the actions stay reachable.
+    let shownBlock: MarkedCommand | undefined;
+    const blockStart = (command: MarkedCommand) => (command.prompt ?? command.output)!.line;
+    const blockOf = (row: number) => liveCommands().reverse().find((command) => {
+      const range = outputLines(command);
+      return range !== null && row >= blockStart(command) && row <= range[1];
+    });
+    const placeBlock = () => {
+      const range = shownBlock && outputLines(shownBlock);
+      const screen = host.querySelector<HTMLElement>(".xterm-screen");
+      const section = sectionRef.current;
+      if (!shownBlock || !range || !screen || !section || !preferencesRef.current.commandBlocks) {
+        setBlock(null);
+        return;
+      }
+      const cell = screen.clientHeight / terminal.rows;
+      const viewport = terminal.buffer.active.viewportY;
+      const top = Math.max(0, (blockStart(shownBlock) - viewport) * cell);
+      const bottom = Math.min(screen.clientHeight, (range[1] + 1 - viewport) * cell);
+      if (bottom <= top) {
+        setBlock(null);
+        return;
+      }
+      const offset = screen.getBoundingClientRect().top - section.getBoundingClientRect().top;
+      setBlock({ top: offset + top, height: bottom - top });
+    };
+    const pointAt = (event: MouseEvent) => {
+      // Not while selecting text, nor without shell integration's marks.
+      if (event.buttons || !preferencesRef.current.commandBlocks) return;
+      const screen = host.querySelector<HTMLElement>(".xterm-screen");
+      if (!screen) return;
+      const rect = screen.getBoundingClientRect();
+      const row = Math.floor((event.clientY - rect.top) / (rect.height / terminal.rows)) + terminal.buffer.active.viewportY;
+      const command = event.clientY >= rect.top && event.clientY <= rect.bottom ? blockOf(row) : shownBlock;
+      if (command === shownBlock) return;
+      shownBlock = command;
+      placeBlock();
+    };
+    const leaveBlock = () => {
+      shownBlock = undefined;
+      setBlock(null);
+    };
+    const section = sectionRef.current;
+    section?.addEventListener("mousemove", pointAt);
+    section?.addEventListener("mouseleave", leaveBlock);
+    const blockScroll = terminal.onScroll(placeBlock);
+    const blockCommand = () => {
+      if (!shownBlock?.output) return "";
+      const lines = textOf(blockStart(shownBlock), Math.max(blockStart(shownBlock), shownBlock.output.line - 1)).split("\n");
+      return commandOnPromptLine(lines.at(-1) ?? "");
+    };
+    blockActionsRef.current = {
+      command: blockCommand,
+      output: () => {
+        const range = shownBlock && outputLines(shownBlock);
+        return range ? textOf(range[0], range[1]) : "";
+      },
+      rerun: () => {
+        const command = blockCommand();
+        if (command && !running) writeRef.current(`${command}\r`);
+        terminal.focus();
+      },
+    };
+
     const copyLastOutput = () => {
       const text = lastOutputText();
       if (text === undefined) return false;
@@ -684,6 +754,9 @@ export default function TerminalPane({
       host.removeEventListener("click", selectOutputAt);
       host.removeEventListener("mousedown", noteSelection, true);
       window.removeEventListener("nebula:insert-paths", insertDropped);
+      section?.removeEventListener("mousemove", pointAt);
+      section?.removeEventListener("mouseleave", leaveBlock);
+      blockScroll.dispose();
       const sessionId = sessionRef.current;
       sessionRef.current = null;
       if (isTauri() && sessionId && !keepSession) void invoke("close_session", { sessionId }).catch(() => undefined);
@@ -859,6 +932,7 @@ export default function TerminalPane({
 
   return (
     <section
+      ref={sectionRef}
       className={`terminal ${focused ? "is-focused" : ""}`}
       style={{ padding: preferences.terminalPadding }}
       data-state={connectionState}
@@ -866,6 +940,16 @@ export default function TerminalPane({
       onMouseDown={onFocus}
     >
       <div ref={hostRef} className="terminal__host" />
+      {block && (
+        <>
+          <div className="command-block" style={{ top: block.top, height: block.height }} aria-hidden="true" />
+          <div className="command-block__actions" style={{ top: block.top }} onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+            <button type="button" title="Copy command" aria-label="Copy command" onClick={() => { void navigator.clipboard?.writeText(blockActionsRef.current.command()); terminalRef.current?.focus(); }}><Copy size={13} strokeWidth={1.8} /></button>
+            <button type="button" title="Copy output" aria-label="Copy output" onClick={() => { void navigator.clipboard?.writeText(blockActionsRef.current.output()); terminalRef.current?.focus(); }}><ClipboardCheck size={13} strokeWidth={1.8} /></button>
+            <button type="button" title="Run again" aria-label="Run again" onClick={() => blockActionsRef.current.rerun()}><RotateCcw size={13} strokeWidth={1.8} /></button>
+          </div>
+        </>
+      )}
       {connectionState === "starting" && <div className="terminal__progress" role="progressbar" aria-label={`Starting ${profile.name}`} />}
       {connectionState === "closed" && (
         <div className="terminal__exit" role="status">

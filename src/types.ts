@@ -197,6 +197,8 @@ export interface AppearancePreferences {
   followContrastThemes: boolean;
   /** A .json file the settings are synced through (sync.ts), or "" when they aren't. */
   syncFile: string;
+  /** Pointing at a finished command shows its block and actions (shell integration). */
+  commandBlocks: boolean;
   keybindings: KeybindingPreferences;
 }
 
