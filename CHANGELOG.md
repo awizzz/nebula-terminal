@@ -15,6 +15,10 @@ Several windows, images in the terminal, and programs that can show progress on 
 
 - emoji and symbols take the width today's programs give them, so prompts and table borders stay in line
 
+### Fixed
+
+- typing in a text field of Settings (a font, a folder, a command) no longer loses the focus after the first character
+
 ## 1.7.0
 
 A terminal that drops down on a shortcut, profiles with a look of their own, and a Nebula prompt you can shape.
