@@ -11,6 +11,7 @@ mod profiles;
 mod pty;
 mod quick;
 mod ssh;
+mod sync;
 mod tray;
 mod updater;
 mod windows;
@@ -110,6 +111,7 @@ fn main() {
     builder
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(pty::PtyState::default())
         .manage(windows::Transfers::default())
         .setup(move |app| {
@@ -179,6 +181,10 @@ fn main() {
             quick::hide_quick_terminal,
             pty::park_session,
             pty::suspend_foreground,
+            sync::choose_sync_file,
+            sync::read_sync_file,
+            sync::write_sync_file,
+            sync::sync_file_modified,
             pty::attach_session,
             windows::move_tab,
             windows::window_under_cursor,

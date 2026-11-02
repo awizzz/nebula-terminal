@@ -194,6 +194,8 @@ export interface AppearancePreferences {
   screenReaderMode: boolean;
   /** With a Windows contrast theme on, terminals wear High Contrast Dark or Light. */
   followContrastThemes: boolean;
+  /** A .json file the settings are synced through (sync.ts), or "" when they aren't. */
+  syncFile: string;
   keybindings: KeybindingPreferences;
 }
 
