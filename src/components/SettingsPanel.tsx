@@ -979,6 +979,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       options={quickHeights.map((height) => ({ value: String(height), label: `${Math.round(height * 100)}%` }))}
                     />
                   </Row>
+                  <Row label="Keep running in the notification area" description="When the last window closes, the shortcut still works. The icon there opens a window or quits.">
+                    <Switch label="Keep running in the notification area" checked={preferences.quickTerminalKeepRunning} disabled={administrator || !preferences.quickTerminal} onChange={(value) => patch("quickTerminalKeepRunning", value)} />
+                  </Row>
                   <Row label="Hide when you click elsewhere">
                     <Switch label="Hide when you click elsewhere" checked={preferences.quickTerminalHideOnBlur} disabled={administrator || !preferences.quickTerminal} onChange={(value) => patch("quickTerminalHideOnBlur", value)} />
                   </Row>

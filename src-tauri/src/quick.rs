@@ -5,7 +5,10 @@
 //! the key under Escape on every layout (` in QWERTY, ² in AZERTY). It becomes the
 //! layout's virtual key only when it's registered.
 
-use std::sync::Mutex;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex,
+};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 pub const LABEL: &str = "quick";
@@ -113,17 +116,27 @@ pub fn parse(text: &str) -> Option<Shortcut> {
 pub struct QuickTerminal {
     height: Mutex<f64>,
     hotkey: hotkey::Listener,
+    /// The app stays in the notification area when its last window closes.
+    keep_running: AtomicBool,
 }
 
 impl QuickTerminal {
     pub fn new(app: AppHandle) -> Self {
         Self {
+            keep_running: AtomicBool::new(false),
             height: Mutex::new(0.5),
             hotkey: hotkey::Listener::start(move || {
                 let app = app.clone();
                 let _ = app.clone().run_on_main_thread(move || toggle(&app));
             }),
         }
+    }
+}
+
+impl QuickTerminal {
+    /// Whether closing the last window leaves the app running, for its shortcut.
+    pub fn keeps_running(&self) -> bool {
+        self.keep_running.load(Ordering::Relaxed)
     }
 }
 
@@ -151,7 +164,7 @@ fn place(app: &AppHandle, window: &tauri::WebviewWindow) {
     let _ = window.set_size(tauri::PhysicalSize::new(area.size.width, height));
 }
 
-fn toggle(app: &AppHandle) {
+pub fn toggle(app: &AppHandle) {
     match app.get_webview_window(LABEL) {
         Some(window) if window.is_visible().unwrap_or(false) => {
             if window.is_focused().unwrap_or(false) {
@@ -197,9 +210,17 @@ pub async fn set_quick_terminal(
     enabled: bool,
     shortcut: String,
     height: f64,
+    keep_running: bool,
 ) -> Result<(), String> {
     if let Ok(mut current) = state.height.lock() {
         *current = height.clamp(SHORTEST, TALLEST);
+    }
+    let in_tray = enabled && keep_running;
+    state.keep_running.store(in_tray, Ordering::Relaxed);
+    if in_tray {
+        crate::tray::show(&app).map_err(|error| error.to_string())?;
+    } else {
+        crate::tray::hide(&app);
     }
     if !enabled {
         if let Some(window) = app.get_webview_window(LABEL) {

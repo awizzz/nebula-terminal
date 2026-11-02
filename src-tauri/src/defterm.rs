@@ -294,11 +294,17 @@ mod server {
         app.state::<PtyState>()
             .receive_handoff(title, hidden, parts);
         if !hidden {
-            if let Some(window) = crate::windows::launch_target(app) {
-                let _ = app.emit_to(window.label(), "handoff", ());
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
+            match crate::windows::launch_target(app) {
+                Some(window) => {
+                    let _ = app.emit_to(window.label(), "handoff", ());
+                    let _ = window.unminimize();
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+                // Only the notification area icon left: a new window takes the console.
+                None => {
+                    let _ = crate::windows::open_window(app, None);
+                }
             }
         }
         Ok(())

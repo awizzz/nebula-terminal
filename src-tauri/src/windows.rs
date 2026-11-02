@@ -60,6 +60,18 @@ pub fn open_window(app: &AppHandle, transfer: Option<&str>) -> tauri::Result<Web
     builder.initialization_script(script).build()
 }
 
+/// Opens a terminal window with what it should open, kept until the window asks.
+pub fn open_window_with(
+    app: &AppHandle,
+    transfer: serde_json::Value,
+) -> tauri::Result<WebviewWindow> {
+    let id = uuid::Uuid::new_v4().simple().to_string();
+    if let Ok(mut transfers) = app.state::<Transfers>().0.lock() {
+        transfers.insert(id.clone(), transfer);
+    }
+    open_window(app, Some(&id))
+}
+
 /// The terminal window under the pointer, other than `except`, for a tab dropped on it.
 fn window_at_cursor(app: &AppHandle, except: &str) -> Option<WebviewWindow> {
     let cursor = app.cursor_position().ok()?;
