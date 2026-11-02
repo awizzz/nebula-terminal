@@ -13,7 +13,7 @@ import { adjacentPrompt, joinLines } from "../commandMarks";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { openPath, registerFileLinks } from "../fileLinks";
-import { registerPane } from "../paneRegistry";
+import { registerPane, type FoundLine } from "../paneRegistry";
 import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
@@ -638,6 +638,22 @@ export default function TerminalPane({
       hasCommandOutput: () => lastOutputLines() !== undefined,
       text: allText,
       lastOutput: lastOutputText,
+      findAll: (query, caseSensitive) => {
+        const buffer = terminal.buffer.active;
+        const needle = caseSensitive ? query : query.toLowerCase();
+        const found: FoundLine[] = [];
+        for (let line = 0; line < buffer.length && found.length < 200; line++) {
+          const text = buffer.getLine(line)?.translateToString(true) ?? "";
+          const column = (caseSensitive ? text : text.toLowerCase()).indexOf(needle);
+          if (column >= 0) found.push({ line, column, length: query.length, text });
+        }
+        return found;
+      },
+      reveal: ({ line, column, length }) => {
+        terminal.scrollToLine(Math.max(0, line - Math.floor(terminal.rows / 2)));
+        terminal.select(column, line, length);
+        terminal.focus();
+      },
       detach: async () => {
         const screen = serializer.serialize({ scrollback: Math.min(preferencesRef.current.scrollback, 5_000) });
         const sessionId = sessionRef.current;

@@ -23,6 +23,7 @@ export const defaultKeybindings: KeybindingPreferences = {
   toggleBroadcast: "Ctrl+Shift+B",
   previousCommand: "Ctrl+ArrowUp",
   togglePaneZoom: "Ctrl+Shift+Z",
+  findEverywhere: "Ctrl+Shift+Alt+F",
   nextCommand: "Ctrl+ArrowDown",
 };
 
@@ -44,6 +45,7 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   toggleBroadcast: "Type in every pane",
   previousCommand: "Previous command",
   togglePaneZoom: "Zoom pane",
+  findEverywhere: "Find in every tab",
   nextCommand: "Next command",
 };
 

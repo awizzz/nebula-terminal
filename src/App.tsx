@@ -35,6 +35,7 @@ import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, Sp
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
+const FindEverywhere = lazy(() => import("./components/FindEverywhere"));
 
 /** How this copy of the app was started. */
 interface Launch {
@@ -163,6 +164,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsPage, setSettingsPage] = useState<SettingsPage | undefined>();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [findEverywhereOpen, setFindEverywhereOpen] = useState(false);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -219,7 +221,7 @@ export default function App() {
   const activeProfileIdRef = useRef(activePane?.profile.id);
   activeProfileIdRef.current = activePane?.profile.id;
   const theme = resolveTheme(activeLook.themeId, activeLook.customThemes);
-  const overlayOpen = settingsOpen || paletteOpen || confirmation !== null;
+  const overlayOpen = settingsOpen || paletteOpen || findEverywhereOpen || confirmation !== null;
   // A tab closed mid-rename takes its editor with it, so only a live tab counts.
   const renaming = renamingTabId !== null && tabs.some((tab) => tab.id === renamingTabId && !closing.has(tab.id));
   const renamingRef = useRef(renaming);
@@ -1135,6 +1137,7 @@ export default function App() {
       { id: "previous-command", group: "Terminal", label: "Previous command", icon: <ArrowUpToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.previousCommand, run: () => jumpToCommand(-1) },
       { id: "next-command", group: "Terminal", label: "Next command", icon: <ArrowDownToLine size={15} />, keywords: "jump scroll prompt", shortcut: keys.nextCommand, run: () => jumpToCommand(1) },
       { id: "copy-output", group: "Terminal", label: "Copy last command output", icon: <ClipboardCheck size={15} />, keywords: "result", run: copyLastOutput },
+      { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput(false) },
       { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput(true) },
       ...recentFolders.map((folder): PaletteCommand => ({ id: `recent-${folder}`, group: "Recent folders", label: `Open a tab in ${folderParts(folder).name}`, detail: folderParts(folder).parent, icon: <FolderOpen size={15} />, keywords: `recent folder cd ${folder}`, run: () => openNewTab(undefined, folder) })),
@@ -1178,6 +1181,7 @@ export default function App() {
       if (action(keys.closePane, closeActivePane)) return;
       if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
+      if (action(keys.findEverywhere, () => setFindEverywhereOpen(true))) return;
       if (action(keys.nextTab, () => cycleTab(1))) return;
       if (action(keys.previousTab, () => cycleTab(-1))) return;
       if (action(keys.zoomIn, () => adjustFontSize(1))) return;
@@ -1425,6 +1429,19 @@ export default function App() {
       </div>
 
       {menu && <Menu {...menu} label={menu.kind === "profiles" ? "Open a profile" : menu.kind === "tab" ? "Tab" : "Terminal"} width={menu.kind === "terminal" ? 250 : menu.kind === "tab" ? 260 : 280} entries={menuEntries(menu)} onClose={() => { setMenu(null); closeOverlayFocus(); }} />}
+
+      <Suspense fallback={null}>
+        <FindEverywhere
+          open={findEverywhereOpen}
+          tabs={tabs}
+          onClose={() => { setFindEverywhereOpen(false); closeOverlayFocus(); }}
+          onReveal={(tabId, paneId, found) => {
+            setActivePane(tabId, paneId);
+            // Once the tab is in front and the pane has its size.
+            requestAnimationFrame(() => requestAnimationFrame(() => getPane(paneId)?.reveal(found)));
+          }}
+        />
+      </Suspense>
 
       <Suspense fallback={null}>
         <SettingsPanel

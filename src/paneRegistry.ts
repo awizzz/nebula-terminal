@@ -1,5 +1,13 @@
 import type { MovedPane } from "./types";
 
+/** A line of a pane's buffer that matches, for Find in every tab. */
+export interface FoundLine {
+  line: number;
+  column: number;
+  length: number;
+  text: string;
+}
+
 /** Imperative actions a mounted terminal pane exposes to menus and shortcuts. */
 export interface PaneHandle {
   copy: () => void;
@@ -19,6 +27,10 @@ export interface PaneHandle {
   text: () => string;
   /** The output of the last finished command, or undefined without one. */
   lastOutput: () => string | undefined;
+  /** Every line that holds `query`, once each, 200 at most. */
+  findAll: (query: string, caseSensitive: boolean) => FoundLine[];
+  /** Scrolls to a found line and selects the match. */
+  reveal: (found: FoundLine) => void;
   /** Keeps the shell running for another window and gives its screen. The pane then
    * unmounts without stopping the shell. */
   detach: () => Promise<MovedPane>;
