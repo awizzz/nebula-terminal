@@ -46,7 +46,7 @@ If you know Linux, you already know Nebula. `ls`, `cd`, `cat`, `cp`, `mv`, `rm`,
 - **Shell syntax you expect.** Pipes, `&&`, `||`, `;`, redirections (`>`, `>>`, `2>&1`, `&>`, here-documents), `$VAR`, `export`, `$(…)`, `~`, `*.txt`, `**/*.rs` for every subfolder, `{a,b}` and `{1..10}`, aliases, `!!` and `!$`. `/c/Users` and `/dev/null` work too.
 - **Real scripts.** `if`, `for`, `while`, `case`, functions with `local` variables, arrays and associative arrays, `$((…))`, `[[ … ]]`, `read`, `mapfile`, `${name%.txt}` and the other `${…}` forms, `getopts`, `set -e`, `trap`. Run a script with `nebula-sh deploy.sh` or `./deploy.sh`.
 - **Background jobs.** `cmd &` runs while you keep typing; `jobs`, `wait`, `fg` and `kill %1` handle them. A job can't take the keyboard, and Ctrl+C only stops what runs in front.
-- **Nicer than a plain prompt.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
+- **Nicer than a plain prompt, and yours to shape.** It shows the folder, Git branch and changes, how long slow commands took, and failed exit codes; `~/.nebularc` can add the time, background jobs, an admin marker or the Node, Python and Rust versions of your project, reorder and recolor it all, or hand it to Starship. Commands are colored as you type (green if they exist, red if not), suggestions from your history appear in grey (→ to accept).
 - **Tab completion that knows things.** Commands and paths, the options of every Nebula command (`ls --<Tab>`), Git subcommands and branches, the scripts of your `package.json` (`npm run`, `pnpm`, `yarn`, `bun`), `cargo`, `winget` and `docker` commands, Makefile targets, `$VARIABLES` and your SSH hosts.
 - **Finds what you did before.** `Ctrl+R` searches your history as you type, fuzzily: `gpo` finds `git push origin`. `z proj` jumps to the folder you visit most that matches, learned from your `cd`s.
 - **`ls` and `tree` with icons and colors** on screen. When the output goes to a file or another command, it stays plain.
@@ -57,7 +57,15 @@ Your history is saved in `%APPDATA%\Nebula\history.txt`, and the folders `z` kno
 ```sh
 alias gs='git status'
 export EDITOR=code
+
+# The prompt: segments in order, their colors, the symbol, and one line instead of two.
+NEBULA_PROMPT="folder git node python rust jobs duration status time"
+NEBULA_PROMPT_COLORS="folder=bold+cyan time=dim git=#c678dd"
+NEBULA_PROMPT_SYMBOL="❯"
+NEBULA_PROMPT_LINES=2
 ```
+
+Prompt segments: `folder`, `git`, `duration`, `status`, `time`, `user`, `host`, `admin`, `jobs`, `node`, `python` and `rust`. Colors take a name (`red`, `bright-blue`, `gray`…), `#rrggbb` or a number from 0 to 255, plus `bold`, `dim`, `italic` or `underline`, joined by `+`. `NEBULA_PROMPT=starship` uses [Starship](https://starship.rs) when it's installed.
 
 `nebula-sh.exe` also works on its own in Windows Terminal or any other terminal. Set `NEBULA_ICONS=1` there if your font includes Nerd Font icons.
 
@@ -80,11 +88,13 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 
 - **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL, plus one entry for each WSL distribution and for each host in your `~/.ssh/config`. Nebula is the default, and you can pick another in Settings.
 - **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type.
+- **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette.
 - **Tabs and split panes.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list.
-- **Nine themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
+- **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
+- **Nine themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts. Every change applies immediately.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
 - **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
@@ -117,12 +127,13 @@ Not supported yet: pausing a job with Ctrl+Z. For scripts that need it, use Git 
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
 | Open a link or a file path | `Ctrl+Click` |
+| Quick terminal, from any app | `` Win+` `` (the key under Escape) |
 
-All of these except going to a tab by number, moving between panes and opening links can be changed in **Settings → Keyboard**. The recorder warns you when two actions share a shortcut.
+All of these except going to a tab by number, moving between panes and opening links can be changed in **Settings → Keyboard**, and the quick terminal's in **Settings → Behavior**. The recorder warns you when two actions share a shortcut.
 
 ## What's next
 
-Next up: the winget package (in review), a Quake-style drop-down window, per-profile looks and a prompt you can configure, then several windows and images in the terminal. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: several windows, images in the terminal, progress on the taskbar and copying from programs over SSH, then pane zoom, saved commands and more for Nebula. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
