@@ -702,6 +702,31 @@ export default function TerminalPane({
     };
   }, [paneId, profile.id, restartNonce, preferences.terminalImages]);
 
+  // Ligatures: the page can't read font files, so the addon joins the usual sequences
+  // (=>, !=, ===…) and the font draws them as one glyph if it has one.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal || !preferences.fontLigatures) return;
+    let addon: { dispose(): void } | undefined;
+    let cancelled = false;
+    void import("@xterm/addon-ligatures")
+      .then(({ LigaturesAddon }) => {
+        if (cancelled || terminalRef.current !== terminal) return;
+        const ligatures = new LigaturesAddon();
+        terminal.loadAddon(ligatures);
+        addon = ligatures;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      try {
+        addon?.dispose();
+      } catch {
+        // The terminal may already be disposed.
+      }
+    };
+  }, [paneId, profile.id, restartNonce, preferences.fontLigatures]);
+
   // GPU rendering can be switched off live; xterm falls back to its DOM renderer.
   useEffect(() => {
     const terminal = terminalRef.current;

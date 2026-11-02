@@ -98,11 +98,19 @@ export interface KeybindingPreferences {
   zoomReset: string;
   toggleBroadcast: string;
   previousCommand: string;
+  togglePaneZoom: string;
   nextCommand: string;
 }
 
 /** Where new shells start when they have no folder of their own. */
 export type StartingFolder = "home" | "desktop" | "documents" | "custom";
+
+/** A command kept to run again from the palette. */
+export interface SavedCommand {
+  id: string;
+  name: string;
+  command: string;
+}
 
 /** A profile's own look; anything it leaves out is the app's. */
 export interface ProfileLook {
@@ -177,6 +185,9 @@ export interface AppearancePreferences {
   terminalImages: boolean;
   /** OSC 52: programs may put text on the clipboard (never read it). */
   clipboardWrite: boolean;
+  /** Draw =>, != and the like as one symbol in fonts that have ligatures. */
+  fontLigatures: boolean;
+  savedCommands: SavedCommand[];
   keybindings: KeybindingPreferences;
 }
 
@@ -211,6 +222,8 @@ export interface TerminalTab {
   activePaneId: string;
   /** What is typed in one pane goes to every pane of the tab. Not saved. */
   broadcast?: boolean;
+  /** The pane that fills the tab for now, the others hidden. Not saved. */
+  zoomedPaneId?: string;
 }
 
 export interface PersistedPane {

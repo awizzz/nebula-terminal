@@ -204,6 +204,7 @@ kbd { font: inherit; }
 .tab:hover + .tab .tab__button::before { opacity: 0; }
 
 .tab__title { min-width: 0; flex: 1 1 auto; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; mask-image: linear-gradient(90deg, #000 calc(100% - 16px), transparent); }
+.tab__panes.is-zoomed { background: color-mix(in oklab, var(--accent) 26%, transparent); color: var(--text); }
 .tab__panes {
   flex: none;
   min-width: 16px;
@@ -690,6 +691,9 @@ kbd { font: inherit; }
   word-break: break-all;
 }
 .workspace-row__name { width: 220px; max-width: 100%; font-weight: 500; }
+.saved-command { display: grid; grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1.4fr) auto; align-items: start; gap: 10px; }
+.field.saved-command__text { min-height: 32px; }
+@media (max-width: 760px) { .saved-command { grid-template-columns: minmax(0, 1fr) auto; } .saved-command__text { grid-column: 1 / -1; grid-row: 2; } }
 .dialog__field { display: grid; gap: 6px; margin-top: 16px; color: var(--text-2); font-size: 12px; }
 .dialog__field .field { width: 100%; }
 .dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }

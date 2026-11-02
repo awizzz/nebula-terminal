@@ -810,6 +810,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Line height">
                     <Slider label="Line height" value={preferences.lineHeight} min={1} max={1.8} step={0.05} format={(value) => value.toFixed(2)} onChange={(value) => patch("lineHeight", value)} />
                   </Row>
+                  <Row label="Ligatures" description="=>, != and the like drawn as one symbol, in fonts that have ligatures: Cascadia Code, Fira Code, JetBrains Mono.">
+                    <Switch label="Ligatures" checked={preferences.fontLigatures} onChange={(value) => patch("fontLigatures", value)} />
+                  </Row>
                 </Group>
 
                 <Group title="Cursor">
@@ -1009,6 +1012,42 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       </div>
                     </div>
                   ))}
+                </Group>
+                <Group title="Saved commands" description="Run them from the command palette in the pane in front: each line runs as if you typed it and pressed Enter.">
+                  {preferences.savedCommands.map((saved, index) => (
+                    <div key={saved.id} className="row saved-command">
+                      <input
+                        className="field saved-command__name"
+                        value={saved.name}
+                        maxLength={60}
+                        spellCheck={false}
+                        placeholder="Name"
+                        aria-label={`Name of saved command ${index + 1}`}
+                        autoFocus={!saved.command && !saved.name}
+                        onChange={(event) => patch("savedCommands", preferences.savedCommands.map((candidate) => candidate.id === saved.id ? { ...candidate, name: event.target.value } : candidate))}
+                      />
+                      <textarea
+                        className="field field--mono field--area saved-command__text"
+                        value={saved.command}
+                        rows={Math.min(4, saved.command.split("\n").length)}
+                        maxLength={2000}
+                        spellCheck={false}
+                        placeholder="git pull --rebase && npm install"
+                        aria-label={`Saved command ${index + 1}`}
+                        onChange={(event) => patch("savedCommands", preferences.savedCommands.map((candidate) => candidate.id === saved.id ? { ...candidate, command: event.target.value } : candidate))}
+                      />
+                      <button className="icon-button" type="button" aria-label={`Remove ${saved.name || `saved command ${index + 1}`}`} title="Remove" onClick={() => patch("savedCommands", preferences.savedCommands.filter((candidate) => candidate.id !== saved.id))}><Trash size={15} strokeWidth={1.8} /></button>
+                    </div>
+                  ))}
+                  <div className="row">
+                    <div className="row__text">
+                      <span className="row__label">{preferences.savedCommands.length ? "Add another command" : "Save a command"}</span>
+                      <span className="row__description">A build, a deploy, a login to a server: whatever you type often.</span>
+                    </div>
+                    <div className="row__control">
+                      <button className="button" type="button" disabled={preferences.savedCommands.length >= 100} onClick={() => patch("savedCommands", [...preferences.savedCommands, { id: crypto.randomUUID(), name: "", command: "" }])}><Plus size={14} />Add command</button>
+                    </div>
+                  </div>
                 </Group>
                 <Group title="Tabs">
                   <Row label="Reopen tabs on launch" description="Restores tabs, splits and the folder each one was in. Shells start fresh.">
