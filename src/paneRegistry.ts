@@ -15,6 +15,10 @@ export interface PaneHandle {
   /** Copies the output of the last finished command. False when there is none. */
   copyLastOutput: () => boolean;
   hasCommandOutput: () => boolean;
+  /** Everything the pane shows, scrollback included, as text. */
+  text: () => string;
+  /** The output of the last finished command, or undefined without one. */
+  lastOutput: () => string | undefined;
   /** Keeps the shell running for another window and gives its screen. The pane then
    * unmounts without stopping the shell. */
   detach: () => Promise<MovedPane>;

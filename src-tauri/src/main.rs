@@ -10,6 +10,7 @@ mod launcher;
 mod profiles;
 mod pty;
 mod quick;
+mod save;
 mod ssh;
 mod sync;
 mod tray;
@@ -181,6 +182,7 @@ fn main() {
             quick::hide_quick_terminal,
             pty::park_session,
             pty::suspend_foreground,
+            save::save_text_file,
             sync::choose_sync_file,
             sync::read_sync_file,
             sync::write_sync_file,
