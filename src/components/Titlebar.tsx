@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, ChevronsUp, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
+import { ChevronDown, ChevronsUp, Eye, Hourglass, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
 import ProfileIcon from "./ProfileIcon";
 import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
@@ -222,6 +222,11 @@ export default function Titlebar({
               {tab.panes.length > 1 && (
                 <span className={`tab__panes ${tab.zoomedPaneId ? "is-zoomed" : ""}`} aria-label={tab.zoomedPaneId ? `1 of ${tab.panes.length} panes shown` : `${tab.panes.length} panes`} title={tab.zoomedPaneId ? "One pane fills the tab" : undefined}>
                   {tab.zoomedPaneId ? `1/${tab.panes.length}` : tab.panes.length}
+                </span>
+              )}
+              {tab.watch && (
+                <span className="tab__watch" role="img" aria-label={tab.watch === "output" ? "Watching for output" : "Watching for silence"} title={tab.watch === "output" ? "Watching for output" : "Watching for silence"}>
+                  {tab.watch === "output" ? <Eye size={12} strokeWidth={2} /> : <Hourglass size={12} strokeWidth={2} />}
                 </span>
               )}
               {!active && finished.has(tab.id)

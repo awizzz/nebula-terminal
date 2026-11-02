@@ -40,6 +40,8 @@ interface TerminalPaneProps {
   onFontSizeDelta: (delta: number) => void;
   onTitleChange: (title: string) => void;
   onActivity: () => void;
+  /** Every bit of output from the shell, seen or not. */
+  onOutput?: () => void;
   onSearchResult: (result: { index: number; count: number }) => void;
   /** Input the user typed or pasted here, for panes that type together. */
   onInput?: (data: string) => void;
@@ -153,6 +155,7 @@ export default function TerminalPane({
   onFontSizeDelta,
   onTitleChange,
   onActivity,
+  onOutput,
   onSearchResult,
   onInput,
   onContextMenu,
@@ -176,7 +179,7 @@ export default function TerminalPane({
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
   const movedRef = useRef(moved);
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -192,7 +195,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -563,6 +566,7 @@ export default function TerminalPane({
           if (!drawn && drawsText(message.data.chunk)) terminal.write(message.data.chunk, ready);
           else terminal.write(message.data.chunk);
           if (!visibleRef.current) callbacksRef.current.onActivity();
+          callbacksRef.current.onOutput?.();
         } else if (message.event === "exit") {
           ready();
           if (progress) reportProgress(null);

@@ -218,6 +218,7 @@ kbd { font: inherit; }
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+.tab__watch { flex: none; display: grid; place-items: center; color: var(--accent); }
 .tab__activity {
   flex: none;
   width: 6px;

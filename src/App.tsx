@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -29,9 +29,10 @@ import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
+import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SavedCommand, SplitDirection, TabColor, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SavedCommand, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
@@ -566,6 +567,25 @@ export default function App() {
       ? tab.panes.length > 1 ? `Typing goes to all ${tab.panes.length} panes` : "Typing will go to every pane you open in this tab"
       : "Typing goes to one pane again");
   }, []);
+
+  const [watcher] = useState(() => new TabWatcher((tabId, watch) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    setTabs((current) => current.map((candidate) => candidate.id === tabId ? { ...candidate, watch: undefined } : candidate));
+    const message = watch === "output" ? `${tabTitle(tab)} printed something` : `${tabTitle(tab)} has been quiet for ${SILENCE_SECONDS} s`;
+    if (tabUnseen(tabId)) notify(message, "Nebula Terminal");
+    else setNotice(message);
+  }, (tabId) => !tabUnseen(tabId)));
+
+  /** Watches a tab for output or for silence, or stops watching it. */
+  const watchTab = useCallback((tabId: string, watch?: TabWatch) => {
+    if (watch) watcher.start(tabId, watch);
+    else watcher.stop(tabId);
+    setTabs((current) => current.map((candidate) => candidate.id === tabId ? { ...candidate, watch } : candidate));
+    setNotice(watch === "output" ? "You'll be told when this tab prints something"
+      : watch === "silence" ? `You'll be told once this tab has been quiet for ${SILENCE_SECONDS} s`
+      : "Not watching this tab any more");
+  }, [watcher]);
 
   /** Opens a tab for each console Windows handed over since the last look. */
   const openHandoffs = useCallback(async () => {
@@ -1164,6 +1184,12 @@ export default function App() {
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       ...((activeTab?.panes.length ?? 0) > 1 ? [{ id: "zoom-pane", group: "Panes", label: activeTab?.zoomedPaneId ? "Show every pane" : "Zoom pane", icon: <Maximize2 size={15} />, keywords: "maximize fill focus", shortcut: keys.togglePaneZoom, run: togglePaneZoom }] : []),
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
+      ...(activeTab?.watch
+        ? [{ id: "unwatch", group: "Tabs", label: "Stop watching this tab", icon: <EyeOff size={15} />, run: () => watchTab(activeTab.id) }]
+        : activeTab ? [
+          { id: "watch-output", group: "Tabs", label: "Watch this tab for output", icon: <Eye size={15} />, keywords: "monitor activity notify", run: () => watchTab(activeTab.id, "output") },
+          { id: "watch-silence", group: "Tabs", label: `Watch this tab for ${SILENCE_SECONDS} s of silence`, icon: <Hourglass size={15} />, keywords: "monitor quiet idle notify", run: () => watchTab(activeTab.id, "silence") },
+        ] : []),
       { id: "broadcast", group: "Panes", label: activeTab?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, keywords: "broadcast input sync panes", shortcut: keys.toggleBroadcast, run: () => toggleBroadcast() },
       ...[undefined, ...tabColors].map((color): PaletteCommand => ({
         id: `tab-color-${color?.id ?? "none"}`, group: "Tab color", label: `Tab color: ${color?.name ?? "None"}`, keywords: "colour",
@@ -1198,7 +1224,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1306,6 +1332,12 @@ export default function App() {
         ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
         { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
+        ...(tabs[index]?.watch
+          ? [{ id: "unwatch", label: "Stop watching", icon: <EyeOff size={15} />, run: () => watchTab(open.tabId) }]
+          : [
+            { id: "watch-output", label: "Watch for output", icon: <Eye size={15} />, run: () => watchTab(open.tabId, "output") },
+            { id: "watch-silence", label: `Watch for ${SILENCE_SECONDS} s of silence`, icon: <Hourglass size={15} />, run: () => watchTab(open.tabId, "silence") },
+          ]),
         "separator",
         { heading: "Color" },
         {
@@ -1416,6 +1448,7 @@ export default function App() {
                         onFontSizeDelta={adjustFontSize}
                         onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
                         onActivity={() => markActivity(tab.id)}
+                        onOutput={() => watcher.output(tab.id)}
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
