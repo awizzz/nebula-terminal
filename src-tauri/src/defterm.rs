@@ -293,7 +293,7 @@ mod server {
         app.state::<PtyState>()
             .receive_handoff(title, hidden, parts);
         if !hidden {
-            let _ = app.emit("handoff", ());
+            let _ = app.emit_to("main", "handoff", ());
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();

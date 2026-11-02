@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
+import { ChevronDown, ChevronsUp, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
 import ProfileIcon from "./ProfileIcon";
 import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
@@ -20,6 +20,9 @@ interface TitlebarProps {
   settingsShortcut: string;
   /** Every shell in this window runs as administrator. */
   administrator?: boolean;
+  /** The quick terminal: one button sends it back up instead of the window controls. */
+  quick?: boolean;
+  onHide?: () => void;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
   onMoveTab: (fromId: string, toId: string) => void;
@@ -96,6 +99,8 @@ export default function Titlebar({
   renamingId,
   newTabShortcut,
   administrator = false,
+  quick = false,
+  onHide,
   paletteShortcut,
   settingsShortcut,
   onSelectTab,
@@ -255,11 +260,17 @@ export default function Titlebar({
         <button className="icon-button" type="button" onClick={onOpenSettings} aria-label="Settings" title={`Settings (${settingsShortcut})`}><Settings2 size={15} strokeWidth={1.8} /></button>
       </div>
 
-      <div className="window-controls">
-        <button type="button" onClick={() => windowAction("minimize")} aria-label="Minimize" tabIndex={-1}><WindowIcon type="min" /></button>
-        <button type="button" onClick={() => windowAction("maximize")} aria-label="Maximize" tabIndex={-1}><WindowIcon type="max" /></button>
-        <button className="window-controls__close" type="button" onClick={() => windowAction("close")} aria-label="Close" tabIndex={-1}><WindowIcon type="close" /></button>
-      </div>
+      {quick ? (
+        <div className="window-controls">
+          <button type="button" onClick={onHide} aria-label="Hide the quick terminal" title="Hide" tabIndex={-1}><ChevronsUp size={16} strokeWidth={1.7} /></button>
+        </div>
+      ) : (
+        <div className="window-controls">
+          <button type="button" onClick={() => windowAction("minimize")} aria-label="Minimize" tabIndex={-1}><WindowIcon type="min" /></button>
+          <button type="button" onClick={() => windowAction("maximize")} aria-label="Maximize" tabIndex={-1}><WindowIcon type="max" /></button>
+          <button className="window-controls__close" type="button" onClick={() => windowAction("close")} aria-label="Close" tabIndex={-1}><WindowIcon type="close" /></button>
+        </div>
+      )}
     </header>
   );
 }

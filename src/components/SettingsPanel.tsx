@@ -5,6 +5,7 @@ import appIcon from "../assets/icon.svg";
 import { deleteCustomProfile, draftOf, listCustomProfiles, newDraft, saveCustomProfile, splitArguments, sshCommand } from "../customProfiles";
 import { openExternal } from "../external";
 import { checkForUpdate, installUpdate, markChecked, type UpdateInfo } from "../updates";
+import { globalShortcutFromEvent, globalShortcutLabel, keyboardLayout } from "../quickShortcut";
 import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
@@ -16,6 +17,8 @@ import ThemeSection from "./ThemeSection";
 import { describe as describeWorkspace, renamed, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, SshDraft, TerminalProfile } from "../types";
+
+const quickHeights = [0.3, 0.5, 0.7, 0.9];
 
 interface SettingsPanelProps {
   open: boolean;
@@ -37,6 +40,8 @@ interface SettingsPanelProps {
   administrator?: boolean;
   workspaces: Workspace[];
   onWorkspacesChange: (workspaces: Workspace[]) => void;
+  /** Why the quick terminal's shortcut couldn't be registered, if it couldn't. */
+  quickTerminalProblem?: string | null;
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -75,12 +80,12 @@ async function shrinkImage(file: File): Promise<string> {
   }
 }
 
-function Row({ label, description, children, stacked = false }: { label: string; description?: string; children?: ReactNode; stacked?: boolean }) {
+function Row({ label, description, children, stacked = false, error = false }: { label: string; description?: string; children?: ReactNode; stacked?: boolean; error?: boolean }) {
   return (
     <div className={`row ${stacked ? "row--stacked" : ""}`}>
       <div className="row__text">
         <span className="row__label">{label}</span>
-        {description && <span className="row__description">{description}</span>}
+        {description && <span className={`row__description ${error ? "row__description--error" : ""}`} role={error ? "alert" : undefined}>{description}</span>}
       </div>
       <div className="row__control">{children}</div>
     </div>
@@ -216,6 +221,52 @@ function ShortcutRecorder({ action, value, conflict, onChange }: { action: strin
         onClick={() => setRecording((current) => !current)}
       >
         {recording ? <span className="shortcut__hint">Press a shortcut…</span> : value ? <Keys shortcut={value} /> : <span className="shortcut__hint">Not set</span>}
+      </button>
+    </div>
+  );
+}
+
+/** Records a global shortcut by physical key, and shows it as the keyboard prints it. */
+function GlobalShortcutRecorder({ value, disabled, onChange }: { value: string; disabled: boolean; onChange: (value: string) => void }) {
+  const [recording, setRecording] = useState(false);
+  const [layout, setLayout] = useState<ReadonlyMap<string, string>>();
+
+  useEffect(() => {
+    void keyboardLayout().then(setLayout);
+  }, []);
+
+  useEffect(() => {
+    if (!recording) return;
+    const capture = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") { setRecording(false); return; }
+      const shortcut = globalShortcutFromEvent(event);
+      if (!shortcut) return;
+      onChange(shortcut);
+      setRecording(false);
+    };
+    const stop = () => setRecording(false);
+    window.addEventListener("keydown", capture, true);
+    window.addEventListener("blur", stop);
+    return () => {
+      window.removeEventListener("keydown", capture, true);
+      window.removeEventListener("blur", stop);
+    };
+  }, [onChange, recording]);
+
+  const label = globalShortcutLabel(value, layout);
+  return (
+    <div className="shortcut">
+      <button
+        type="button"
+        data-shortcut-recorder
+        className={`shortcut__field ${recording ? "is-recording" : ""}`}
+        disabled={disabled}
+        aria-label={`Quick terminal shortcut: ${label}. Press to change.`}
+        onClick={() => setRecording((current) => !current)}
+      >
+        {recording ? <span className="shortcut__hint">Press Ctrl, Alt or Win and a key…</span> : <Keys shortcut={label} />}
       </button>
     </div>
   );
@@ -499,7 +550,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange, quickTerminalProblem = null }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -813,6 +864,25 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <select className="field field--select" value={preferences.longCommandSeconds} disabled={!preferences.notifyLongCommands} onChange={(event) => patch("longCommandSeconds", Number(event.target.value))}>
                       {[5, 10, 30, 60, 300].map((seconds) => <option key={seconds} value={seconds}>{seconds < 60 ? `${seconds} seconds` : `${seconds / 60} minute${seconds > 60 ? "s" : ""}`}</option>)}
                     </select>
+                  </Row>
+                </Group>
+                <Group title="Quick terminal" description={administrator ? "Change this from an ordinary window." : undefined}>
+                  <Row label="Quick terminal" description="A shortcut drops a terminal down from the top of the screen, over whatever you're doing, and the same shortcut puts it away. It has tabs of its own and works while Nebula Terminal is open.">
+                    <Switch label="Quick terminal" checked={preferences.quickTerminal} disabled={administrator} onChange={(value) => patch("quickTerminal", value)} />
+                  </Row>
+                  <Row label="Shortcut" description={quickTerminalProblem ?? "Works whatever app is in front."} error={quickTerminalProblem !== null && preferences.quickTerminal}>
+                    <GlobalShortcutRecorder value={preferences.quickTerminalShortcut} disabled={administrator || !preferences.quickTerminal} onChange={(value) => patch("quickTerminalShortcut", value)} />
+                  </Row>
+                  <Row label="Height">
+                    <Segmented
+                      label="Height of the quick terminal"
+                      value={String(quickHeights.reduce((best, height) => Math.abs(height - preferences.quickTerminalHeight) < Math.abs(best - preferences.quickTerminalHeight) ? height : best))}
+                      onChange={(value) => patch("quickTerminalHeight", Number(value))}
+                      options={quickHeights.map((height) => ({ value: String(height), label: `${Math.round(height * 100)}%` }))}
+                    />
+                  </Row>
+                  <Row label="Hide when you click elsewhere">
+                    <Switch label="Hide when you click elsewhere" checked={preferences.quickTerminalHideOnBlur} disabled={administrator || !preferences.quickTerminal} onChange={(value) => patch("quickTerminalHideOnBlur", value)} />
                   </Row>
                 </Group>
                 <Group title="Windows" description={administrator ? "Change these from an ordinary window." : undefined}>

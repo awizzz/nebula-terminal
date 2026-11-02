@@ -11,13 +11,14 @@ import { automaticCheckDue, checkForUpdate, dismiss as dismissUpdate, isDismisse
 import SearchBar from "./components/SearchBar";
 import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
-import { defaultKeybindings, defaultPreferences, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
+import { defaultKeybindings, defaultPreferences, isPreferencesKey, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
 import { clearSession, loadSession, saveSession } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
 import * as splash from "./splash";
+import { isQuickTerminal } from "./windowKind";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
@@ -166,7 +167,7 @@ export default function App() {
       hydratedRef.current = true;
       setReady(true);
       // An admin window opens what it was asked for, never the tabs of a past session.
-      const restored = preferencesRef.current.restoreSession && !isAdministrator ? loadSession(detected) : null;
+      const restored = preferencesRef.current.restoreSession && !isAdministrator && !isQuickTerminal ? loadSession(detected) : null;
       const first = pickProfile(detected, launch.profileId ?? preferencesRef.current.defaultProfileId);
       const wantsTab = launch.folder || (!restored && !launch.forHandoff);
       const opened = first && wantsTab ? [makeTab(first, launch.folder)] : [];
@@ -251,7 +252,7 @@ export default function App() {
   }, [nativeHost, preferences.backgroundMode, theme.scheme]);
 
   useEffect(() => {
-    if (hydratedRef.current && preferences.restoreSession && tabs.length && !isAdministrator) saveSession(tabs, activeTabId);
+    if (hydratedRef.current && preferences.restoreSession && tabs.length && !isAdministrator && !isQuickTerminal) saveSession(tabs, activeTabId);
   }, [tabs, activeTabId, preferences.restoreSession]);
 
   useEffect(() => {
@@ -278,7 +279,7 @@ export default function App() {
   // Look for a new version a few seconds after launch, at most once a day.
   useEffect(() => {
     // Updates install from an ordinary window, so the app never restarts elevated.
-    if (isAdministrator || !preferences.checkForUpdates || !automaticCheckDue()) return;
+    if (isAdministrator || isQuickTerminal || !preferences.checkForUpdates || !automaticCheckDue()) return;
     const timer = window.setTimeout(() => {
       markChecked();
       void checkForUpdate()
@@ -466,7 +467,7 @@ export default function App() {
     const request = administratorLaunch();
     const launch: Promise<Launch> = request
       ? Promise.resolve({ folder: request.folder ?? undefined, profileId: request.profileId ?? undefined, forHandoff: false, handoffs: [] })
-      : nativeHost
+      : nativeHost && !isQuickTerminal
       ? Promise.all([
         invoke<string | null>("launch_folder").catch(() => null),
         invoke<boolean>("launched_for_handoff").catch(() => false),
@@ -482,9 +483,9 @@ export default function App() {
   }, [hydrateWorkspace, nativeHost]);
 
   const [defaultTerminal, setDefaultTerminal] = useState<DefaultTerminal | null>(null);
-  // Both belong to the ordinary window: an admin one leaves them alone.
+  // Both belong to the main window: admin windows and the quick terminal leave them alone.
   const changeDefaultTerminal = useCallback((enabled: boolean | null) => {
-    if (!nativeHost || isAdministrator) return;
+    if (!nativeHost || isAdministrator || isQuickTerminal) return;
     invoke<DefaultTerminal>("default_terminal", { enabled })
       .then(setDefaultTerminal)
       .catch((error) => setNotice(String(error)));
@@ -493,11 +494,57 @@ export default function App() {
 
   const [launchers, setLaunchers] = useState<Launchers | null>(null);
   useEffect(() => {
-    if (!nativeHost || isAdministrator) return;
+    if (!nativeHost || isAdministrator || isQuickTerminal) return;
     invoke<Launchers>("sync_launchers", { explorerMenu: preferences.explorerMenu, command: preferences.pathCommand })
       .then(setLaunchers)
       .catch((error) => setNotice(String(error)));
   }, [nativeHost, preferences.explorerMenu, preferences.pathCommand]);
+
+  // The main window owns the quick terminal's shortcut, so there's one, whichever window changed it.
+  const [quickTerminalProblem, setQuickTerminalProblem] = useState<string | null>(null);
+  useEffect(() => {
+    if (!nativeHost || isAdministrator || isQuickTerminal) return;
+    invoke("set_quick_terminal", { enabled: preferences.quickTerminal, shortcut: preferences.quickTerminalShortcut, height: preferences.quickTerminalHeight })
+      .then(() => setQuickTerminalProblem(null))
+      .catch((error: unknown) => setQuickTerminalProblem(String(error)));
+  }, [nativeHost, preferences.quickTerminal, preferences.quickTerminalShortcut, preferences.quickTerminalHeight]);
+
+  // Settings changed in the other window (main or quick) apply here too.
+  useEffect(() => {
+    const reload = (event: StorageEvent) => {
+      if (event.key && isPreferencesKey(event.key)) setPreferences(loadPreferences());
+    };
+    window.addEventListener("storage", reload);
+    return () => window.removeEventListener("storage", reload);
+  }, []);
+
+  // The quick terminal slides down when shown and back up before it hides.
+  const [quickMotion, setQuickMotion] = useState<"in" | "out">("in");
+  const hidingQuickRef = useRef(false);
+  const hideQuickTerminal = useCallback(() => {
+    if (hidingQuickRef.current) return;
+    hidingQuickRef.current = true;
+    setQuickMotion("out");
+    const instant = preferencesRef.current.animationLevel === "off";
+    window.setTimeout(() => {
+      void invoke("hide_quick_terminal").finally(() => { hidingQuickRef.current = false; });
+    }, instant ? 0 : 170);
+  }, []);
+  useEffect(() => {
+    if (!nativeHost || !isQuickTerminal) return;
+    const stops = [
+      listen("quick-terminal-show", () => {
+        hidingQuickRef.current = false;
+        setQuickMotion("in");
+        requestAnimationFrame(() => getPane(tabsRef.current.find((tab) => tab.id === activeTabIdRef.current)?.activePaneId)?.focus());
+      }),
+      listen("quick-terminal-hide", hideQuickTerminal),
+      getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+        if (!focused && preferencesRef.current.quickTerminalHideOnBlur) hideQuickTerminal();
+      }),
+    ];
+    return () => stops.forEach((stop) => void stop.then((unlisten) => unlisten()));
+  }, [hideQuickTerminal, nativeHost]);
 
   const removeTabs = useCallback((ids: string[]) => {
     const closingIds = closingRef.current;
@@ -506,11 +553,13 @@ export default function App() {
     const current = tabsRef.current;
     const live = current.filter((tab) => !closingIds.has(tab.id) && !remove.has(tab.id));
     if (live.length === 0) {
-      if (nativeHost) {
+      if (nativeHost && !isQuickTerminal) {
         closeWindow();
         return;
       }
-      // The browser preview has no window to close; keep one tab open.
+      // The quick terminal hides with a fresh tab for next time, and the browser
+      // preview has no window to close: both keep one tab open.
+      if (isQuickTerminal) hideQuickTerminal();
       const profile = resolveProfile();
       if (profile) {
         const replacement = makeTab(profile);
@@ -534,7 +583,7 @@ export default function App() {
     };
     if (preferencesRef.current.animationLevel === "off") finish();
     else window.setTimeout(finish, TAB_CLOSE_MS);
-  }, [closeWindow, nativeHost, resolveProfile]);
+  }, [closeWindow, hideQuickTerminal, nativeHost, resolveProfile]);
 
   const closeTab = useCallback((id: string) => removeTabs([id]), [removeTabs]);
 
@@ -920,7 +969,7 @@ export default function App() {
   const noShells = ready && nativeHost && !profiles.some((profile) => profile.available);
 
   return (
-    <main className={`app ${ready ? "is-ready" : ""}`}>
+    <main className={`app ${ready ? "is-ready" : ""}`} data-quick={isQuickTerminal ? quickMotion : undefined}>
       {showImage && <div className="app__image" style={{ backgroundImage: `url("${preferences.backgroundImage}")`, opacity: preferences.backgroundImageOpacity }} />}
       <Titlebar
         tabs={tabs}
@@ -931,6 +980,8 @@ export default function App() {
         renamingId={renaming ? renamingTabId : null}
         newTabShortcut={keys.newTab}
         administrator={isAdministrator}
+        quick={isQuickTerminal}
+        onHide={hideQuickTerminal}
         paletteShortcut={keys.commandPalette}
         settingsShortcut={keys.settings}
         onSelectTab={setActiveTabId}
@@ -1046,6 +1097,7 @@ export default function App() {
           defaultTerminal={defaultTerminal}
           onDefaultTerminalChange={changeDefaultTerminal}
           workspaces={workspaces}
+          quickTerminalProblem={quickTerminalProblem}
           onWorkspacesChange={changeWorkspaces}
           administrator={isAdministrator}
         />

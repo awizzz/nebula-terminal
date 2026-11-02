@@ -150,6 +150,13 @@ export interface AppearancePreferences {
   notifyLongCommands: boolean;
   longCommandSeconds: number;
   checkForUpdates: boolean;
+  /** A window that drops down from the top of the screen on a global shortcut. */
+  quickTerminal: boolean;
+  /** Physical keys, like "Win+Backquote" (see quickShortcut.ts). */
+  quickTerminalShortcut: string;
+  /** Share of the screen's height, from 0.25 to 0.9. */
+  quickTerminalHeight: number;
+  quickTerminalHideOnBlur: boolean;
   keybindings: KeybindingPreferences;
 }
 
