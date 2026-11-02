@@ -36,6 +36,15 @@ describe("profile looks", () => {
     expect(Object.getPrototypeOf(looks)).toBe(Object.prototype);
   });
 
+  it("follow Windows' contrast themes, over profile looks", () => {
+    const look = windowLook(preferences, false, "dark");
+    expect(look.themeId).toBe("high-contrast-dark");
+    expect(lookFor(look, "ssh:prod").themeId).toBe("high-contrast-dark");
+    expect(windowLook(preferences, false, "light").themeId).toBe("high-contrast-light");
+    expect(windowLook({ ...preferences, followContrastThemes: false }, false, "dark").themeId).toBe(preferences.themeId);
+    expect(windowLook(preferences, true, "dark").accent).toBe(ADMIN_ACCENT);
+  });
+
   it("mark admin windows when asked", () => {
     expect(windowLook(defaultPreferences, true).accent).toBe(ADMIN_ACCENT);
     expect(windowLook(defaultPreferences, false).accent).toBe(defaultPreferences.accent);

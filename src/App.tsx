@@ -104,6 +104,19 @@ const edge = (start: number) => (start > 1e-6 ? 1 : 0);
 
 const WHOLE_TAB: Rect = { x: 0, y: 0, width: 1, height: 1 };
 
+/** Whether a media query matches, following its changes (dark mode, contrast themes). */
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => typeof matchMedia === "function" && matchMedia(query).matches);
+  useEffect(() => {
+    const media = matchMedia(query);
+    const update = () => setMatches(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [query]);
+  return matches;
+}
+
 function paneStyle(rect: Rect | undefined): CSSProperties {
   if (!rect) return { display: "none" };
   return {
@@ -182,7 +195,9 @@ export default function App() {
   const activePane = activeTab?.panes.find((pane) => pane.id === activeTab.activePaneId) ?? activeTab?.panes[0];
   // What the window draws with: an admin window's red accent, each profile's own look,
   // and the chrome in the colors of the pane in front.
-  const drawn = useMemo(() => windowLook(preferences, isAdministrator), [preferences]);
+  const forcedColors = useMediaQuery("(forced-colors: active)");
+  const prefersDark = useMediaQuery("(prefers-color-scheme: dark)");
+  const drawn = useMemo(() => windowLook(preferences, isAdministrator, forcedColors ? (prefersDark ? "dark" : "light") : undefined), [forcedColors, prefersDark, preferences]);
   const lookOf = useMemo(() => {
     const cache = new Map<string, AppearancePreferences>();
     return (profileId: string | undefined) => {
