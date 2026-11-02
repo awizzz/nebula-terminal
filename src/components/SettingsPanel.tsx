@@ -43,6 +43,8 @@ interface SettingsPanelProps {
   onWorkspacesChange: (workspaces: Workspace[]) => void;
   /** Why the quick terminal's shortcut couldn't be registered, if it couldn't. */
   quickTerminalProblem?: string | null;
+  /** Settings sync, in the window that runs it (the main one). */
+  sync?: { problem: string | null; choose: () => void };
 }
 
 export type SettingsPage = "appearance" | "terminal" | "profiles" | "keyboard" | "behavior" | "about";
@@ -618,7 +620,7 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
   );
 }
 
-export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange, quickTerminalProblem = null }: SettingsPanelProps) {
+export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange, quickTerminalProblem = null, sync }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -1023,6 +1025,18 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       </div>
                     </div>
                   ))}
+                </Group>
+                <Group title="Sync settings" description="Keep one settings file in OneDrive, Dropbox or a Git repository, and every PC that uses it gets the same themes, fonts, shortcuts and saved commands. Explorer and PATH entries, the starting folder, what opens files and the background image stay on each PC.">
+                  <Row
+                    label="Settings file"
+                    description={sync?.problem ?? (preferences.syncFile ? preferences.syncFile : sync ? "Not synced. Choosing a file that already has settings uses them here." : "Change this from the main window.")}
+                    error={Boolean(sync?.problem)}
+                  >
+                    <div className="button-row">
+                      {preferences.syncFile && <button className="button" type="button" disabled={!sync} onClick={() => patch("syncFile", "")}>Stop syncing</button>}
+                      <button className="button" type="button" disabled={!sync} onClick={sync?.choose}>{preferences.syncFile ? "Change file…" : "Choose file…"}</button>
+                    </div>
+                  </Row>
                 </Group>
                 <Group title="Saved commands" description="Run them from the command palette in the pane in front: each line runs as if you typed it and pressed Enter.">
                   {preferences.savedCommands.map((saved, index) => (
