@@ -846,6 +846,11 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </select>
                   </Row>
                 </Group>
+                <Group title="Commands">
+                  <Row label="Command blocks" description="Point at a finished command to see it as one block and copy it, copy its output or run it again. Works with shell integration: Nebula, PowerShell, Git Bash and WSL.">
+                    <Switch label="Command blocks" checked={preferences.commandBlocks} onChange={(value) => patch("commandBlocks", value)} />
+                  </Row>
+                </Group>
                 <Group title="Accessibility">
                   <Row label="Screen reader support" description="Narrator, NVDA and JAWS can read the output and follow the cursor. Uses a little more memory and time per line.">
                     <Switch label="Screen reader support" checked={preferences.screenReaderMode} onChange={(value) => patch("screenReaderMode", value)} />
