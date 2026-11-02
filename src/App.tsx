@@ -22,6 +22,7 @@ import { isQuickTerminal, isTabsWindow, transferId } from "./windowKind";
 import { lookFor, windowLook, withLook } from "./looks";
 import { windowProgress, type Progress } from "./progress";
 import { commandInput, savedCommandLabel } from "./savedCommands";
+import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
 import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
@@ -699,6 +700,79 @@ export default function App() {
       .catch((error: unknown) => setQuickTerminalProblem(String(error)));
   }, [nativeHost, preferences.quickTerminal, preferences.quickTerminalShortcut, preferences.quickTerminalHeight, preferences.quickTerminalKeepRunning]);
 
+  // Settings sync through a file (sync.ts). The main window reads and writes it; the
+  // others get the changes through local storage, as with any setting.
+  const syncsSettings = nativeHost && savesSession && !isTabsWindow;
+  const syncRef = useRef(loadSyncState());
+  // Nothing is written to a file before it has been read once: its settings may be newer.
+  const readSyncFileRef = useRef<string | null>(null);
+  const [syncProblem, setSyncProblem] = useState<string | null>(null);
+  const writeSettings = useCallback(async (path: string, settings: AppearancePreferences) => {
+    const savedAt = Date.now();
+    try {
+      const modified = await invoke<number>("write_sync_file", { path, contents: syncDocument(settings, savedAt) });
+      syncRef.current = { savedAt, digest: digestOf(settings), modified };
+      saveSyncState(syncRef.current);
+      setSyncProblem(null);
+    } catch (error) {
+      setSyncProblem(String(error));
+    }
+  }, []);
+  const pullSettings = useCallback(async () => {
+    const path = preferencesRef.current.syncFile;
+    if (!path) return;
+    try {
+      const file = await invoke<{ contents: string; modified: number } | null>("read_sync_file", { path });
+      readSyncFileRef.current = path;
+      if (!file) {
+        // A new file: this PC's settings go in it.
+        await writeSettings(path, preferencesRef.current);
+        return;
+      }
+      const document = readSyncDocument(file.contents);
+      if (!document) {
+        setSyncProblem("This file isn't a Nebula Terminal settings file.");
+        return;
+      }
+      setSyncProblem(null);
+      syncRef.current = { ...syncRef.current, modified: file.modified };
+      if (document.savedAt <= syncRef.current.savedAt) return;
+      const applied = applySynced(preferencesRef.current, document.preferences);
+      syncRef.current = { savedAt: document.savedAt, digest: digestOf(applied), modified: file.modified };
+      saveSyncState(syncRef.current);
+      setPreferences(applied);
+    } catch (error) {
+      setSyncProblem(String(error));
+    }
+  }, [writeSettings]);
+  useEffect(() => {
+    if (!syncsSettings || !preferences.syncFile) return;
+    const path = preferences.syncFile;
+    void pullSettings();
+    const timer = window.setInterval(() => {
+      void invoke<number | null>("sync_file_modified", { path }).then((modified) => {
+        if (modified && modified !== syncRef.current.modified) void pullSettings();
+      }).catch(() => undefined);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [preferences.syncFile, pullSettings, syncsSettings]);
+  useEffect(() => {
+    if (!syncsSettings || !preferences.syncFile || readSyncFileRef.current !== preferences.syncFile) return;
+    if (digestOf(preferences) === syncRef.current.digest) return;
+    const path = preferences.syncFile;
+    const timer = window.setTimeout(() => void writeSettings(path, preferences), 1500);
+    return () => window.clearTimeout(timer);
+  }, [preferences, syncsSettings, writeSettings]);
+  const chooseSyncFile = useCallback(async () => {
+    const path = await invoke<string | null>("choose_sync_file").catch(() => null);
+    if (!path) return;
+    // The file's settings, if it has some, win over this PC's: that's how a second PC joins.
+    syncRef.current = { savedAt: 0, digest: "", modified: 0 };
+    readSyncFileRef.current = null;
+    if (path === preferencesRef.current.syncFile) void pullSettings();
+    else setPreferences((current) => ({ ...current, syncFile: path }));
+  }, [pullSettings]);
+
   // Settings changed in the other window (main or quick) apply here too.
   useEffect(() => {
     const reload = (event: StorageEvent) => {
@@ -1332,6 +1406,7 @@ export default function App() {
           onDefaultTerminalChange={changeDefaultTerminal}
           workspaces={workspaces}
           quickTerminalProblem={quickTerminalProblem}
+          sync={syncsSettings ? { problem: syncProblem, choose: () => void chooseSyncFile() } : undefined}
           onWorkspacesChange={changeWorkspaces}
           administrator={isAdministrator}
         />
