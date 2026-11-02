@@ -439,6 +439,36 @@ kbd { font: inherit; }
   animation: indeterminate 1.2s var(--ease-standard) infinite;
 }
 
+.terminal__log {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(260px, calc(100% - 36px));
+  padding: 2px 2px 2px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-m);
+  background: color-mix(in oklab, var(--chrome) 88%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--text-2);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0.7;
+  transition: opacity var(--dur-1);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+.terminal__log:hover, .terminal__log:focus-within { opacity: 1; }
+.terminal__log-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); animation: log-pulse 2s ease-in-out infinite; }
+.terminal__log-name { overflow: hidden; text-overflow: ellipsis; }
+.terminal__log button { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: var(--radius-s); background: none; color: var(--text-2); cursor: pointer; }
+.terminal__log button:hover { background: var(--hover-strong); color: var(--text); }
+.terminal__log button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@keyframes log-pulse { 50% { opacity: 0.35; } }
+:root[data-animation="off"] .terminal__log, :root[data-animation="off"] .terminal__log-dot { animation: none; }
+
 .terminal__exit {
   position: absolute;
   z-index: 6;

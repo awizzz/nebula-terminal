@@ -38,6 +38,10 @@ export interface PaneHandle {
   detach: () => Promise<MovedPane>;
   /** Takes the shell back after a move that failed. */
   undoDetach: () => void;
+  /** Asks where, then writes what the pane prints there as plain text until stopped. */
+  startLog: (name: string) => void;
+  stopLog: () => void;
+  logging: () => boolean;
 }
 
 const panes = new Map<string, PaneHandle>();
