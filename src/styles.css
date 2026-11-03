@@ -1014,7 +1014,13 @@ kbd { font: inherit; }
 
 .settings__nav { display: flex; flex-direction: column; padding: 16px 8px; }
 .settings__nav h2 { margin: 2px 12px 14px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.settings__search { display: flex; align-items: center; gap: 8px; margin: 0 4px 12px; padding: 0 10px; height: 32px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--hover); color: var(--text-3); }
+.settings__search:focus-within { border-color: var(--accent); color: var(--text-2); }
+.settings__search input { flex: 1; min-width: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; outline: none; }
+.settings__search input::placeholder { color: var(--text-3); }
+.settings__search input::-webkit-search-cancel-button { filter: grayscale(1); }
 .settings__nav-items { position: relative; display: flex; flex-direction: column; gap: 2px; }
+.settings__nav.is-searching .settings__indicator { opacity: 0; }
 .settings__nav-items button {
   height: 36px;
   display: flex;
@@ -1051,6 +1057,13 @@ kbd { font: inherit; }
 .settings__note { margin: 0 20px 10px 32px; color: var(--warning); font-size: 12px; }
 .settings__scroll { overflow-y: auto; padding: 0 32px 32px; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
 .settings__page { animation: page-in var(--dur-3) var(--ease-out); }
+.settings__section-title { margin: 8px 0 12px; color: var(--text-3); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.settings__empty { margin: 24px 0; color: var(--text-2); }
+.is-searching .settings__footer-actions { display: none; }
+.is-searching .group.is-filtered .group__rows > :not(.row--match) { display: none; }
+.is-searching .group.is-filtered .group__description { display: none; }
+.is-searching .group.is-filtered:not(:has(.row--match)) { display: none; }
+.is-searching .settings__section:not(:has(.group:not(.is-filtered), .row--match)) { display: none; }
 .settings__footer-actions { margin-top: 16px; }
 .settings__message { margin: 16px 0 0; font-size: 12px; animation: fade-in var(--dur-2); }
 .settings__message--error { color: var(--danger); }

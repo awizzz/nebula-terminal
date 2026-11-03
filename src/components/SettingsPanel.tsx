@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useId, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
-import { Check, ChevronRight, Globe, Info, Keyboard, Monitor, Paintbrush, Palette, Pencil, Plus, RotateCcw, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
+import { Fragment, createContext, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type FormEvent, type ReactNode, type SetStateAction } from "react";
+import { Check, ChevronRight, Globe, Info, Keyboard, Monitor, Paintbrush, Palette, Pencil, Plus, RotateCcw, Search, SquareTerminal, ToggleRight, Trash, X } from "lucide-react";
 import { version } from "../../package.json";
 import appIcon from "../assets/icon.svg";
 import { deleteCustomProfile, draftOf, listCustomProfiles, newDraft, saveCustomProfile, splitArguments, sshCommand } from "../customProfiles";
@@ -84,9 +84,19 @@ async function shrinkImage(file: File): Promise<string> {
   }
 }
 
+/** What the settings search looks for, in lower case, and whether the group it's in matched. */
+const SearchContext = createContext<{ words: string[]; group: string; groupMatches: boolean }>({ words: [], group: "", groupMatches: false });
+
+const matchesAll = (words: string[], ...texts: (string | undefined)[]) => {
+  const haystack = texts.filter(Boolean).join(" ").toLowerCase();
+  return words.every((word) => haystack.includes(word));
+};
+
 function Row({ label, description, children, stacked = false, error = false }: { label: string; description?: string; children?: ReactNode; stacked?: boolean; error?: boolean }) {
+  const search = useContext(SearchContext);
+  const match = search.words.length > 0 && (search.groupMatches || matchesAll(search.words, search.group, label, description));
   return (
-    <div className={`row ${stacked ? "row--stacked" : ""}`}>
+    <div className={`row ${stacked ? "row--stacked" : ""} ${match ? "row--match" : ""}`}>
       <div className="row__text">
         <span className="row__label">{label}</span>
         {description && <span className={`row__description ${error ? "row__description--error" : ""}`} role={error ? "alert" : undefined}>{description}</span>}
@@ -97,12 +107,16 @@ function Row({ label, description, children, stacked = false, error = false }: {
 }
 
 function Group({ title, description, children }: { title?: string; description?: string; children: ReactNode }) {
+  const { words } = useContext(SearchContext);
+  const groupMatches = words.length > 0 && matchesAll(words, title, description);
   return (
-    <section className="group">
-      {title && <h3 className="group__title">{title}</h3>}
-      {description && <p className="group__description">{description}</p>}
-      <div className="group__rows">{children}</div>
-    </section>
+    <SearchContext.Provider value={{ words, group: title ?? "", groupMatches }}>
+      <section className={`group ${words.length && !groupMatches ? "is-filtered" : ""}`}>
+        {title && <h3 className="group__title">{title}</h3>}
+        {description && <p className="group__description">{description}</p>}
+        <div className="group__rows">{children}</div>
+      </section>
+    </SearchContext.Provider>
   );
 }
 
@@ -623,6 +637,16 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
 
 export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange, quickTerminalProblem = null, sync }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
+  const [query, setQuery] = useState("");
+  const words = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query]);
+  const searching = words.length > 0;
+  const shows = (id: SettingsPage) => searching || page === id;
+  const pageLabel = (id: SettingsPage) => pages.find((item) => item.id === id)?.label ?? id;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [found, setFound] = useState(true);
+  useLayoutEffect(() => {
+    setFound(!searching || Boolean(scrollRef.current?.querySelector(".group:not(.is-filtered), .row--match")));
+  });
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
   /** The workspace whose start commands are shown. */
   const [commandsOf, setCommandsOf] = useState<string | null>(null);
@@ -717,12 +741,16 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   return (
     <div className="overlay overlay--settings" role="presentation" onMouseDown={onClose}>
       <section ref={panelRef} className="settings" role="dialog" aria-modal="true" aria-label="Settings" onMouseDown={(event) => event.stopPropagation()}>
-        <nav className="settings__nav" aria-label="Settings sections" style={{ "--index": pageIndex } as React.CSSProperties}>
+        <nav className={`settings__nav ${searching ? "is-searching" : ""}`} aria-label="Settings sections" style={{ "--index": pageIndex } as React.CSSProperties}>
           <h2>Settings</h2>
+          <label className="settings__search">
+            <Search size={14} strokeWidth={1.8} aria-hidden="true" />
+            <input type="search" value={query} placeholder="Search settings" aria-label="Search settings" spellCheck={false} onChange={(event) => setQuery(event.target.value)} />
+          </label>
           <div className="settings__nav-items">
             <span className="settings__indicator" aria-hidden="true" />
             {pages.map(({ id, label, icon: Icon }) => (
-              <button key={id} type="button" aria-current={page === id ? "page" : undefined} onClick={() => setPage(id)}>
+              <button key={id} type="button" aria-current={!searching && page === id ? "page" : undefined} onClick={() => { setQuery(""); setPage(id); }}>
                 <Icon size={16} strokeWidth={1.7} aria-hidden="true" />
                 {label}
               </button>
@@ -732,14 +760,17 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
 
         <div className="settings__main">
           <header className="settings__header">
-            <h1>{pages[pageIndex]?.label}</h1>
+            <h1>{searching ? "Search" : pages[pageIndex]?.label}</h1>
             <button className="icon-button" type="button" onClick={onClose} aria-label="Close settings" title="Close (Esc)"><X size={16} /></button>
           </header>
           {administrator && <p className="settings__note">Admin windows take their settings from the window that opens them, so changes made here don't last.</p>}
 
-          <div className="settings__scroll">
-            <div className="settings__page" key={page}>
-              {page === "appearance" && <>
+          <div className="settings__scroll" ref={scrollRef}>
+            <SearchContext.Provider value={{ words, group: "", groupMatches: false }}>
+            <div className={`settings__page ${searching ? "is-searching" : ""}`} key={searching ? "search" : page}>
+              {searching && !found && <p className="settings__empty">Nothing matches “{query.trim()}”.</p>}
+              {shows("appearance") && <section className="settings__section" aria-label={searching ? pageLabel("appearance") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("appearance")}</h2>}
                 <Group title="Theme">
                   <Row label="Follow Windows" description={preferences.followSystemTheme ? "Pick one dark and one light theme below. The window wears the one that matches Windows' app mode." : "Switch between a dark and a light theme with Windows' app mode."}>
                     <Switch label="Follow Windows" checked={preferences.followSystemTheme} onChange={(value) => patch("followSystemTheme", value)} />
@@ -797,9 +828,10 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                   <input ref={themeInputRef} hidden type="file" accept="application/json,.json" onChange={(event) => { void importTheme(event.target.files?.[0]); event.target.value = ""; }} />
                 </Group>
-              </>}
+              </section>}
 
-              {page === "terminal" && <>
+              {shows("terminal") && <section className="settings__section" aria-label={searching ? pageLabel("terminal") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("terminal")}</h2>}
                 <Group title="Text">
                   <Row label="Font" description="Any installed monospace font. Separate fallbacks with commas." stacked>
                     <input className="field" list="font-families" value={preferences.fontFamily} spellCheck={false} onChange={(event) => patch("fontFamily", event.target.value)} onBlur={(event) => !event.target.value.trim() && patch("fontFamily", defaultFontFamily)} />
@@ -905,9 +937,10 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <Switch label="Copy to the clipboard" checked={preferences.clipboardWrite} onChange={(value) => patch("clipboardWrite", value)} />
                   </Row>
                 </Group>
-              </>}
+              </section>}
 
-              {page === "profiles" && <>
+              {shows("profiles") && <section className="settings__section" aria-label={searching ? pageLabel("profiles") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("profiles")}</h2>}
                 <Group>
                   <Row label="Default profile" description="Opened by the + button and at startup.">
                     <select className="field field--select" value={available.some((profile) => profile.id === preferences.defaultProfileId) ? preferences.defaultProfileId : ""} onChange={(event) => patch("defaultProfileId", event.target.value)}>
@@ -952,9 +985,10 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     {members.map((profile) => <ProfileRow key={profile.id} profile={profile} preferences={preferences} onChange={onChange} />)}
                   </Group>
                 ))}
-              </>}
+              </section>}
 
-              {page === "keyboard" && <>
+              {shows("keyboard") && <section className="settings__section" aria-label={searching ? pageLabel("keyboard") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("keyboard")}</h2>}
                 <Group title="Shortcuts">
                   {(Object.keys(defaultKeybindings) as Array<keyof KeybindingPreferences>).map((key) => (
                     <Row key={key} label={keybindingLabels[key]}>
@@ -966,15 +1000,17 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Copy selection"><Keys shortcut="Ctrl+C" /></Row>
                   <Row label="Paste"><Keys shortcut="Ctrl+V" /></Row>
                   <Row label="Move between panes"><Keys shortcut="Alt+Arrow" /></Row>
+                  <Row label="Resize the pane in front"><Keys shortcut="Alt+Shift+Arrow" /></Row>
                   <Row label="Go to tab 1–9"><Keys shortcut="Ctrl+Alt+1…9" /></Row>
                   <Row label="Zoom"><Keys shortcut="Ctrl+Wheel" /></Row>
                 </Group>
                 <div className="settings__footer-actions">
                   <button className="button" type="button" onClick={() => patch("keybindings", { ...defaultKeybindings })}><RotateCcw size={14} />Restore default shortcuts</button>
                 </div>
-              </>}
+              </section>}
 
-              {page === "behavior" && <>
+              {shows("behavior") && <section className="settings__section" aria-label={searching ? pageLabel("behavior") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("behavior")}</h2>}
                 <Group title="Clipboard">
                   <Row label="Copy on select" description="Selecting text copies it right away.">
                     <Switch label="Copy on select" checked={preferences.copyOnSelect} onChange={(value) => patch("copyOnSelect", value)} />
@@ -1177,9 +1213,10 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <button className="button" type="button" onClick={() => { onClearSession(); setMessage({ tone: "info", text: "Saved layout cleared." }); }}>Clear</button>
                   </Row>
                 </Group>
-              </>}
+              </section>}
 
-              {page === "about" && <>
+              {shows("about") && <section className="settings__section" aria-label={searching ? pageLabel("about") : undefined}>
+                {searching && <h2 className="settings__section-title">{pageLabel("about")}</h2>}
                 <div className="about">
                   <img src={appIcon} alt="" width={64} height={64} />
                   <div>
@@ -1207,10 +1244,11 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       : <button className="button" type="button" onClick={() => setConfirmReset(true)}>Reset…</button>}
                   </Row>
                 </Group>
-              </>}
+              </section>}
 
               {message && <p className={`settings__message settings__message--${message.tone}`} role="status">{message.text}</p>}
             </div>
+            </SearchContext.Provider>
           </div>
         </div>
       </section>
