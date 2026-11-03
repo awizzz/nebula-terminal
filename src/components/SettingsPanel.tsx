@@ -7,7 +7,7 @@ import { openExternal } from "../external";
 import { checkForUpdate, installUpdate, markChecked, type UpdateInfo } from "../updates";
 import { globalShortcutFromEvent, globalShortcutLabel, keyboardLayout } from "../quickShortcut";
 import { shortcutFromEvent } from "../keys";
-import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
+import { DEFAULT_WORD_SEPARATORS, defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
 import { accentSwatches, resolveTheme, tabColors, themes, type TerminalTheme } from "../themes";
 import { highlightPattern, MAX_HIGHLIGHTS } from "../highlights";
@@ -1020,6 +1020,12 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                 <Group title="Clipboard">
                   <Row label="Copy on select" description="Selecting text copies it right away.">
                     <Switch label="Copy on select" checked={preferences.copyOnSelect} onChange={(value) => patch("copyOnSelect", value)} />
+                  </Row>
+                  <Row label="Word separators" description="A double-click selects a word up to these characters. Add : or = to stop there too.">
+                    <div className="button-row">
+                      <input className="field field--mono word-separators" value={preferences.wordSeparators} maxLength={64} spellCheck={false} aria-label="Word separators" onChange={(event) => patch("wordSeparators", event.target.value)} />
+                      {preferences.wordSeparators !== DEFAULT_WORD_SEPARATORS && <button className="button" type="button" onClick={() => patch("wordSeparators", DEFAULT_WORD_SEPARATORS)}>Default</button>}
+                    </div>
                   </Row>
                   <Row label="Confirm multi-line paste" description="Review pasted text that would run several commands.">
                     <Switch label="Confirm multi-line paste" checked={preferences.confirmMultilinePaste} onChange={(value) => patch("confirmMultilinePaste", value)} />

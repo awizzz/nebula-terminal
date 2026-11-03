@@ -100,6 +100,7 @@ export interface KeybindingPreferences {
   previousCommand: string;
   togglePaneZoom: string;
   markMode: string;
+  toggleBroadcastAll: string;
   findEverywhere: string;
   switchTab: string;
   nextCommand: string;
@@ -168,6 +169,8 @@ export interface AppearancePreferences {
   /** Nebula in Windows Terminal's profiles. Null until the user decides: then it's off. */
   windowsTerminalProfile: boolean | null;
   copyOnSelect: boolean;
+  /** Where a double-click stops selecting a word. */
+  wordSeparators: string;
   /** What Ctrl+Click on a file path in the output opens it with. */
   fileOpener: FileOpener;
   /** For `fileOpener: "custom"`: a command with {file}, {line} and {column}. */

@@ -6,6 +6,9 @@ import { sanitizeSavedCommands } from "./savedCommands";
 import { sanitizeHighlights } from "./highlights";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
+/** xterm.js's own: a path or a URL stays whole. */
+export const DEFAULT_WORD_SEPARATORS = " ()[]{}',\"`";
+
 export const defaultKeybindings: KeybindingPreferences = {
   newTab: "Ctrl+Shift+T",
   newAdministratorTab: "",
@@ -25,6 +28,7 @@ export const defaultKeybindings: KeybindingPreferences = {
   previousCommand: "Ctrl+ArrowUp",
   togglePaneZoom: "Ctrl+Shift+Z",
   markMode: "Ctrl+Shift+M",
+  toggleBroadcastAll: "",
   findEverywhere: "Ctrl+Shift+Alt+F",
   switchTab: "Ctrl+Shift+Space",
   nextCommand: "Ctrl+ArrowDown",
@@ -49,6 +53,7 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   previousCommand: "Previous command",
   togglePaneZoom: "Zoom pane",
   markMode: "Mark mode (select with the keyboard)",
+  toggleBroadcastAll: "Type in every tab",
   findEverywhere: "Find in every tab",
   switchTab: "Switch to a tab",
   nextCommand: "Next command",
@@ -82,6 +87,7 @@ export const defaultPreferences: AppearancePreferences = {
   pathCommand: null,
   windowsTerminalProfile: null,
   copyOnSelect: false,
+  wordSeparators: DEFAULT_WORD_SEPARATORS,
   fileOpener: "auto",
   fileOpenerCommand: "",
   searchCaseSensitive: false,
@@ -192,6 +198,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     restoreScreens: booleanFrom(value.restoreScreens, defaultPreferences.restoreScreens),
     reconnectSsh: booleanFrom(value.reconnectSsh, defaultPreferences.reconnectSsh),
     copyOnSelect: booleanFrom(value.copyOnSelect, defaultPreferences.copyOnSelect),
+    wordSeparators: typeof value.wordSeparators === "string" && value.wordSeparators.length <= 64 ? value.wordSeparators : DEFAULT_WORD_SEPARATORS,
     fileOpener: oneOf(value.fileOpener, ["auto", "vscode", "cursor", "default", "custom"], defaultPreferences.fileOpener),
     fileOpenerCommand: stringFrom(value.fileOpenerCommand, defaultPreferences.fileOpenerCommand, 400),
     searchCaseSensitive: booleanFrom(value.searchCaseSensitive, defaultPreferences.searchCaseSensitive),

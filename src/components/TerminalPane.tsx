@@ -257,6 +257,7 @@ export default function TerminalPane({
       fontFamily: withSymbols(preferencesRef.current.fontFamily),
       fontSize: preferencesRef.current.fontSize,
       lineHeight: preferencesRef.current.lineHeight,
+      wordSeparator: preferencesRef.current.wordSeparators,
       scrollback: preferencesRef.current.scrollback,
       smoothScrollDuration: preferencesRef.current.animationLevel === "full" ? 80 : 0,
       // Failed commands and search results are marked along the scroll bar.
@@ -940,6 +941,7 @@ export default function TerminalPane({
     terminal.options.allowTransparency = translucent;
     terminal.options.theme = colors;
     terminal.options.screenReaderMode = preferences.screenReaderMode;
+    terminal.options.wordSeparator = preferences.wordSeparators;
     requestAnimationFrame(() => {
       try {
         fitRef.current?.fit();
@@ -947,7 +949,7 @@ export default function TerminalPane({
         // Hidden panes are fitted again when they become visible.
       }
     });
-  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback, preferences.screenReaderMode]);
+  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback, preferences.screenReaderMode, preferences.wordSeparators]);
 
   // Sixel and iTerm2 images. The decoder is loaded the first time a pane wants it.
   useEffect(() => {
