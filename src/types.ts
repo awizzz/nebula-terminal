@@ -32,6 +32,8 @@ export interface CustomProfile {
   accent: string;
   /** Set when the profile is an SSH connection made in the editor. */
   ssh?: SshConnection | null;
+  /** Its environment variables as `NAME=value` lines, for editing. */
+  environment?: string;
 }
 
 export interface SshConnection {
@@ -64,9 +66,11 @@ export interface CustomProfileDraft {
   /** Only `ssh` is saved for an SSH connection; switching back keeps the program fields. */
   kind: "program" | "ssh";
   ssh: SshDraft;
+  /** `NAME=value` lines, for programs and SSH connections alike. */
+  environment: string;
 }
 
-export type CustomProfileField = "name" | "executable" | "arguments" | "cwd" | "accent" | keyof SshDraft;
+export type CustomProfileField = "name" | "executable" | "arguments" | "cwd" | "accent" | "environment" | keyof SshDraft;
 
 export interface ProfileFieldError {
   field: CustomProfileField | null;
