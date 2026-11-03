@@ -99,7 +99,7 @@ deploy production eu
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts. Each pane can start a command too, like `npm run dev`.
-- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers or press `Alt+Shift+Arrow` to resize them; the palette swaps panes and evens them out. Panes can show their title and folder, and a pane that shows a log can be made read-only. A pane can move to a tab of its own, a tab dragged onto a pane splits it, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
+- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. They can sit across the top or in a list down the side. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers or press `Alt+Shift+Arrow` to resize them; the palette swaps panes and evens them out. Panes can show their title and folder, and a pane that shows a log can be made read-only. A pane can move to a tab of its own, a tab dragged onto a pane splits it, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
 - **Images and progress.** Sixel and iTerm2 images show in the terminal (`imgcat photo.png` in Nebula), programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder. The commands you save in Settings run from there too, or from a shortcut of their own, with blanks like `{{host}}` filled in as they start.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
@@ -115,7 +115,7 @@ deploy production eu
 - **Click a path to open it.** `Ctrl+Click` on `src/main.rs:42` in a compiler error or a `grep` result opens the file at that line, in VS Code, Cursor, the app Windows uses or a command you choose. Folders open in File Explorer.
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths. Copy with colors, in the right-click menu, pastes into Word or a chat with the terminal's colors, and `Ctrl+Shift+M` selects with the keyboard alone.
 - **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, and Type in every tab, in the palette, to every tab of the window, to run the same command on several servers or shells. A colored outline shows when it's on.
-- **Every command is a block.** Point at a finished command to copy it, copy its output or run it again.
+- **Every command is a block.** Point at a finished command to see how long it took, copy it, copy its output or both as Markdown, or run it again.
 - **Find in every tab** (`Ctrl+Shift+Alt+F`), save a pane's output to a text file or a web page with its colors from its right-click menu, or log everything it prints to a file until you stop.
 - **Watch a tab.** Get a notification when a tab you're not looking at prints something, or when a long job has been quiet for 30 seconds.
 - **Highlights.** Words like `error` or `FAILED` stand out in color in every pane, with a mark by the scrollbar, and can notify you when they show up in another tab.
@@ -147,6 +147,7 @@ deploy production eu
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
+| Zoom the text of one pane | `Ctrl+Shift+Wheel` |
 | Open a link or a file path | `Ctrl+Click` |
 | Quick terminal, from any app | `` Win+` `` (the key under Escape) |
 
@@ -154,7 +155,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: tabs on the side, how long each command took, copying a command and its output as Markdown, and zooming one pane's text. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: the winget package, once Microsoft's reviewers get to it. After that, the roadmap is open: tell us what you'd like next in an issue. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

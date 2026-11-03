@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.10.0
+
+Tabs on the side, how long each command took, commands copied as Markdown, and one pane zoomed alone.
+
+### Added
+
+- tabs on the side: Settings → Appearance → Where tabs go → Side lists the tabs down the left of the window, easier to read when there are many
+- command blocks show how long the command ran, and its exit code when it failed
+- copy as Markdown: a command block's new action copies the command and its output as a code block, for an issue or a chat
+- zoom one pane: `Ctrl+Shift+Wheel`, or Bigger and Smaller text in this pane in the palette, changes one pane's text size and leaves the others alone
+
 ## 2.9.0
 
 Closed tabs that come back, servers typed in the palette, and environment variables per profile.
