@@ -104,6 +104,16 @@ export function normalizeLayout(node: LayoutNode): LayoutNode | null {
   return { type: "split", direction: node.direction, children, sizes: normalizeSizes(sizes, children.length) };
 }
 
+/** Puts `node` beside pane `targetId`, before it (left, above) or after it, in half its space. */
+export function insertBeside(root: LayoutNode, targetId: string, node: LayoutNode, direction: SplitDirection, before: boolean): LayoutNode {
+  const visit = (current: LayoutNode): LayoutNode => {
+    if (current.type === "split") return { ...current, children: current.children.map(visit) };
+    if (current.id !== targetId) return current;
+    return { type: "split", direction, sizes: [0.5, 0.5], children: before ? [node, current] : [current, node] };
+  };
+  return normalizeLayout(visit(root)) ?? root;
+}
+
 /** The same tree, its panes renamed. */
 export function renamePanes(node: LayoutNode, ids: ReadonlyMap<string, string>): LayoutNode {
   return node.type === "pane" ? paneLeaf(ids.get(node.id) ?? node.id) : { ...node, children: node.children.map((child) => renamePanes(child, ids)) };

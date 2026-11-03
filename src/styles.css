@@ -470,6 +470,16 @@ kbd { font: inherit; }
 @keyframes log-pulse { 50% { opacity: 0.35; } }
 :root[data-animation="off"] .terminal__chip, :root[data-animation="off"] .terminal__log-dot { animation: none; }
 
+.dock-zone {
+  position: fixed;
+  z-index: 40;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-m);
+  background: color-mix(in oklab, var(--accent) 16%, transparent);
+  pointer-events: none;
+  transition: left var(--dur-1) var(--ease-out), top var(--dur-1) var(--ease-out), width var(--dur-1) var(--ease-out), height var(--dur-1) var(--ease-out);
+}
+
 .terminal__exit {
   position: absolute;
   z-index: 6;

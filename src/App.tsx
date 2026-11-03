@@ -26,7 +26,7 @@ import { folderParts, loadRecentFolders, rememberFolder, saveRecentFolders } fro
 import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
-import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, normalizeLayout, paneIds, paneLeaf, removePane, renamePanes, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
+import { MAX_PANES, computeLayout, findNeighbor, insertBeside, minimumExtent, nodeAt, normalizeLayout, paneIds, paneLeaf, removePane, renamePanes, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
@@ -74,6 +74,12 @@ const windowLabel = isTauri() ? getCurrentWindow().label : "main";
 
 function tabFromTransfer(transfer: TabTransfer["tab"]): TerminalTab {
   return { ...transfer, broadcast: false };
+}
+
+/** Where a tab dropped on the panes in front goes: beside which pane, on which side. */
+interface DockTarget {
+  paneId: string;
+  side: "left" | "right" | "top" | "bottom";
 }
 
 /** Tabs that "close others" and "close to the right" may close: never pinned ones. */
@@ -1145,8 +1151,11 @@ export default function App() {
     setActiveTabId(fresh.id);
   }, []);
 
-  /** Another tab's panes, shells still running, on the right of the tab in front. */
-  const mergeIntoActiveTab = useCallback(async (sourceId: string) => {
+  /**
+   * Another tab's panes, shells still running, in the tab in front: on its right, or
+   * beside the pane it was dropped on.
+   */
+  const mergeIntoActiveTab = useCallback(async (sourceId: string, beside?: DockTarget) => {
     const target = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
     const source = tabsRef.current.find((tab) => tab.id === sourceId);
     if (!target || !source || target.id === source.id || closingRef.current.has(sourceId)) return;
@@ -1162,7 +1171,10 @@ export default function App() {
       screen: undefined,
       moved: await getPane(pane.id)?.detach() ?? { screen: "" },
     })));
-    const joined = normalizeLayout({ type: "split", direction: "vertical", sizes: [0.5, 0.5], children: [target.layout, renamePanes(source.layout, ids)] }) ?? target.layout;
+    const incoming = renamePanes(source.layout, ids);
+    const joined = beside && target.panes.some((pane) => pane.id === beside.paneId)
+      ? insertBeside(target.layout, beside.paneId, incoming, beside.side === "left" || beside.side === "right" ? "vertical" : "horizontal", beside.side === "left" || beside.side === "top")
+      : normalizeLayout({ type: "split", direction: "vertical", sizes: [0.5, 0.5], children: [target.layout, incoming] }) ?? target.layout;
     setTabs((current) => current.filter((tab) => tab.id !== sourceId).map((tab) => tab.id !== target.id ? tab : {
       ...tab,
       panes: [...tab.panes, ...panes],
@@ -1171,6 +1183,41 @@ export default function App() {
       zoomedPaneId: undefined,
     }));
   }, []);
+
+  // A tab dragged over the panes in front: the half of the pane it would take.
+  const [dock, setDock] = useState<(DockTarget & { rect: Rect }) | null>(null);
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
+  const dockOver = useCallback((tabId: string, point: { x: number; y: number } | null) => {
+    const source = tabsRef.current.find((tab) => tab.id === tabId);
+    const target = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
+    const element = point && document.elementFromPoint(point.x, point.y)?.closest<HTMLElement>(".workspace__tab.is-visible .pane[data-pane-id]");
+    if (!point || !element || !source || !target || source.id === target.id || source.panes.length + target.panes.length > MAX_PANES) {
+      if (dockRef.current) setDock(null);
+      return false;
+    }
+    const bounds = element.getBoundingClientRect();
+    const x = (point.x - bounds.left) / bounds.width;
+    const y = (point.y - bounds.top) / bounds.height;
+    // The nearest edge: the pane gives that half to the tab.
+    const side = ([["left", x], ["right", 1 - x], ["top", y], ["bottom", 1 - y]] as const).reduce((best, next) => next[1] < best[1] ? next : best)[0];
+    const half = side === "left" || side === "right" ? bounds.width / 2 : bounds.height / 2;
+    const rect = {
+      x: side === "right" ? bounds.left + half : bounds.left,
+      y: side === "bottom" ? bounds.top + half : bounds.top,
+      width: side === "left" || side === "right" ? half : bounds.width,
+      height: side === "top" || side === "bottom" ? half : bounds.height,
+    };
+    const paneId = element.dataset.paneId!;
+    const previous = dockRef.current;
+    if (previous?.paneId !== paneId || previous.side !== side) setDock({ paneId, side, rect });
+    return true;
+  }, []);
+  const dockTab = useCallback((tabId: string) => {
+    const target = dockRef.current;
+    setDock(null);
+    if (target) void mergeIntoActiveTab(tabId, target);
+  }, [mergeIntoActiveTab]);
 
   const focusNeighborPane = useCallback((key: string) => {
     const direction = arrowDirections[key];
@@ -1566,6 +1613,8 @@ export default function App() {
         onUnpinTab={togglePin}
         onMoveTab={moveTab}
         onTearOff={nativeHost ? tearOffTab : undefined}
+        onDockOver={dockOver}
+        onDock={dockTab}
         onNewTab={() => openNewTab()}
         onOpenProfileMenu={(x, y) => setMenu({ kind: "profiles", x, y })}
         onTabContextMenu={(tabId, x, y) => setMenu({ kind: "tab", tabId, x, y })}
@@ -1749,6 +1798,7 @@ export default function App() {
         </div>
       )}
 
+      {dock && <div className="dock-zone" aria-hidden="true" style={{ left: dock.rect.x, top: dock.rect.y, width: dock.rect.width, height: dock.rect.height }} />}
       {notice && <div className="toast" role="status">{notice}</div>}
       {update && <UpdateBanner update={update} onDismiss={() => { dismissUpdate(update.version); setUpdate(null); }} />}
     </main>
