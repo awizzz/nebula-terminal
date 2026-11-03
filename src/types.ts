@@ -157,6 +157,8 @@ export interface AppearancePreferences {
   restoreSession: boolean;
   /** Restored panes show what they last printed. */
   restoreScreens: boolean;
+  /** An SSH connection that drops (ssh exits with 255) starts again after a countdown. */
+  reconnectSsh: boolean;
   /** "Open in Nebula Terminal" in File Explorer. Null until the user decides: installed copies add it. */
   explorerMenu: boolean | null;
   /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
