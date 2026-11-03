@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Globe, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, Undo2, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Globe, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, Undo2, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn, ZoomOut } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -1119,6 +1119,21 @@ export default function App() {
       .catch((error: unknown) => setNotice(String(error)));
   }, [nativeHost]);
 
+  /** The text of the pane in front, bigger or smaller (0 resets it), the others as they are. */
+  const zoomPane = useCallback((delta: number, paneId?: string) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const target = paneId ?? tab?.activePaneId;
+    if (!tab || !target) return;
+    setTabs((current) => current.map((candidate) => candidate.id !== tab.id ? candidate : {
+      ...candidate,
+      panes: candidate.panes.map((pane) => {
+        if (pane.id !== target) return pane;
+        const fontDelta = delta === 0 ? 0 : Math.min(16, Math.max(-8, (pane.fontDelta ?? 0) + delta));
+        return { ...pane, fontDelta: fontDelta || undefined };
+      }),
+    }));
+  }, []);
+
   const toggleReadOnly = useCallback(() => {
     const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
     const pane = tab?.panes.find((candidate) => candidate.id === tab.activePaneId);
@@ -1536,6 +1551,9 @@ export default function App() {
       { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput("all") },
+      { id: "pane-zoom-in", group: "Panes", label: "Bigger text in this pane", detail: "Ctrl+Shift+Wheel", icon: <ZoomIn size={15} />, keywords: "font size zoom pane only", run: () => zoomPane(1) },
+      { id: "pane-zoom-out", group: "Panes", label: "Smaller text in this pane", icon: <ZoomOut size={15} />, keywords: "font size zoom pane only", run: () => zoomPane(-1) },
+      ...(activePane?.fontDelta ? [{ id: "pane-zoom-reset", group: "Panes", label: "Reset this pane's text size", icon: <ZoomIn size={15} />, keywords: "font size zoom pane", run: () => zoomPane(0) }] : []),
       { id: "read-only", group: "Panes", label: activePane?.readOnly ? "Unlock pane" : "Make pane read-only", icon: activePane?.readOnly ? <LockOpen size={15} /> : <Lock size={15} />, keywords: "lock protect input keys", run: toggleReadOnly },
       { id: "open-folder", group: "Terminal", label: "Open this folder in File Explorer", detail: activePane?.cwd ? folderParts(activePane.cwd).name : undefined, icon: <FolderOpen size={15} />, keywords: "explorer directory cwd", run: openPaneFolder },
       { id: "save-html", group: "Terminal", label: "Save output as a web page…", icon: <FileCode size={15} />, keywords: "export html colors report", run: () => saveOutput("html") },
@@ -1556,7 +1574,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder, toggleReadOnly, reopenClosedTab]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder, toggleReadOnly, reopenClosedTab, zoomPane]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1810,6 +1828,8 @@ export default function App() {
                         restoredScreen={pane.screen}
                         startCommand={pane.startCommand}
                         readOnly={pane.readOnly}
+                        fontDelta={pane.fontDelta}
+                        onPaneZoom={(delta) => zoomPane(delta, pane.id)}
                         preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible && (!zoomed || pane.id === zoomed)}
