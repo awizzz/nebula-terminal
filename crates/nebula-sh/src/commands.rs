@@ -169,6 +169,47 @@ pub fn describe(name: &str) -> Option<&'static str> {
     })
 }
 
+/// The winget package of a tool people expect to have, by the command they type.
+pub fn winget_package(name: &str) -> Option<&'static str> {
+    Some(match name.to_ascii_lowercase().as_str() {
+        "git" => "Git.Git",
+        "gh" => "GitHub.cli",
+        "lazygit" => "JesseDuffield.lazygit",
+        "python" | "python3" | "pip" | "pip3" => "Python.Python.3.14",
+        "uv" | "uvx" => "astral-sh.uv",
+        "node" | "npm" | "npx" => "OpenJS.NodeJS.LTS",
+        "deno" => "DenoLand.Deno",
+        "bun" => "Oven-sh.Bun",
+        "go" => "GoLang.Go",
+        "cargo" | "rustc" | "rustup" => "Rustlang.Rustup",
+        "java" | "javac" => "Microsoft.OpenJDK.21",
+        "dotnet" => "Microsoft.DotNet.SDK.10",
+        "pwsh" => "Microsoft.PowerShell",
+        "code" => "Microsoft.VisualStudioCode",
+        "vim" => "vim.vim",
+        "nvim" => "Neovim.Neovim",
+        "docker" => "Docker.DockerDesktop",
+        "kubectl" => "Kubernetes.kubectl",
+        "helm" => "Helm.Helm",
+        "terraform" => "Hashicorp.Terraform",
+        "az" => "Microsoft.AzureCLI",
+        "aws" => "Amazon.AWSCLI",
+        "make" => "ezwinports.make",
+        "cmake" => "Kitware.CMake",
+        "rg" => "BurntSushi.ripgrep.MSVC",
+        "fd" => "sharkdp.fd",
+        "bat" => "sharkdp.bat",
+        "fzf" => "junegunn.fzf",
+        "jq" => "jqlang.jq",
+        "zoxide" => "ajeetdsouza.zoxide",
+        "starship" => "Starship.Starship",
+        "ffmpeg" | "ffprobe" => "Gyan.FFmpeg",
+        "7z" => "7zip.7zip",
+        "wget" => "JernejSimoncic.Wget",
+        _ => return None,
+    })
+}
+
 /// Linux equivalents for Windows commands people type out of habit.
 pub fn windows_equivalent(name: &str) -> Option<&'static str> {
     Some(match name.to_ascii_lowercase().as_str() {
@@ -189,4 +230,16 @@ pub fn windows_equivalent(name: &str) -> Option<&'static str> {
         "set" => "export",
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::winget_package;
+
+    #[test]
+    fn names_the_package_of_common_tools() {
+        assert_eq!(winget_package("git"), Some("Git.Git"));
+        assert_eq!(winget_package("Python3"), Some("Python.Python.3.14"));
+        assert_eq!(winget_package("frobnicate"), None);
+    }
 }
