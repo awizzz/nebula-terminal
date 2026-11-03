@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -1347,6 +1347,7 @@ export default function App() {
       })),
       { id: "find", group: "Terminal", label: "Find", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
       { id: "copy", group: "Terminal", label: "Copy", icon: <Copy size={15} />, shortcut: "Ctrl+C", run: () => getPane(activePane?.id)?.copy() },
+      { id: "mark-mode", group: "Terminal", label: "Mark mode", detail: "Select with the keyboard", icon: <TextCursorInput size={15} />, keywords: "select keyboard copy cursor", shortcut: keys.markMode, run: () => getPane(activePane?.id)?.markMode() },
       { id: "copy-colors", group: "Terminal", label: "Copy with colors", icon: <Palette size={15} />, keywords: "html rich formatted", run: () => { if (!getPane(activePane?.id)?.copyWithColors()) setNotice("Select some text first"); } },
       { id: "paste", group: "Terminal", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => getPane(activePane?.id)?.paste() },
       { id: "select-all", group: "Terminal", label: "Select all", icon: <TextSelect size={15} />, run: () => getPane(activePane?.id)?.selectAll() },
@@ -1379,7 +1380,7 @@ export default function App() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-shortcut-recorder]")) return;
+      if (target?.closest("[data-shortcut-recorder], [data-mark-mode]")) return;
       const isTerminalInput = target?.classList.contains("xterm-helper-textarea");
       if (!isTerminalInput && target?.matches("input, textarea, select, [contenteditable='true']")) return;
       const action = (shortcut: string, run: () => void) => {
@@ -1400,6 +1401,7 @@ export default function App() {
       if (action(keys.closePane, closeActivePane)) return;
       if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
+      if (action(keys.markMode, () => getPane(activeTab?.activePaneId)?.markMode())) return;
       if (action(keys.findEverywhere, () => setFindEverywhereOpen(true))) return;
       if (action(keys.switchTab, openTabSwitcher)) return;
       if (action(keys.nextTab, () => cycleTab(1))) return;
