@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { Terminal, type IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -79,6 +79,11 @@ export interface FinishedCommand {
 }
 
 type ConnectionState = "starting" | "ready" | "closed" | "preview";
+
+/** Waits before each new try at a dropped SSH connection; after the last, it stays closed. */
+const RECONNECT_DELAYS = [2, 5, 10, 20, 30];
+/** A connection that held this long starts the tries over when it drops. */
+const RECONNECTED_AFTER_MS = 60_000;
 
 /** One command as the shell marked it: its prompt, where its output starts, and where it ended. */
 interface MarkedCommand {
@@ -204,6 +209,11 @@ export default function TerminalPane({
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
   const [exitCode, setExitCode] = useState<number | null>(null);
+  /** Seconds before a dropped SSH connection starts again, while it counts down. */
+  const [reconnectIn, setReconnectIn] = useState<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  /** The pane's screen as it is, written again above the shell when it restarts. */
+  const screenRef = useRef<() => string>(() => "");
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [restartNonce, setRestartNonce] = useState(0);
   // The command block under the pointer, in pixels from the top of the pane.
@@ -521,6 +531,7 @@ export default function TerminalPane({
     // Input typed while the shell starts waits here instead of being lost.
     let queued: string[] = [];
     let exited = false;
+    let startedAt = Date.now();
     // Set when the shell moved to another window: it must outlive this pane.
     let keepSession = false;
     let reattach: (() => void) | undefined;
@@ -603,6 +614,12 @@ export default function TerminalPane({
           ready();
           if (progress) reportProgress(null);
           setExitCode(message.data.code ?? null);
+          // ssh says 255 when the connection fails or drops; anything else came from the server.
+          if (message.data.code === 255 && profile.kind === "ssh" && preferencesRef.current.reconnectSsh) {
+            if (Date.now() - startedAt > RECONNECTED_AFTER_MS) reconnectAttemptsRef.current = 0;
+            const delay = RECONNECT_DELAYS[reconnectAttemptsRef.current++];
+            if (delay !== undefined) setReconnectIn(delay);
+          }
           setConnectionState("closed");
           exited = true;
           queued = [];
@@ -646,6 +663,7 @@ export default function TerminalPane({
           onEvent: channel,
         });
       void started.then((sessionId) => {
+        startedAt = Date.now();
         if (disposed) {
           void invoke("close_session", { sessionId }).catch(() => undefined);
           return;
@@ -804,9 +822,11 @@ export default function TerminalPane({
       callbacksRef.current.onLog?.(started.path);
     };
 
+    screenRef.current = () => serializer.serialize({ scrollback: 1_000, excludeAltBuffer: true, excludeModes: true });
+
     const unregister = registerPane(paneId, {
       markMode: startMarking,
-      screen: () => serializer.serialize({ scrollback: 1_000, excludeAltBuffer: true, excludeModes: true }),
+      screen: () => screenRef.current(),
       startLog: (name: string) => void startLogging(name),
       stopLog: stopLogging,
       logging: () => log !== undefined,
@@ -1035,16 +1055,31 @@ export default function TerminalPane({
     else search.findNext(searchRequest.query, options);
   }, [preferences.accent, searchRequest?.backwards, searchRequest?.nonce, searchRequest?.query, searchRequest?.caseSensitive, searchRequest?.wholeWord, searchRequest?.regex]);
 
+  /** Starts the shell again, under what the pane showed. */
+  const restart = useCallback((manual: boolean) => {
+    if (manual) reconnectAttemptsRef.current = 0;
+    restoredRef.current = `${screenRef.current()}\x1b[0m\r\n`;
+    setReconnectIn(null);
+    setRestartNonce((value) => value + 1);
+  }, []);
+
+  useEffect(() => {
+    if (reconnectIn === null) return;
+    if (reconnectIn <= 0) return restart(false);
+    const timer = window.setTimeout(() => setReconnectIn((value) => value === null ? null : value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [reconnectIn, restart]);
+
   useEffect(() => {
     if (connectionState !== "closed" || !focused) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.altKey || event.metaKey) return;
-      if (event.key === "Enter") { event.preventDefault(); setRestartNonce((value) => value + 1); }
-      else if (event.key === "Escape") { event.preventDefault(); onClose(); }
+      if (event.key === "Enter") { event.preventDefault(); restart(true); }
+      else if (event.key === "Escape") { event.preventDefault(); if (reconnectIn === null) onClose(); else setReconnectIn(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [connectionState, focused, onClose]);
+  }, [connectionState, focused, onClose, reconnectIn, restart]);
 
   const commitPaste = () => {
     const data = pendingPaste;
@@ -1094,11 +1129,19 @@ export default function TerminalPane({
         </>
       )}
       {connectionState === "starting" && <div className="terminal__progress" role="progressbar" aria-label={`Starting ${profile.name}`} />}
-      {connectionState === "closed" && (
+      {connectionState === "closed" && reconnectIn !== null && (
+        <div className="terminal__exit" role="status">
+          <span className="terminal__exit-dot is-waiting" />
+          <span>Disconnected. Trying again in {reconnectIn} s</span>
+          <button type="button" onClick={() => restart(true)}>Reconnect now <kbd>Enter</kbd></button>
+          <button type="button" onClick={() => setReconnectIn(null)}>Cancel <kbd>Esc</kbd></button>
+        </div>
+      )}
+      {connectionState === "closed" && reconnectIn === null && (
         <div className="terminal__exit" role="status">
           <span className={`terminal__exit-dot ${exitCode === 0 ? "is-ok" : ""}`} />
           <span>{exitCode === null ? `${profile.name} could not start` : `${profile.name} exited with code ${exitCode}`}</span>
-          <button type="button" onClick={() => setRestartNonce((value) => value + 1)}>Restart <kbd>Enter</kbd></button>
+          <button type="button" onClick={() => restart(true)}>Restart <kbd>Enter</kbd></button>
           <button type="button" onClick={onClose}>Close <kbd>Esc</kbd></button>
         </div>
       )}

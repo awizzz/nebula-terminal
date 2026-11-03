@@ -1167,6 +1167,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Show what panes printed" description="Reopened panes show their last output, up to 1,000 lines, above the new prompt. It's kept on this PC only.">
                     <Switch label="Show what panes printed" checked={preferences.restoreScreens && preferences.restoreSession} disabled={!preferences.restoreSession} onChange={(value) => patch("restoreScreens", value)} />
                   </Row>
+                  <Row label="Reconnect SSH when it drops" description="A connection that drops tries again after 2, 5, 10, 20 and 30 seconds, with a countdown you can cancel.">
+                    <Switch label="Reconnect SSH when it drops" checked={preferences.reconnectSsh} onChange={(value) => patch("reconnectSsh", value)} />
+                  </Row>
                   <Row label="Confirm closing several tabs">
                     <Switch label="Confirm closing several tabs" checked={preferences.confirmCloseMultipleTabs} onChange={(value) => patch("confirmCloseMultipleTabs", value)} />
                   </Row>

@@ -493,6 +493,7 @@ kbd { font: inherit; }
 .terminal__exit > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; }
 .terminal__exit-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--warning); }
 .terminal__exit-dot.is-ok { background: var(--text-3); }
+.terminal__exit-dot.is-waiting { background: var(--accent); animation: log-pulse 1.2s ease-in-out infinite; }
 .terminal__exit button {
   flex: none;
   height: 26px;
