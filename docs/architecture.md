@@ -131,6 +131,12 @@ Each pane listens to xterm.js's line feeds. The line just finished (with the row
 
 A pane can't change tabs in React without unmounting, which would end its shell. So a pane moving to a new tab, or a tab's panes joining the tab in front, detach first (`park_session`, as for a tab going to another window) and mount again with the screen and the session to attach to.
 
+A tab dragged from the background over the panes in front asks the window, as it moves, which pane is under the pointer (`elementFromPoint`) and which edge is nearest; the half of the pane on that side is outlined, and dropping there puts the tab's layout beside that pane (`insertBeside`). The tab in front can't drop onto itself, so dragging it down still tears it off into a window.
+
+### Restarting and reconnecting
+
+Restarting a pane makes a new xterm.js instance, so the old one's screen (`SerializeAddon`) is written into it before the shell starts again. An SSH profile whose `ssh` exits with 255, its code for a connection that failed or dropped, counts down 2, 5, 10, 20 and 30 seconds before the next try; a connection that held for a minute starts the count over.
+
 ### Ctrl+Z in Nebula
 
 While a command runs, the console's input belongs to the program, so a Ctrl+Z key would only reach it as a character. When the pane runs Nebula and a command is between its OSC 133 C and D marks, the page doesn't send the key: it asks `suspend_foreground`, which sets `Local\NebulaTerminal.Suspend.<pid>`, an event the interactive shell creates at startup. The shell waits for each program with `WaitForMultipleObjects` on the process and that event, so nothing polls. When the event fires, it suspends the program's threads and its children's, makes them a stopped job, and the rest of the command line doesn't run. If the shell doesn't listen (another shell, an older Nebula), the key goes through as usual.
@@ -198,7 +204,7 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | `builtins.rs` | Commands that run inside the shell: `cd`, `export`, `alias`, `source`, `echo`, `test`, `read`, `mapfile`, `local`, `declare`, `set`, `eval`, `command`, `jobs`, `wait`, `fg`, `trap`… |
 | `complete.rs` | Tab completion: commands, paths, options read from `--help`, Git subcommands and refs, variables, SSH hosts. |
 | `coreutils.rs` | The uutils coreutils commands, dispatched by name. |
-| `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `awk`, `ps`, `kill`, `open`, `xargs`, `less`; and `sed`, `diff` and `cmp` on top of the uutils libraries. |
+| `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `awk`, `ps`, `kill`, `open`, `xargs`, `less`, `imgcat` (the iTerm2 image protocol, OSC 1337); and `sed`, `diff` and `cmp` on top of the uutils libraries. |
 | `extras/awk/` | `awk`: a lexer, a recursive-descent parser for the POSIX grammar, and a tree-walking interpreter. Fields split lazily, arrays keep insertion order, `print \| cmd`, `cmd \| getline` and `system()` run through `nebula-sh -c`. |
 | `suspend.rs` | Pausing programs, which Windows has no signal for: every thread of a process and of the ones it started is suspended (Toolhelp snapshots). Ctrl+Z arrives as an event named after the shell's process, which the shell waits on next to the program it runs. |
 | `examples.txt` | The examples `help <command>` shows, built into the binary. |
@@ -246,6 +252,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `screens.ts` | Each pane's last screen in IndexedDB, for restored sessions. |
 | `tabWatch.ts` | Watching a tab for output or for silence. |
 | `highlights.ts` | Highlights: the patterns, and the decorations put on each line as its line feed is parsed. |
+| `markMode.ts` | Mark mode: where each key moves the mark, and the selection between it and where Shift started. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |

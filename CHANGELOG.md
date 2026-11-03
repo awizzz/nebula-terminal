@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.5.0
+
+Mark mode, tabs dropped onto panes, `imgcat` in Nebula, and SSH that reconnects on its own.
+
+### Added
+
+- mark mode: `Ctrl+Shift+M` selects and copies with the keyboard alone, as in Windows Terminal. Arrows move (a word at a time with Ctrl), Shift selects, Enter copies and Escape leaves
+- drop a tab onto a pane: drag a tab from the background over the panes in front, and it takes the half of the pane you point at, shells still running
+- Nebula: `imgcat` shows PNG, JPEG, GIF, WebP and BMP images in the terminal, from a file or piped in, `-w 50%` for a width
+- SSH that reconnects: a connection that drops tries again after a short countdown you can cancel (Settings → Behavior → Reconnect SSH when it drops)
+
+### Changed
+
+- restarting a pane keeps what it showed above the new shell, instead of starting blank
+
 ## 2.4.0
 
 Pinned tabs, workspaces that start commands, panes and tabs that trade places, and highlights.
