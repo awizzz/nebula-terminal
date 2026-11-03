@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_PANES,
   computeLayout,
+  dividerFor,
+  evenLayout,
   findNeighbor,
+  insertBeside,
   layoutFromFlat,
   minimumExtent,
   normalizeLayout,
@@ -13,6 +16,7 @@ import {
   sanitizeLayout,
   setSplitSizes,
   splitPane,
+  swapPanes,
   type LayoutNode,
   type Rect,
 } from "./layout";
@@ -217,3 +221,31 @@ describe("normalizeLayout", () => {
     expect(normalizeLayout(tree)).toEqual(split("vertical", [a, b, c], [0.5, 0.25, 0.25]));
   });
 });
+
+describe("panes from the keyboard", () => {
+  // a | (b over c) | d
+  const tree = split("vertical", [a, split("horizontal", [b, c]), d], [0.2, 0.5, 0.3]);
+
+  it("moves the divider on the side of the arrow, or the other one at an edge", () => {
+    expect(dividerFor(tree, "b", "right")).toEqual({ path: [], index: 1, sign: 1 });
+    expect(dividerFor(tree, "b", "left")).toEqual({ path: [], index: 0, sign: -1 });
+    expect(dividerFor(tree, "d", "right")).toEqual({ path: [], index: 1, sign: 1 });
+    expect(dividerFor(tree, "b", "down")).toEqual({ path: [1], index: 0, sign: 1 });
+    expect(dividerFor(tree, "a", "up")).toBeNull();
+  });
+
+  it("evens out every split", () => {
+    expect(evenLayout(tree)).toEqual(split("vertical", [a, split("horizontal", [b, c]), d]));
+  });
+
+  it("swaps two panes and keeps the shape", () => {
+    expect(paneIds(swapPanes(tree, "a", "d"))).toEqual(["d", "b", "c", "a"]);
+  });
+
+  it("puts a tab beside a pane, in half its space", () => {
+    const placed = insertBeside(split("vertical", [a, b]), "a", c, "vertical", false);
+    expect(placed).toEqual(split("vertical", [a, c, b], [0.25, 0.25, 0.5]));
+    expect(insertBeside(a, "a", b, "horizontal", true)).toEqual(split("horizontal", [b, a]));
+  });
+});
+

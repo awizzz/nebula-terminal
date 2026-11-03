@@ -104,6 +104,48 @@ export function normalizeLayout(node: LayoutNode): LayoutNode | null {
   return { type: "split", direction: node.direction, children, sizes: normalizeSizes(sizes, children.length) };
 }
 
+/** The child index at each split from the root down to pane `id`, or null without it. */
+export function pathOf(root: LayoutNode, id: string): number[] | null {
+  if (root.type === "pane") return root.id === id ? [] : null;
+  for (const [index, child] of root.children.entries()) {
+    const rest = pathOf(child, id);
+    if (rest) return [index, ...rest];
+  }
+  return null;
+}
+
+/**
+ * The divider that moves when pane `id` is resized toward `direction`: the nearest one
+ * on that side of it, else the one on the other side, and `sign`, the way it moves.
+ */
+export function dividerFor(root: LayoutNode, id: string, direction: FocusDirection): { path: number[]; index: number; sign: 1 | -1 } | null {
+  const path = pathOf(root, id);
+  if (!path) return null;
+  const axis: SplitDirection = direction === "left" || direction === "right" ? "vertical" : "horizontal";
+  const forward = direction === "right" || direction === "down";
+  for (let depth = path.length - 1; depth >= 0; depth--) {
+    const split = nodeAt(root, path.slice(0, depth));
+    if (split?.type !== "split" || split.direction !== axis) continue;
+    const child = path[depth]!;
+    const after = child < split.children.length - 1 ? child : null;
+    const before = child > 0 ? child - 1 : null;
+    const index = forward ? after ?? before : before ?? after;
+    if (index !== null) return { path: path.slice(0, depth), index, sign: forward ? 1 : -1 };
+  }
+  return null;
+}
+
+/** Every split with equal shares, so the panes of a row or a column match. */
+export function evenLayout(root: LayoutNode): LayoutNode {
+  if (root.type === "pane") return root;
+  return { ...root, children: root.children.map(evenLayout), sizes: root.children.map(() => 1 / root.children.length) };
+}
+
+/** Panes `a` and `b` trade places. */
+export function swapPanes(root: LayoutNode, a: string, b: string): LayoutNode {
+  return renamePanes(root, new Map([[a, b], [b, a]]));
+}
+
 /** Puts `node` beside pane `targetId`, before it (left, above) or after it, in half its space. */
 export function insertBeside(root: LayoutNode, targetId: string, node: LayoutNode, direction: SplitDirection, before: boolean): LayoutNode {
   const visit = (current: LayoutNode): LayoutNode => {
