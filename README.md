@@ -10,6 +10,13 @@ Website and download: [nebula.awizz.space](https://nebula.awizz.space)
 
 ![Nebula Terminal running the Nebula interpreter](docs/images/terminal.png)
 
+| | |
+| --- | --- |
+| ![A theme picked from the command palette in a few letters](docs/images/palette.gif) | ![Splits from the keyboard, a zoomed pane, and a tab dropped onto a pane](docs/images/splits.gif) |
+| Every action and theme in the palette (`Ctrl+Shift+P`) | Splits, resizing and zoom from the keyboard, and a tab dropped onto a pane |
+| ![Command blocks under the pointer, and a word found in every tab](docs/images/blocks.gif) | ![Tabs listed down the side of the window, with highlighted words](docs/images/sidetabs.gif) |
+| Command blocks, and find in every tab (`Ctrl+Shift+Alt+F`) | Tabs on the side, and highlights |
+
 ## Install
 
 Download the latest installer from [Releases](https://github.com/awizzz/nebula-terminal/releases/latest):
