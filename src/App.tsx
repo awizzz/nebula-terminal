@@ -608,13 +608,24 @@ export default function App() {
     return () => void stop.then((unlisten) => unlisten());
   }, [nativeHost]);
 
-  /** Broadcast input: what is typed in one pane of the tab also goes to the others. */
+  /** Typing in every tab of the window, on top of a tab's own "every pane". Not saved. */
+  const [broadcastAll, setBroadcastAll] = useState(false);
+  const broadcastAllRef = useRef(broadcastAll);
+  broadcastAllRef.current = broadcastAll;
+
+  /** Broadcast input: what is typed in one pane of the tab, or of the window, also goes to the others. */
   const broadcastInput = useCallback((tabId: string, paneId: string, data: string) => {
     const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
-    if (!tab?.broadcast) return;
-    for (const pane of tab.panes) {
+    const panes = broadcastAllRef.current ? tabsRef.current.flatMap((candidate) => candidate.panes) : tab?.broadcast ? tab.panes : [];
+    for (const pane of panes) {
       if (pane.id !== paneId) getPane(pane.id)?.write(data);
     }
+  }, []);
+
+  const toggleBroadcastAll = useCallback(() => {
+    const on = !broadcastAllRef.current;
+    setBroadcastAll(on);
+    setNotice(on ? "Typing goes to every tab of this window" : "Typing goes to one tab again");
   }, []);
 
   const toggleBroadcast = useCallback((tabId?: string) => {
@@ -1431,6 +1442,7 @@ export default function App() {
           { id: "watch-output", group: "Tabs", label: "Watch this tab for output", icon: <Eye size={15} />, keywords: "monitor activity notify", run: () => watchTab(activeTab.id, "output") },
           { id: "watch-silence", group: "Tabs", label: `Watch this tab for ${SILENCE_SECONDS} s of silence`, icon: <Hourglass size={15} />, keywords: "monitor quiet idle notify", run: () => watchTab(activeTab.id, "silence") },
         ] : []),
+      { id: "broadcast-all", group: "Tabs", label: broadcastAll ? "Stop typing in every tab" : "Type in every tab", icon: <Radio size={15} />, keywords: "broadcast input sync all tabs servers", shortcut: keys.toggleBroadcastAll || undefined, run: toggleBroadcastAll },
       { id: "broadcast", group: "Panes", label: activeTab?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, keywords: "broadcast input sync panes", shortcut: keys.toggleBroadcast, run: () => toggleBroadcast() },
       ...[undefined, ...tabColors].map((color): PaletteCommand => ({
         id: `tab-color-${color?.id ?? "none"}`, group: "Tab color", label: `Tab color: ${color?.name ?? "None"}`, keywords: "colour",
@@ -1468,7 +1480,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1495,6 +1507,7 @@ export default function App() {
       if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
       if (action(keys.markMode, () => getPane(activeTab?.activePaneId)?.markMode())) return;
+      if (action(keys.toggleBroadcastAll, toggleBroadcastAll)) return;
       const saved = preferencesRef.current.savedCommands.find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
       if (saved && saved.command.trim()) {
         event.preventDefault();
@@ -1544,7 +1557,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane, runSavedCommand]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane, runSavedCommand, toggleBroadcastAll]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
@@ -1696,7 +1709,7 @@ export default function App() {
             <div key={tab.id} className={`workspace__tab ${visible ? "is-visible" : ""}`} aria-hidden={!visible}>
               {/* Panes stay in one flat, keyed list whatever the tree looks like, so React never
                   remounts a terminal (and restarts its shell) when the layout changes shape. */}
-              <div className={`panes ${tab.panes.length > 1 && !zoomed ? "is-split" : ""} ${tab.broadcast ? "is-broadcast" : ""}`}>
+              <div className={`panes ${tab.panes.length > 1 && !zoomed ? "is-split" : ""} ${tab.broadcast || broadcastAll ? "is-broadcast" : ""}`}>
                 {tab.panes.map((pane) => {
                   const focused = visible && pane.id === tab.activePaneId && !overlayOpen && !searchOpen && !menu && !renaming;
                   return (
