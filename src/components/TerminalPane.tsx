@@ -852,6 +852,15 @@ export default function TerminalPane({
         return true;
       },
       text: allText,
+      html: (title) => {
+        // The addon wraps its fragment in a page of its own, for the clipboard.
+        const body = serializer.serializeAsHTML({ includeGlobalBackground: true })
+          .replace(/^[\s\S]*?<!--StartFragment-->/, "")
+          .replace(/<!--EndFragment-->[\s\S]*$/, "");
+        const name = title.replace(/[&<>"]/g, (char) => `&#${char.charCodeAt(0)};`);
+        const background = String(terminal.options.theme?.background ?? "#000000").replace(/[^#\w(),.\s%]/g, "");
+        return `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>${name}</title>\n<style>body { margin: 0; background: ${background}; } pre { margin: 0; padding: 16px; }</style>\n</head>\n<body>\n${body}\n</body>\n</html>\n`;
+      },
       lastOutput: lastOutputText,
       findAll: (query, caseSensitive) => {
         const buffer = terminal.buffer.active;
