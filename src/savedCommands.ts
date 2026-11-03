@@ -9,9 +9,14 @@ export function sanitizeSavedCommands(value: unknown): SavedCommand[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry): SavedCommand[] => {
     if (typeof entry !== "object" || entry === null) return [];
-    const { id, name, command } = entry as Partial<SavedCommand>;
+    const { id, name, command, shortcut } = entry as Partial<SavedCommand>;
     if (typeof id !== "string" || id.length > 64 || typeof command !== "string" || !command.trim()) return [];
-    return [{ id, name: typeof name === "string" ? name.slice(0, MAX_NAME) : "", command: command.slice(0, MAX_COMMAND) }];
+    return [{
+      id,
+      name: typeof name === "string" ? name.slice(0, MAX_NAME) : "",
+      command: command.slice(0, MAX_COMMAND),
+      ...(typeof shortcut === "string" && shortcut && shortcut.length <= 48 ? { shortcut } : {}),
+    }];
   }).slice(0, MAX_SAVED_COMMANDS);
 }
 

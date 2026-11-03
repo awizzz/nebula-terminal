@@ -1394,7 +1394,7 @@ export default function App() {
       ...workspaces.map((workspace): PaletteCommand => ({ id: `workspace-${workspace.id}`, group: "Workspaces", label: `Open workspace: ${workspace.name}`, detail: describeWorkspace(workspace), icon: <LayoutPanelTop size={15} />, keywords: "layout session tabs", run: () => openSavedWorkspace(workspace) })),
       ...preferences.savedCommands.filter((saved) => saved.command.trim()).map((saved): PaletteCommand => ({
         id: `saved-${saved.id}`, group: "Saved commands", label: savedCommandLabel(saved), detail: saved.name.trim() ? saved.command.split(/\r?\n/)[0] : undefined,
-        icon: <TerminalSquare size={15} />, keywords: `run snippet ${saved.command}`, run: () => runSavedCommand(saved),
+        icon: <TerminalSquare size={15} />, keywords: `run snippet ${saved.command}`, shortcut: saved.shortcut, run: () => runSavedCommand(saved),
       })),
       { id: "save-command", group: "Saved commands", label: "Save a command…", icon: <Plus size={15} />, keywords: "snippet saved commands", run: () => openSettings("behavior") },
       ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
@@ -1493,6 +1493,13 @@ export default function App() {
       if (action(keys.toggleBroadcast, () => toggleBroadcast())) return;
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
       if (action(keys.markMode, () => getPane(activeTab?.activePaneId)?.markMode())) return;
+      const saved = preferencesRef.current.savedCommands.find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
+      if (saved && saved.command.trim()) {
+        event.preventDefault();
+        event.stopPropagation();
+        runSavedCommand(saved);
+        return;
+      }
       if (action(keys.findEverywhere, () => setFindEverywhereOpen(true))) return;
       if (action(keys.switchTab, openTabSwitcher)) return;
       if (action(keys.nextTab, () => cycleTab(1))) return;
@@ -1535,7 +1542,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane, runSavedCommand]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
