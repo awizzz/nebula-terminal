@@ -95,12 +95,12 @@ deploy production eu
 ## What you get
 
 - **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL, plus one entry for each WSL distribution and for each host in your `~/.ssh/config`. Nebula is the default, and you can pick another in Settings.
-- **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type.
+- **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type. A connection that drops reconnects on its own.
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts. Each pane can start a command too, like `npm run dev`.
-- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. A pane can move to a tab of its own and a tab into another as a split, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
-- **Images and progress.** Sixel and iTerm2 images show in the terminal, programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
+- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. A pane can move to a tab of its own, a tab dragged onto a pane splits it, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
+- **Images and progress.** Sixel and iTerm2 images show in the terminal (`imgcat photo.png` in Nebula), programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder. The commands you save in Settings run from there too, with blanks like `{{host}}` filled in as they start.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
 - **Eleven themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
@@ -113,7 +113,7 @@ deploy production eu
 - **Opens from Explorer and from any shell.** Right-click a folder and choose Open in Nebula Terminal, or type `nebula-terminal .` in cmd, PowerShell, Git Bash or WSL. Both open a tab in the window you already have. Open in Nebula Terminal (Administrator) opens an admin window there instead.
 - **Your default terminal, if you want.** On Windows 11, Settings → Behavior makes Nebula Terminal the default terminal: `cmd`, scripts and other console programs started from the Start menu or Explorer open in a tab. If you'd rather stay in Windows Terminal, the same page adds Nebula to its profiles.
 - **Click a path to open it.** `Ctrl+Click` on `src/main.rs:42` in a compiler error or a `grep` result opens the file at that line, in VS Code, Cursor, the app Windows uses or a command you choose. Folders open in File Explorer.
-- **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths. Copy with colors, in the right-click menu, pastes into Word or a chat with the terminal's colors.
+- **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths. Copy with colors, in the right-click menu, pastes into Word or a chat with the terminal's colors, and `Ctrl+Shift+M` selects with the keyboard alone.
 - **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, to run the same command on several servers or shells. A colored outline shows when it's on.
 - **Every command is a block.** Point at a finished command to copy it, copy its output or run it again.
 - **Find in every tab** (`Ctrl+Shift+Alt+F`), save a pane's output to a file from its right-click menu, or log everything it prints to one until you stop.
@@ -140,6 +140,7 @@ deploy production eu
 | Zoom the pane in front | `Ctrl+Shift+Z` |
 | Find in every tab | `Ctrl+Shift+Alt+F` |
 | Switch to a tab | `Ctrl+Shift+Space` |
+| Mark mode (select with the keyboard) | `Ctrl+Shift+M` |
 | Pause the command in front (Nebula) | `Ctrl+Z` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
@@ -151,7 +152,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: a keyboard mark mode to select and copy without the mouse, dropping a tab onto a pane to split it, `imgcat` in Nebula, and SSH panes that reconnect on their own. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: a search box in Settings, resizing and swapping panes from the keyboard, evening out a tab's panes, and Nebula pointing at the winget package of a tool that isn't installed. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

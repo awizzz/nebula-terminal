@@ -1,13 +1,13 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, pinned tabs, profiles with their own look, SSH connections, workspaces that start commands, a quick terminal, images, pane zoom, saved commands with blanks, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, highlights, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, pinned tabs, tabs dropped onto panes, profiles with their own look, SSH connections that reconnect, workspaces that start commands, a quick terminal, images, pane zoom, saved commands with blanks, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, highlights, mark mode, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (2.5)
+## Next (2.6)
 
-- **Mark mode:** select and copy text with the keyboard alone, as in Windows Terminal.
-- **Drop a tab onto a pane:** split that pane with the tab, on the side you drop it.
-- **`imgcat` in Nebula:** show an image file right in the terminal.
-- **SSH that reconnects:** a dropped connection tries again on its own, with a countdown you can cancel.
+- **Search in Settings:** a box that finds the setting you're after across every page.
+- **Panes from the keyboard:** resize the pane in front with `Alt+Shift+Arrow`, and swap it with its neighbor.
+- **Even out a tab:** give every pane of a tab the same share in one go.
+- **What to install:** when you type a common tool Nebula can't find, like `git` or `python`, it names the winget package that brings it.
 - **The winget package:** `winget install Awizz.NebulaTerminal`, once Microsoft's reviewers get to it. Scoop already works (see the README).
 
 ## Later
