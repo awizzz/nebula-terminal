@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.3.0
+
+Restored panes that show their last output, saved commands with blanks to fill in, logging a pane to a file, and watching a tab.
+
+### Added
+
+- restored panes show what they printed: a reopened session writes each pane's last output, up to 1,000 lines with their colors, above a Restored line and the new prompt. It's kept on this PC only, and Settings → Behavior → Show what panes printed turns it off
+- saved commands with blanks: `ssh {{host}}` or `git checkout {{branch}}` asks for the missing parts before it runs, with what you typed last time already filled in
+- log a pane to a file: Log output to a file… in a pane's right-click menu or the palette writes everything it prints, as plain text, until you stop it. Progress bars log as they ended up, and full-screen programs like vim stay out of it
+- watch a tab: right-click a tab to be told when it prints something while you're elsewhere, or once it has been quiet for 30 seconds
+
 ## 2.2.0
 
 Nebula in Windows Terminal, a workspace at startup, copy with colors and a tab switcher.

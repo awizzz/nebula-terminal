@@ -101,7 +101,7 @@ deploy production eu
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts.
 - **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. Drag a tab out of the window to give it its own, or onto another window: the shells keep running.
 - **Images and progress.** Sixel and iTerm2 images show in the terminal, programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
-- **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder.
+- **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder. The commands you save in Settings run from there too, with blanks like `{{host}}` filled in as they start.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
 - **Eleven themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
 - **Settings without a config file, and on every PC.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts, and every change applies immediately. Point Sync settings at a file in OneDrive, Dropbox or a Git repository, and your other PCs get the same themes, shortcuts and saved commands, with no account.
@@ -116,10 +116,11 @@ deploy production eu
 - **Windows habits.** `Ctrl+C` copies when text is selected and interrupts otherwise, `Ctrl+V` pastes, and dropping files inserts their quoted paths. Copy with colors, in the right-click menu, pastes into Word or a chat with the terminal's colors.
 - **Type in every pane at once.** `Ctrl+Shift+B` sends what you type to all the panes of a tab, to run the same command on several servers or shells. A colored outline shows when it's on.
 - **Every command is a block.** Point at a finished command to copy it, copy its output or run it again.
-- **Find in every tab** (`Ctrl+Shift+Alt+F`), and save a pane's output to a file from its right-click menu.
+- **Find in every tab** (`Ctrl+Shift+Alt+F`), save a pane's output to a file from its right-click menu, or log everything it prints to one until you stop.
+- **Watch a tab.** Get a notification when a tab you're not looking at prints something, or when a long job has been quiet for 30 seconds.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
 - **Opens where you are.** New tabs and splits start in the folder of the shell you're in, and the new-tab menu keeps the folders you were in lately. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.
-- **Picks up where you left off.** Your tabs, their names and colors, your splits and the folder each one was in are restored on launch. The shells themselves start fresh.
+- **Picks up where you left off.** Your tabs, their names and colors, your splits and the folder each one was in are restored on launch, and each pane shows what it printed last time above a fresh shell.
 
 ## Keyboard shortcuts
 
@@ -149,7 +150,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: restored panes that show their last output, saved commands with blanks to fill in, logging a pane to a file, and watching a tab for activity or silence. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: pinned tabs, workspaces that start commands, moving a pane to its own tab and back, and highlighting the words you care about in every pane. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

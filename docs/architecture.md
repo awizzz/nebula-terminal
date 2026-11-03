@@ -35,7 +35,7 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entries, and the `nebula-terminal` command on the user's PATH. |
 | `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
-| `save.rs` | Saving a pane's output to a text file the user picks. |
+| `save.rs` | Saving a pane's output to a text file the user picks, at once or as a log that grows until it's stopped. |
 | `sync.rs` | Settings sync: the file dialog to pick the file, and reading and writing it (through a temporary file, so a sync client never uploads half of it). |
 | `tray.rs` | The notification area icon, while the quick terminal keeps the app running without a window. |
 | `quick.rs` | The quick terminal: its global shortcut, registered on a thread of its own, and the window that drops down from the top of the screen. |
@@ -112,6 +112,16 @@ The release workflow builds a second time for `aarch64-pc-windows-msvc` on the x
 ### Command blocks
 
 With shell integration, each command has three OSC 133 marks: its prompt (A), the start of its output (C) and its end (D). Moving the pointer over a pane finds the finished command whose lines are under it, draws a thin line along them and shows three actions. The command itself isn't marked, so it's read back from the last line before its output, without the prompt (`commandOnPromptLine` knows Nebula's, PowerShell's, cmd's and bash's).
+
+### Pane logs
+
+A log is the text a pane shows, not the bytes its shell sent: ConPTY sends a screen, with cursor moves and repaints, and a raw stream would log every redraw of a progress bar. Once a second, the lines finished since the last time are read from the normal buffer and appended; full-screen programs draw in the alternate buffer and stay out. Line numbers shift as old lines leave the scrollback and when a resize rewraps them, so a marker follows the last line logged and a second one sits in the scrollback, which erasing the screen never touches. `clear` and `cls` (`ESC[2J`, `ESC[3J`) are caught just before they run, so the screen they wipe is logged first. Line feeds are counted while they're parsed, and half a scrollback of them is written at once, so a flood doesn't push lines out unlogged.
+
+Rust opens the file the user picks and keeps it (`save::Logs`); the webview only appends by the number it got back, never by path.
+
+### Restored screens
+
+When the session is saved, each pane's leaf gets a `screen` key, `<window label>:<pane id>`. The window saves what its panes show (`SerializeAddon`, 1,000 lines of scrollback, colors kept, no alternate buffer) into IndexedDB: the panes that printed since the last time every 15 seconds, all of them when it closes, and it drops the keys of its own panes that are gone. At launch, the screens of the restored panes are read, at most 800 ms, and taken out of the store; each pane writes its screen and a Restored line before its shell starts. portable-pty asks ConPTY to inherit the cursor, so the shell begins under the old output instead of clearing it. A window closed while others stay open forgets its screens with its tabs, and anything nobody came back for in 30 days goes.
 
 ### Ctrl+Z in Nebula
 
@@ -223,7 +233,10 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `sync.ts` | What settings sync writes (everything but what belongs to one PC), reads back, and how it merges what another PC wrote. |
 | `recentFolders.ts` | The folders shells reported lately (OSC 7), newest first, for the new-tab menu and the palette. |
 | `components/FindEverywhere.tsx` | Find in every tab: every pane's buffer searched line by line, results grouped by tab. |
-| `savedCommands.ts` | Saved commands: checks on what comes back from storage, and the input that runs one. |
+| `savedCommands.ts` | Saved commands: checks on what comes back from storage, the `{{blanks}}` asked for before one runs, and the input that runs it. |
+| `paneLog.ts` | Logging a pane: finished lines read from xterm.js's buffer, a second at a time. |
+| `screens.ts` | Each pane's last screen in IndexedDB, for restored sessions. |
+| `tabWatch.ts` | Watching a tab for output or for silence. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
@@ -263,7 +276,7 @@ Splitting a pane in the direction of its parent adds a sibling instead of nestin
 
 ### Saved data
 
-Settings and the tab layout are stored in the webview's local storage under the `nebula-terminal.*` keys. Custom profiles are the exception: they live in a file that only Rust writes (see above), because they decide what runs. Everything read back from storage, or from an imported theme file, goes through validation first (`sanitizePreferences`, `loadSession`). Theme files only carry visual settings, never paths or shortcuts.
+Settings and the tab layout are stored in the webview's local storage under the `nebula-terminal.*` keys, and the panes' last screens in its IndexedDB (`nebula-terminal.screens`). Custom profiles are the exception: they live in a file that only Rust writes (see above), because they decide what runs. Everything read back from storage, or from an imported theme file, goes through validation first (`sanitizePreferences`, `loadSession`). Theme files only carry visual settings, never paths or shortcuts.
 
 ## Security
 
