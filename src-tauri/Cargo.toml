@@ -1,6 +1,6 @@
 [package]
 name = "nebula-terminal"
-version = "2.8.0"
+version = "2.9.0"
 description = "Nebula Terminal, a terminal for Windows"
 authors = ["Awizz"]
 edition = "2021"
