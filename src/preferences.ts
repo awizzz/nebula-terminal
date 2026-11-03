@@ -3,6 +3,7 @@ import { isCustomTheme, MAX_CUSTOM_THEMES } from "./themeImport";
 import { defaultQuickShortcut, isGlobalShortcut } from "./quickShortcut";
 import { sanitizeLooks } from "./looks";
 import { sanitizeSavedCommands } from "./savedCommands";
+import { sanitizeHighlights } from "./highlights";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 export const defaultKeybindings: KeybindingPreferences = {
@@ -105,6 +106,7 @@ export const defaultPreferences: AppearancePreferences = {
   clipboardWrite: true,
   fontLigatures: true,
   savedCommands: [],
+  highlights: [],
   screenReaderMode: false,
   followContrastThemes: true,
   syncFile: "",
@@ -212,6 +214,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     clipboardWrite: booleanFrom(value.clipboardWrite, defaultPreferences.clipboardWrite),
     fontLigatures: booleanFrom(value.fontLigatures, defaultPreferences.fontLigatures),
     savedCommands: sanitizeSavedCommands(value.savedCommands),
+    highlights: sanitizeHighlights(value.highlights),
     screenReaderMode: booleanFrom(value.screenReaderMode, defaultPreferences.screenReaderMode),
     followContrastThemes: booleanFrom(value.followContrastThemes, defaultPreferences.followContrastThemes),
     commandBlocks: booleanFrom(value.commandBlocks, defaultPreferences.commandBlocks),

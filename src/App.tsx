@@ -33,7 +33,7 @@ import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
 import { forgetScreens, pruneScreens, saveScreens, screenKey, withScreens } from "./screens";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SavedCommand, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Highlight, Launchers, SavedCommand, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
@@ -458,6 +458,19 @@ export default function App() {
     }
     const { title, body } = finishedMessage(command, tab ? tabTitle(tab) : "Nebula Terminal");
     notify(title, body);
+  }, [tabUnseen]);
+
+  /** A highlight that asked to be told, at most every 30 seconds per tab. */
+  const lastHighlightRef = useRef(new Map<string, number>());
+  const highlightSeen = useCallback((tabId: string, highlight: Highlight, line: string) => {
+    if (!tabUnseen(tabId)) return;
+    const key = `${tabId}:${highlight.id}`;
+    const now = Date.now();
+    if (now - (lastHighlightRef.current.get(key) ?? 0) < 30_000) return;
+    lastHighlightRef.current.set(key, now);
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    notify(`${highlight.text.trim()} in ${tab ? tabTitle(tab) : "Nebula Terminal"}`, line.slice(0, 200));
+    if (tabId !== activeTabIdRef.current) setActivity((current) => current.has(tabId) ? current : new Set([...current, tabId]));
   }, [tabUnseen]);
 
   /** OSC 9 / OSC 777 from a program: shown when its tab is out of sight. */
@@ -1597,6 +1610,7 @@ export default function App() {
                           changedScreensRef.current.add(pane.id);
                         }}
                         onLog={(path) => paneLogged(pane.id, path)}
+                        onHighlight={(highlight, line) => highlightSeen(tab.id, highlight, line)}
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
                         onFolderChange={(cwd) => setPaneFolder(tab.id, pane.id, cwd)}
