@@ -95,7 +95,7 @@ deploy production eu
 ## What you get
 
 - **Your shells, detected automatically.** Nebula, PowerShell 7, Windows PowerShell, Command Prompt, Git Bash and WSL, plus one entry for each WSL distribution and for each host in your `~/.ssh/config`. Nebula is the default, and you can pick another in Settings.
-- **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type. A connection that drops reconnects on its own.
+- **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type. A connection that drops reconnects on its own, and any profile can set its own environment variables. For a server you reach once, type `user@server` in the palette.
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts. Each pane can start a command too, like `npm run dev`.
@@ -143,6 +143,7 @@ deploy production eu
 | Switch to a tab | `Ctrl+Shift+Space` |
 | Mark mode (select with the keyboard) | `Ctrl+Shift+M` |
 | Pause the command in front (Nebula) | `Ctrl+Z` |
+| Reopen the tab closed last | `Ctrl+Shift+Alt+T` |
 | Command palette | `Ctrl+Shift+P` |
 | Settings | `Ctrl+,` |
 | Zoom in / out / reset | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` (or `Ctrl+Wheel`) |
@@ -153,7 +154,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: reopening a tab you closed, connecting to a server by typing it in the palette, and environment variables for each profile. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: tabs on the side, how long each command took, copying a command and its output as Markdown, and zooming one pane's text. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 

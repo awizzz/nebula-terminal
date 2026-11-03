@@ -52,6 +52,7 @@ The webview cannot start arbitrary programs. It sends a **profile id**, and Rust
 | `nebula`, `pwsh`, `powershell`, `cmd`, `gitbash`, `wsl` | The built-in shells, found on disk or on PATH. |
 | `wsl:<distribution>` | `wsl.exe -d <distribution> --cd ~`, only if that distribution is installed. |
 | `ssh:<host>` | `ssh.exe <host>`, only if the host is in your ssh config and `ssh.exe` is on PATH. |
+| `ssh-to:<target>` | `ssh.exe [-p port] [user@]host`, typed in the palette. The user and the host may only hold letters, digits, dots, dashes and underscores, and start with a letter or a digit, so nothing can pass for an ssh option. |
 | `custom:<uuid>` | The program and arguments saved for that profile, or `ssh.exe` with the arguments built from a saved SSH connection. |
 
 Unknown ids are rejected. Distribution and host names must start with a letter or digit and contain only letters, digits, `.`, `_` and `-`, so they can never be read as options. With a custom starting folder, WSL profiles drop `--cd ~` and start in that folder.
@@ -60,7 +61,7 @@ Detection runs on a thread of its own as soon as the app starts (`EarlyDetection
 
 ### Custom profiles
 
-Custom profiles are kept in `custom-profiles.json` in the app's config folder (`%APPDATA%\dev.awizz.nebula-terminal`). Only Rust writes that file, through a temporary file so it is never left half written. Saving checks every field: a name of up to 60 characters, a program that is either an absolute path to an existing file or a bare name found on PATH (`%VAR%` and `~` are expanded; relative paths with folders are refused), at most 64 arguments, a starting folder that exists, and a `#rrggbb` color. There can be 50 of them. Entries read back from the file are checked again, and a profile whose program has been uninstalled stays listed as unavailable instead of disappearing.
+Custom profiles are kept in `custom-profiles.json` in the app's config folder (`%APPDATA%\dev.awizz.nebula-terminal`). Only Rust writes that file, through a temporary file so it is never left half written. Saving checks every field: a name of up to 60 characters, a program that is either an absolute path to an existing file or a bare name found on PATH (`%VAR%` and `~` are expanded; relative paths with folders are refused), at most 64 arguments, a starting folder that exists, and a `#rrggbb` color, and up to 32 environment variables (`NAME=value`, a name of letters, digits and underscores, a value on one line), which `start_session` sets on top of the app's own. There can be 50 of them. Entries read back from the file are checked again, and a profile whose program has been uninstalled stays listed as unavailable instead of disappearing.
 
 The editor sends the arguments as one line. Rust splits it with the Windows rules, stores the list, and the editor shows the split result as you type (`split_arguments`). Starting a custom profile uses the stored entry only; the webview never sends a program or arguments to run.
 
