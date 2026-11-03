@@ -1,5 +1,5 @@
 import { restoreSnapshot, snapshotOf } from "./session";
-import type { SessionSnapshot, TerminalProfile, TerminalTab } from "./types";
+import type { PersistedLayout, SessionSnapshot, TerminalProfile, TerminalTab } from "./types";
 
 /** A named set of tabs to open again in one go: their names, colors, splits and folders. */
 export interface Workspace {
@@ -58,7 +58,7 @@ export function withWorkspace(existing: readonly Workspace[], name: string, tabs
   const trimmed = name.trim().slice(0, MAX_NAME);
   if (!trimmed || tabs.length === 0) return [...existing];
   const previous = existing.find((workspace) => workspace.name.toLowerCase() === trimmed.toLowerCase());
-  const workspace: Workspace = { id: previous?.id ?? crypto.randomUUID(), name: trimmed, savedAt: Date.now(), snapshot: snapshotOf(tabs, activeTabId) };
+  const workspace: Workspace = { id: previous?.id ?? crypto.randomUUID(), name: trimmed, savedAt: Date.now(), snapshot: snapshotOf(tabs, activeTabId, { commands: true }) };
   return [workspace, ...existing.filter((candidate) => candidate.id !== workspace.id)].slice(0, MAX_WORKSPACES);
 }
 
@@ -85,4 +85,50 @@ function countPanes(layout: unknown): number {
   if (!layout || typeof layout !== "object") return 1;
   const node = layout as { type?: string; children?: unknown[] };
   return node.type === "split" && Array.isArray(node.children) ? node.children.reduce<number>((sum, child) => sum + countPanes(child), 0) : 1;
+}
+
+type PaneLeaf = Extract<PersistedLayout, { type: "pane" }>;
+
+function leaves(layout: unknown): PaneLeaf[] {
+  if (!layout || typeof layout !== "object") return [];
+  const node = layout as PersistedLayout;
+  if (node.type === "pane") return [node];
+  return node.type === "split" && Array.isArray(node.children) ? node.children.flatMap(leaves) : [];
+}
+
+/** One pane of a workspace, in reading order, with the command it starts. */
+export interface WorkspacePane {
+  tab: number;
+  pane: number;
+  tabTitle: string;
+  profileId: string;
+  cwd?: string;
+  command: string;
+}
+
+export function workspacePanes(workspace: Workspace): WorkspacePane[] {
+  return workspace.snapshot.tabs.flatMap((tab, tabIndex) => leaves(tab.layout).map((leaf, paneIndex) => ({
+    tab: tabIndex,
+    pane: paneIndex,
+    tabTitle: tab.customTitle || tab.title,
+    profileId: leaf.profileId,
+    cwd: leaf.cwd,
+    command: typeof leaf.command === "string" ? leaf.command : "",
+  })));
+}
+
+/** The workspaces with one pane's start command changed; an empty command removes it. */
+export function withPaneCommand(existing: readonly Workspace[], id: string, tab: number, pane: number, command: string): Workspace[] {
+  const trimmed = command.trim().slice(0, 2_000);
+  return existing.map((workspace) => {
+    if (workspace.id !== id) return workspace;
+    const rewrite = (node: PersistedLayout, counter: { index: number }): PersistedLayout => {
+      if (node.type === "split") return { ...node, children: node.children.map((child) => rewrite(child, counter)) };
+      if (counter.index++ !== pane) return node;
+      const { command: _previous, ...rest } = node;
+      return trimmed ? { ...rest, command: trimmed } : rest;
+    };
+    const tabs = workspace.snapshot.tabs.map((saved, index) => index === tab && saved.layout ? { ...saved, layout: rewrite(saved.layout, { index: 0 }) } : saved);
+    return { ...workspace, snapshot: { ...workspace.snapshot, tabs } };
+  });
 }

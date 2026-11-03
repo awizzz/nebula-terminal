@@ -1531,6 +1531,7 @@ export default function App() {
                         handoffId={pane.handoffId}
                         moved={pane.moved}
                         restoredScreen={pane.screen}
+                        startCommand={pane.startCommand}
                         preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible && (!zoomed || pane.id === zoomed)}

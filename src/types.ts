@@ -229,6 +229,8 @@ export interface TerminalPaneModel {
   restoreScreen?: string;
   /** That screen, written before the shell starts. */
   screen?: string;
+  /** Typed into the shell once it starts, from a workspace. */
+  startCommand?: string;
 }
 
 export type TabWatch = "output" | "silence";
@@ -259,7 +261,7 @@ export interface PersistedPane {
 }
 
 export type PersistedLayout =
-  | { type: "pane"; profileId: string; cwd?: string; screen?: string }
+  | { type: "pane"; profileId: string; cwd?: string; screen?: string; command?: string }
   | { type: "split"; direction: SplitDirection; sizes: number[]; children: PersistedLayout[] };
 
 export interface PersistedTab {

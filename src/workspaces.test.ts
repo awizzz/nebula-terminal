@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { paneLeaf, splitPane, type LayoutNode } from "./layout";
 import { previewProfiles } from "./profiles";
-import { describe as summary, loadWorkspaces, openWorkspace, renamed, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
+import { describe as summary, loadWorkspaces, openWorkspace, renamed, saveWorkspaces, suggestName, withPaneCommand, withWorkspace, workspacePanes, type Workspace } from "./workspaces";
+import { saveSession, loadSession } from "./session";
 import type { TerminalProfile, TerminalTab } from "./types";
 
 const [nebula, pwsh] = previewProfiles as [TerminalProfile, TerminalProfile];
@@ -36,6 +37,22 @@ describe("workspaces", () => {
       [[pwsh.id, undefined]],
     ]);
     expect(opened.activeTabId).toBe(opened.tabs[1]!.id);
+  });
+
+  it("start commands in the panes they're set for, and keep them when saved again", () => {
+    const tabs = [tab(undefined, nebula, pwsh), tab(undefined, pwsh)];
+    let saved = withWorkspace([], "Shop", tabs, tabs[0]!.id);
+    const id = saved[0]!.id;
+    expect(workspacePanes(saved[0]!).map((pane) => [pane.tab, pane.pane, pane.profileId, pane.command])).toEqual([[0, 0, nebula.id, ""], [0, 1, pwsh.id, ""], [1, 0, pwsh.id, ""]]);
+    saved = withPaneCommand(saved, id, 0, 1, "  npm run dev ");
+    saved = withPaneCommand(saved, id, 1, 0, "git status");
+    saved = withPaneCommand(saved, id, 1, 0, "");
+    const opened = openWorkspace(saved[0]!, previewProfiles)!;
+    expect(opened.tabs.map((candidate) => candidate.panes.map((pane) => pane.startCommand))).toEqual([[undefined, "npm run dev"], [undefined]]);
+    // Saving the opened tabs as the same workspace keeps the command; the session never runs it.
+    expect(workspacePanes(withWorkspace(saved, "Shop", opened.tabs, opened.activeTabId)[0]!)[1]!.command).toBe("npm run dev");
+    saveSession(opened.tabs, opened.activeTabId);
+    expect(loadSession(previewProfiles)!.tabs[0]!.panes[1]!.startCommand).toBeUndefined();
   });
 
   it("replaces a workspace of the same name and keeps the newest first", () => {

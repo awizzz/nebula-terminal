@@ -15,7 +15,7 @@ import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeIm
 import Keys from "./Keys";
 import Segmented from "./Segmented";
 import ThemeSection from "./ThemeSection";
-import { describe as describeWorkspace, renamed, type Workspace } from "../workspaces";
+import { describe as describeWorkspace, renamed, withPaneCommand, workspacePanes, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, ProfileLook, SshDraft, TerminalProfile } from "../types";
 
@@ -623,6 +623,8 @@ function CustomProfilesGroup({ profiles, defaultProfileId, onDefaultRemoved, onP
 export default function SettingsPanel({ open, initialPage, profiles, preferences, onChange, onClose, onReset, onClearSession, onProfilesChanged, launchers, defaultTerminal, onDefaultTerminalChange, administrator = false, workspaces, onWorkspacesChange, quickTerminalProblem = null, sync }: SettingsPanelProps) {
   const [page, setPage] = useState<SettingsPage>("appearance");
   const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  /** The workspace whose start commands are shown. */
+  const [commandsOf, setCommandsOf] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const themeInputRef = useRef<HTMLInputElement | null>(null);
   const schemeInputRef = useRef<HTMLInputElement | null>(null);
@@ -1022,7 +1024,8 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </Row>
                   )}
                   {workspaces.map((workspace) => (
-                    <div key={workspace.id} className="row workspace-row">
+                    <Fragment key={workspace.id}>
+                    <div className="row workspace-row">
                       <div className="row__text">
                         <input
                           key={workspace.name}
@@ -1036,10 +1039,41 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                         />
                         <span className="row__description">{describeWorkspace(workspace)}, saved {new Date(workspace.savedAt).toLocaleDateString()}</span>
                       </div>
-                      <div className="row__control">
+                      <div className="row__control button-row">
+                        <button className="button" type="button" aria-expanded={commandsOf === workspace.id} onClick={() => setCommandsOf((open) => open === workspace.id ? null : workspace.id)}>
+                          <ChevronRight size={14} className="workspace-row__chevron" />Commands
+                        </button>
                         <button className="button" type="button" onClick={() => onWorkspacesChange(workspaces.filter((candidate) => candidate.id !== workspace.id))}><Trash size={14} />Delete</button>
                       </div>
                     </div>
+                    {commandsOf === workspace.id && (
+                      <div className="workspace-commands">
+                        <p className="row__description">Typed into each pane when the workspace opens, as if you ran it there. Leave a pane empty for a plain shell.</p>
+                        {workspacePanes(workspace).map((pane, _, all) => (
+                          <label key={`${pane.tab}-${pane.pane}`} className="workspace-commands__pane">
+                            <span className="workspace-commands__where">
+                              <span>
+                                {pane.tabTitle}{all.some((other) => other.tab === pane.tab && other.pane > 0) ? `, pane ${pane.pane + 1}` : ""}
+                                {" · "}{profiles.find((profile) => profile.id === pane.profileId)?.name ?? pane.profileId}
+                              </span>
+                              {pane.cwd && <span className="row__description">{pane.cwd}</span>}
+                            </span>
+                            <input
+                              key={pane.command}
+                              className="field field--mono"
+                              defaultValue={pane.command}
+                              maxLength={2000}
+                              spellCheck={false}
+                              placeholder="npm run dev"
+                              aria-label={`Command for ${pane.tabTitle}, pane ${pane.pane + 1}`}
+                              onBlur={(event) => event.target.value.trim() !== pane.command && onWorkspacesChange(withPaneCommand(workspaces, workspace.id, pane.tab, pane.pane, event.target.value))}
+                              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }}
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    </Fragment>
                   ))}
                 </Group>
                 <Group title="Sync settings" description="Keep one settings file in OneDrive, Dropbox or a Git repository, and every PC that uses it gets the same themes, fonts, shortcuts and saved commands. Explorer and PATH entries, the starting folder, what opens files and the background image stay on each PC.">
