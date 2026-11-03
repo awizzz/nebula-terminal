@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.8.0
+
+Pane titles, read-only panes, a pane's folder in File Explorer, and settings you can back up.
+
+### Added
+
+- pane titles: Settings → Terminal → Layout → Pane titles shows each pane's shell title and folder above it in a split tab
+- read-only panes: Make read-only, in a pane's right-click menu, keeps keys, pastes and broadcasts away from a pane that shows a log or a dashboard
+- open folder in File Explorer, from a pane's right-click menu or the palette, opens the folder its shell is in
+- back up settings: Settings → Behavior → Backup saves every setting, saved command and workspace to a file, and restores them from it, here or on another PC
+
 ## 2.7.0
 
 Shortcuts for saved commands, output saved as a web page, word separators, and typing in every tab.
