@@ -20,6 +20,8 @@ import { describe as describeWorkspace, renamed, withPaneCommand, workspacePanes
 import ProfileIcon from "./ProfileIcon";
 import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, ProfileLook, SavedCommand, SshDraft, TerminalProfile } from "../types";
 import { savedCommandLabel } from "../savedCommands";
+import { backupDocument, readBackup, type Backup } from "../backup";
+import { download } from "../download";
 
 const quickHeights = [0.3, 0.5, 0.7, 0.9];
 
@@ -652,6 +654,18 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
   /** The workspace whose start commands are shown. */
   const [commandsOf, setCommandsOf] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  /** A backup read from a file, waiting for the user to say it replaces the settings. */
+  const [pendingBackup, setPendingBackup] = useState<Backup | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
+  const readBackupFile = async (file?: File) => {
+    if (!file) return;
+    if (file.size > 5_000_000) return setMessage({ tone: "error", text: "This file is too large to be a backup." });
+    try {
+      setPendingBackup(readBackup(await file.text()));
+    } catch (error) {
+      setMessage({ tone: "error", text: error instanceof Error ? error.message : String(error) });
+    }
+  };
   const themeInputRef = useRef<HTMLInputElement | null>(null);
   const schemeInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -1257,6 +1271,22 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Source code"><button className="button" type="button" onClick={() => openExternal(REPOSITORY)}>Open on GitHub</button></Row>
                   <Row label="Found a bug?"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/issues/new/choose`)}>Report a problem</button></Row>
                   <Row label="License"><button className="button" type="button" onClick={() => openExternal(`${REPOSITORY}/blob/main/LICENSE`)}>PolyForm Shield 1.0.0</button></Row>
+                </Group>
+                <Group title="Backup">
+                  <Row label="Back up settings" description="Every setting, saved command and workspace in one file, to bring back here or on another PC. Custom profiles stay in Profiles.">
+                    <button className="button" type="button" onClick={() => download(`nebula-terminal-settings-${new Date().toISOString().slice(0, 10)}.json`, backupDocument(preferences, workspaces))}>Save to a file…</button>
+                  </Row>
+                  <Row label="Restore settings" description={pendingBackup ? `Replace your settings and workspaces with the ones saved ${pendingBackup.savedAt ? new Date(pendingBackup.savedAt).toLocaleString() : "in this file"}?` : "From a backup file. Your sync file, if you have one, stays as it is."}>
+                    {pendingBackup
+                      ? <div className="button-row"><button className="button" type="button" onClick={() => setPendingBackup(null)}>Cancel</button><button className="button button--primary" type="button" onClick={() => {
+                        onChange(pendingBackup.preferences(preferences));
+                        onWorkspacesChange(pendingBackup.workspaces);
+                        setPendingBackup(null);
+                        setMessage({ tone: "info", text: "Settings restored." });
+                      }}>Restore</button></div>
+                      : <button className="button" type="button" onClick={() => backupInputRef.current?.click()}>Choose file…</button>}
+                    <input ref={backupInputRef} hidden type="file" accept=".json,application/json" onChange={(event) => { void readBackupFile(event.target.files?.[0]); event.target.value = ""; }} />
+                  </Row>
                 </Group>
                 <Group title="Reset">
                   <Row label="Reset all settings" description="Theme, fonts, shells and shortcuts go back to their defaults.">

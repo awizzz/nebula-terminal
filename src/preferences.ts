@@ -4,6 +4,7 @@ import { defaultQuickShortcut, isGlobalShortcut } from "./quickShortcut";
 import { sanitizeLooks } from "./looks";
 import { sanitizeSavedCommands } from "./savedCommands";
 import { sanitizeHighlights } from "./highlights";
+import { download } from "./download";
 import type { AppearancePreferences, KeybindingPreferences } from "./types";
 
 /** xterm.js's own: a path or a URL stays whole. */
@@ -277,13 +278,7 @@ export function savePreferences(value: AppearancePreferences): void {
 export function exportAppearance(preferences: AppearancePreferences): void {
   // An imported color scheme travels with the file that uses it.
   const customTheme = preferences.customThemes.find((theme) => theme.id === preferences.themeId);
-  const blob = new Blob([JSON.stringify({ version: 2, appearance: pickThemePreferences(preferences), customTheme }, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "nebula-terminal-theme.json";
-  anchor.click();
-  URL.revokeObjectURL(url);
+  download("nebula-terminal-theme.json", JSON.stringify({ version: 2, appearance: pickThemePreferences(preferences), customTheme }, null, 2));
 }
 
 /**

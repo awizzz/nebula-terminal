@@ -22,10 +22,14 @@ function isWorkspace(value: unknown): value is Workspace {
     && typeof workspace.snapshot === "object" && workspace.snapshot !== null && Array.isArray(workspace.snapshot.tabs);
 }
 
+/** Workspaces read back from storage or a backup: anything else is dropped. */
+export function sanitizeWorkspaces(value: unknown): Workspace[] {
+  return Array.isArray(value) ? value.filter(isWorkspace).slice(0, MAX_WORKSPACES) : [];
+}
+
 export function loadWorkspaces(): Workspace[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-    return Array.isArray(parsed) ? parsed.filter(isWorkspace).slice(0, MAX_WORKSPACES) : [];
+    return sanitizeWorkspaces(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"));
   } catch {
     return [];
   }
