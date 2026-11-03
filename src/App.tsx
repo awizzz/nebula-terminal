@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -26,7 +26,7 @@ import { folderParts, loadRecentFolders, rememberFolder, saveRecentFolders } fro
 import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
-import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds, paneLeaf, removePane, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
+import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, normalizeLayout, paneIds, paneLeaf, removePane, renamePanes, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
@@ -1110,6 +1110,55 @@ export default function App() {
     if (activeTab) closePane(activeTab.id, activeTab.activePaneId);
   }, [activeTab, closePane]);
 
+  /** A pane, its shell still running, in a tab of its own next to the one it leaves. */
+  const movePaneToNewTab = useCallback(async (tabId: string, paneId: string) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === tabId);
+    const model = tab?.panes.find((pane) => pane.id === paneId);
+    const { layout, focusId } = tab ? removePane(tab.layout, paneId) : { layout: null };
+    if (!tab || !model || !layout) return;
+    const pane: TerminalPaneModel = { ...model, id: crypto.randomUUID(), handoffId: undefined, screen: undefined, moved: await getPane(paneId)?.detach() ?? { screen: "" } };
+    const fresh: TerminalTab = { id: crypto.randomUUID(), title: tab.activePaneId === paneId ? tab.title : model.profile.name, panes: [pane], layout: paneLeaf(pane.id), activePaneId: pane.id };
+    setTabs((current) => {
+      const next = current.map((candidate) => candidate.id !== tabId ? candidate : {
+        ...candidate,
+        panes: candidate.panes.filter((other) => other.id !== paneId),
+        layout,
+        activePaneId: candidate.activePaneId === paneId ? focusId ?? paneIds(layout)[0]! : candidate.activePaneId,
+        zoomedPaneId: undefined,
+      });
+      next.splice(next.findIndex((candidate) => candidate.id === tabId) + 1, 0, fresh);
+      return pinnedFirst(next);
+    });
+    setActiveTabId(fresh.id);
+  }, []);
+
+  /** Another tab's panes, shells still running, on the right of the tab in front. */
+  const mergeIntoActiveTab = useCallback(async (sourceId: string) => {
+    const target = tabsRef.current.find((tab) => tab.id === activeTabIdRef.current);
+    const source = tabsRef.current.find((tab) => tab.id === sourceId);
+    if (!target || !source || target.id === source.id || closingRef.current.has(sourceId)) return;
+    if (target.panes.length + source.panes.length > MAX_PANES) {
+      setNotice(`A tab holds ${MAX_PANES} panes at most`);
+      return;
+    }
+    const ids = new Map(source.panes.map((pane) => [pane.id, crypto.randomUUID()]));
+    const panes = await Promise.all(source.panes.map(async (pane): Promise<TerminalPaneModel> => ({
+      ...pane,
+      id: ids.get(pane.id)!,
+      handoffId: undefined,
+      screen: undefined,
+      moved: await getPane(pane.id)?.detach() ?? { screen: "" },
+    })));
+    const joined = normalizeLayout({ type: "split", direction: "vertical", sizes: [0.5, 0.5], children: [target.layout, renamePanes(source.layout, ids)] }) ?? target.layout;
+    setTabs((current) => current.filter((tab) => tab.id !== sourceId).map((tab) => tab.id !== target.id ? tab : {
+      ...tab,
+      panes: [...tab.panes, ...panes],
+      layout: joined,
+      activePaneId: ids.get(source.activePaneId) ?? tab.activePaneId,
+      zoomedPaneId: undefined,
+    }));
+  }, []);
+
   const focusNeighborPane = useCallback((key: string) => {
     const direction = arrowDirections[key];
     if (!activeTab || activeTab.panes.length < 2 || !direction) return false;
@@ -1270,6 +1319,7 @@ export default function App() {
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       ...((activeTab?.panes.length ?? 0) > 1 ? [{ id: "zoom-pane", group: "Panes", label: activeTab?.zoomedPaneId ? "Show every pane" : "Zoom pane", icon: <Maximize2 size={15} />, keywords: "maximize fill focus", shortcut: keys.togglePaneZoom, run: togglePaneZoom }] : []),
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
+      ...(activeTab && activeTab.panes.length > 1 ? [{ id: "pane-to-tab", group: "Panes", label: "Move pane to a new tab", icon: <SquareArrowOutUpRight size={15} />, keywords: "break detach split", run: () => void movePaneToNewTab(activeTab.id, activeTab.activePaneId) }] : []),
       ...(activeTab?.watch
         ? [{ id: "unwatch", group: "Tabs", label: "Stop watching this tab", icon: <EyeOff size={15} />, run: () => watchTab(activeTab.id) }]
         : activeTab ? [
@@ -1311,7 +1361,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1420,6 +1470,7 @@ export default function App() {
         ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
         { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
+        ...(open.tabId !== activeTabId && activeTab ? [{ id: "merge", label: "Move into the tab in front", detail: tabTitle(activeTab), icon: <Combine size={15} />, disabled: activeTab.panes.length + (tabs[index]?.panes.length ?? 0) > MAX_PANES, run: () => void mergeIntoActiveTab(open.tabId) }] : []),
         ...(tabs[index]?.watch
           ? [{ id: "unwatch", label: "Stop watching", icon: <EyeOff size={15} />, run: () => watchTab(open.tabId) }]
           : [
@@ -1461,6 +1512,7 @@ export default function App() {
       ...((activeTab?.panes.length ?? 0) > 1 ? [{ id: "zoom-pane", label: activeTab?.zoomedPaneId ? "Show every pane" : "Zoom pane", icon: <Maximize2 size={15} />, shortcut: keys.togglePaneZoom, run: togglePaneZoom }] : []),
       "separator",
       { id: "clear", label: "Clear scrollback", icon: <Eraser size={15} />, run: () => pane?.clear() },
+      ...(activeTab && activeTab.panes.length > 1 ? [{ id: "pane-to-tab", label: "Move to a new tab", icon: <SquareArrowOutUpRight size={15} />, run: () => void movePaneToNewTab(activeTab.id, activeTab.activePaneId) }] : []),
       { id: "close-pane", label: (activeTab?.panes.length ?? 0) > 1 ? "Close pane" : "Close tab", icon: <SquareX size={15} />, shortcut: (activeTab?.panes.length ?? 0) > 1 ? keys.closePane : keys.closeTab, run: closeActivePane },
     ];
   };
