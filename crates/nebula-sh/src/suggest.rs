@@ -44,6 +44,14 @@ pub fn not_found(name: &str, shell: &Shell) -> String {
             "tip:".paint(style::WARN),
             linux.paint(style::COMMAND).bold()
         ));
+    } else if let Some(package) = commands::winget_package(name) {
+        message.push_str(&format!(
+            "\n  {} install it with {}",
+            "tip:".paint(style::WARN),
+            format!("winget install {package}")
+                .paint(style::COMMAND)
+                .bold()
+        ));
     } else if let Some(candidate) = closest(name, shell) {
         message.push_str(&format!(
             "\n  {} did you mean {}?",
