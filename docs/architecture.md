@@ -123,6 +123,14 @@ Rust opens the file the user picks and keeps it (`save::Logs`); the webview only
 
 When the session is saved, each pane's leaf gets a `screen` key, `<window label>:<pane id>`. The window saves what its panes show (`SerializeAddon`, 1,000 lines of scrollback, colors kept, no alternate buffer) into IndexedDB: the panes that printed since the last time every 15 seconds, all of them when it closes, and it drops the keys of its own panes that are gone. At launch, the screens of the restored panes are read, at most 800 ms, and taken out of the store; each pane writes its screen and a Restored line before its shell starts. portable-pty asks ConPTY to inherit the cursor, so the shell begins under the old output instead of clearing it. A window closed while others stay open forgets its screens with its tabs, and anything nobody came back for in 30 days goes.
 
+### Highlights
+
+Each pane listens to xterm.js's line feeds. The line just finished (with the rows it wrapped onto) is read cell by cell, so a wide character's two cells map back to one character, and every highlight is looked for in it; the first one wins where two overlap. A match becomes a decoration on a marker, colored a mix of the highlight's color and the background, with an overview ruler mark. Markers go with their lines when the scrollback drops them, and a pane keeps its last 2,000 decorations. Since nothing waits for a render, hidden tabs are seen too, which is what notifications need.
+
+### Moving panes between tabs
+
+A pane can't change tabs in React without unmounting, which would end its shell. So a pane moving to a new tab, or a tab's panes joining the tab in front, detach first (`park_session`, as for a tab going to another window) and mount again with the screen and the session to attach to.
+
 ### Ctrl+Z in Nebula
 
 While a command runs, the console's input belongs to the program, so a Ctrl+Z key would only reach it as a character. When the pane runs Nebula and a command is between its OSC 133 C and D marks, the page doesn't send the key: it asks `suspend_foreground`, which sets `Local\NebulaTerminal.Suspend.<pid>`, an event the interactive shell creates at startup. The shell waits for each program with `WaitForMultipleObjects` on the process and that event, so nothing polls. When the event fires, it suspends the program's threads and its children's, makes them a stopped job, and the rest of the command line doesn't run. If the shell doesn't listen (another shell, an older Nebula), the key goes through as usual.
@@ -237,6 +245,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `paneLog.ts` | Logging a pane: finished lines read from xterm.js's buffer, a second at a time. |
 | `screens.ts` | Each pane's last screen in IndexedDB, for restored sessions. |
 | `tabWatch.ts` | Watching a tab for output or for silence. |
+| `highlights.ts` | Highlights: the patterns, and the decorations put on each line as its line feed is parsed. |
 | `looks.ts` | What a window draws with: each profile's own theme, font and size, and the red accent of admin windows. |
 | `windowKind.ts`, `quickShortcut.ts` | Whether this page is the quick terminal, and its shortcut: recorded by physical key, shown as the keyboard layout prints it. |
 | `filePaths.ts` | Finding file paths in a line of output, with the line and column after them. Only shapes; `files.rs` keeps the ones that exist. |
@@ -262,7 +271,7 @@ The loading screen is plain HTML in `index.html`, styled by `public/splash.css`,
 
 The screen's styles live in a file because Tauri gives every `<style>` element of the page a CSP nonce. With a nonce in `style-src`, browsers ignore `'unsafe-inline'`, and the styles xterm.js adds at run time would be blocked.
 
-When Settings → Workspaces names a workspace to open at startup, the main window opens its tabs instead of the last session; a workspace deleted since then is ignored. When a session with several tabs is restored, only the tab in front starts its shells at first. The others start once the loading screen is gone, one tab every 120 ms, or as soon as they're shown.
+When Settings → Behavior → Workspaces names a workspace to open at startup, the main window opens its tabs instead of the last session; a workspace deleted since then is ignored. When a session with several tabs is restored, only the tab in front starts its shells at first. The others start once the loading screen is gone, one tab every 120 ms, or as soon as they're shown.
 
 ### Split layouts
 

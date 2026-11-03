@@ -1,13 +1,13 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, profiles with their own look, SSH connections, workspaces, a quick terminal, images, pane zoom, saved commands with blanks, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, pinned tabs, profiles with their own look, SSH connections, workspaces that start commands, a quick terminal, images, pane zoom, saved commands with blanks, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, highlights, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (2.4)
+## Next (2.5)
 
-- **Pinned tabs:** a tab kept on the left that a stray `Ctrl+Shift+W` doesn't close.
-- **Commands in workspaces:** a workspace that also starts `npm run dev` in one pane and `git status` in another.
-- **Panes and tabs swap places:** move a pane to a tab of its own, or bring a tab into the one in front as a split.
-- **Highlights:** words like `error` or `FAILED` in color in every pane, and a notification when a line you chose shows up.
+- **Mark mode:** select and copy text with the keyboard alone, as in Windows Terminal.
+- **Drop a tab onto a pane:** split that pane with the tab, on the side you drop it.
+- **`imgcat` in Nebula:** show an image file right in the terminal.
+- **SSH that reconnects:** a dropped connection tries again on its own, with a countdown you can cancel.
 - **The winget package:** `winget install Awizz.NebulaTerminal`, once Microsoft's reviewers get to it. Scoop already works (see the README).
 
 ## Later

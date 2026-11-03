@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.4.0
+
+Pinned tabs, workspaces that start commands, panes and tabs that trade places, and highlights.
+
+### Added
+
+- pinned tabs: Pin tab, in a tab's right-click menu or the palette, keeps it on the left with a pin for a close button. `Ctrl+Shift+W` and Close other tabs leave it alone until you unpin it
+- commands in workspaces: Settings → Behavior → Workspaces → Commands gives each pane a command to run when the workspace opens, `npm run dev` in one and `git status` in another
+- move a pane to a new tab, from its right-click menu or the palette, and move another tab into the one in front as a split, from that tab's menu. The shells keep running
+- highlights: Settings → Terminal → Highlights colors words like `error` or `FAILED` in every pane, or a regular expression between slashes, with a mark by the scrollbar. Each can notify you when it shows up in a tab you're not looking at
+
 ## 2.3.0
 
 Restored panes that show their last output, saved commands with blanks to fill in, logging a pane to a file, and watching a tab.
@@ -18,7 +29,7 @@ Nebula in Windows Terminal, a workspace at startup, copy with colors and a tab s
 ### Added
 
 - Nebula in Windows Terminal: Settings → Behavior → Windows adds a Nebula profile to Windows Terminal, for people who live there. It's off until you turn it on, keeps the settings you give it in Windows Terminal, and goes away when you uninstall
-- a workspace at startup: Settings → Workspaces → At startup, open picks a saved workspace for the main window, instead of the tabs you had last time
+- a workspace at startup: Settings → Behavior → Workspaces → At startup, open picks a saved workspace for the main window, instead of the tabs you had last time
 - copy with colors: the right-click menu and the palette copy a selection as HTML next to the plain text, so output pasted into Word, Outlook or a chat keeps its colors
 - tab switcher: `Ctrl+Shift+Space` lists the open tabs; type a few letters of a tab's name, folder or shell and press Enter
 
