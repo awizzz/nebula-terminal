@@ -21,6 +21,7 @@ import { previewSession } from "../preview-session";
 import { startLog, type PaneLog } from "../paneLog";
 import { commandInput } from "../savedCommands";
 import { startHighlights } from "../highlights";
+import { startMarkMode, type MarkMode } from "../markMode";
 import { folderParts } from "../recentFolders";
 import { drawsText } from "../splash";
 import { parseProgress, type Progress } from "../progress";
@@ -209,6 +210,7 @@ export default function TerminalPane({
   const [block, setBlock] = useState<{ top: number; height: number } | null>(null);
   /** The file this pane logs to, while it does. */
   const [logFile, setLogFile] = useState<{ name: string; path: string } | null>(null);
+  const [marking, setMarking] = useState(false);
   const stopLogRef = useRef<() => void>(() => undefined);
   const blockActionsRef = useRef<{ command: () => string; output: () => string; rerun: () => void }>({ command: () => "", output: () => "", rerun: () => undefined });
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -684,7 +686,30 @@ export default function TerminalPane({
       if (preferencesRef.current.copyOnSelect) copy();
     });
 
+    // Mark mode has the keyboard to itself: nothing reaches the shell meanwhile.
+    let mark: MarkMode | undefined;
+    const startMarking = () => {
+      if (mark) return;
+      mark = startMarkMode(terminal, copy, () => {
+        mark = undefined;
+        if (!disposed) setMarking(false);
+      });
+      setMarking(true);
+      terminal.focus();
+    };
+    const leaveMark = () => mark?.end();
+    host.addEventListener("mousedown", leaveMark, true);
+    const blurDisposable = terminal.textarea ? (() => {
+      const textarea = terminal.textarea!;
+      textarea.addEventListener("blur", leaveMark);
+      return { dispose: () => textarea.removeEventListener("blur", leaveMark) };
+    })() : undefined;
+
     terminal.attachCustomKeyEventHandler((event) => {
+      if (mark) {
+        if (event.type === "keydown") mark.key(event);
+        return false;
+      }
       if (event.type !== "keydown") return true;
       // Windows conventions: Ctrl+C copies when text is selected and interrupts otherwise; Ctrl+V pastes.
       if (isControlLetter(event, "c") && terminal.hasSelection()) {
@@ -780,6 +805,7 @@ export default function TerminalPane({
     };
 
     const unregister = registerPane(paneId, {
+      markMode: startMarking,
       screen: () => serializer.serialize({ scrollback: 1_000, excludeAltBuffer: true, excludeModes: true }),
       startLog: (name: string) => void startLogging(name),
       stopLog: stopLogging,
@@ -837,6 +863,9 @@ export default function TerminalPane({
     return () => {
       stopLogging();
       highlights.dispose();
+      leaveMark();
+      host.removeEventListener("mousedown", leaveMark, true);
+      blurDisposable?.dispose();
       disposed = true;
       unregister();
       observer.disconnect();
@@ -1037,12 +1066,18 @@ export default function TerminalPane({
       className={`terminal ${focused ? "is-focused" : ""}`}
       style={{ padding: preferences.terminalPadding }}
       data-state={connectionState}
+      data-mark-mode={marking || undefined}
       aria-label={`${profile.name} terminal`}
       onMouseDown={onFocus}
     >
       <div ref={hostRef} className="terminal__host" />
+      {marking && (
+        <div className="terminal__chip terminal__mark" role="status">
+          Mark mode: arrows move, Shift selects, <kbd>Enter</kbd> copies, <kbd>Esc</kbd> leaves
+        </div>
+      )}
       {logFile && (
-        <div className="terminal__log" role="status" title={`Logging to ${logFile.path}`} onMouseDown={(event) => event.stopPropagation()}>
+        <div className="terminal__chip terminal__log" role="status" title={`Logging to ${logFile.path}`} onMouseDown={(event) => event.stopPropagation()}>
           <span className="terminal__log-dot" aria-hidden="true" />
           <span className="terminal__log-name">{logFile.name}</span>
           <button type="button" title="Stop logging" aria-label="Stop logging" onClick={() => { stopLogRef.current(); terminalRef.current?.focus(); }}><X size={12} strokeWidth={2} /></button>

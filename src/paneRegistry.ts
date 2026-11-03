@@ -40,6 +40,8 @@ export interface PaneHandle {
   screen: () => string;
   /** Takes the shell back after a move that failed. */
   undoDetach: () => void;
+  /** Selecting with the keyboard: arrows, Shift to extend, Enter to copy. */
+  markMode: () => void;
   /** Asks where, then writes what the pane prints there as plain text until stopped. */
   startLog: (name: string) => void;
   stopLog: () => void;
