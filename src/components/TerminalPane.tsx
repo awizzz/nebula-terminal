@@ -20,11 +20,12 @@ import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText,
 import { previewSession } from "../preview-session";
 import { startLog, type PaneLog } from "../paneLog";
 import { commandInput } from "../savedCommands";
+import { startHighlights } from "../highlights";
 import { folderParts } from "../recentFolders";
 import { drawsText } from "../splash";
 import { parseProgress, type Progress } from "../progress";
 import { resolveTheme, xtermTheme } from "../themes";
-import type { AppearancePreferences, MovedPane, PtyEvent, TerminalProfile } from "../types";
+import type { AppearancePreferences, Highlight, MovedPane, PtyEvent, TerminalProfile } from "../types";
 
 interface TerminalPaneProps {
   paneId: string;
@@ -64,6 +65,8 @@ interface TerminalPaneProps {
   onProgress?: (progress: Progress | null) => void;
   /** The file this pane started logging to, or null once it stopped. */
   onLog?: (path: string | null) => void;
+  /** A highlight that asks for a notification showed up in this line. */
+  onHighlight?: (highlight: Highlight, line: string) => void;
   onClose: () => void;
 }
 
@@ -177,6 +180,7 @@ export default function TerminalPane({
   onReady,
   onProgress,
   onLog,
+  onHighlight,
   onClose,
 }: TerminalPaneProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -194,7 +198,7 @@ export default function TerminalPane({
   const restoredRef = useRef(restoredScreen);
   const startCommandRef = useRef(startCommand);
   startCommandRef.current = startCommand;
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog });
+  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -213,7 +217,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog };
+  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -736,6 +740,8 @@ export default function TerminalPane({
     };
     window.addEventListener("nebula:insert-paths", insertDropped);
 
+    const highlights = startHighlights(terminal, () => preferencesRef.current.highlights, (highlight, line) => callbacksRef.current.onHighlight?.(highlight, line));
+
     // Logging to a file: Rust keeps the file, this side sends it finished lines.
     let log: { id: number; writer: PaneLog } | undefined;
     const stopLogging = () => {
@@ -830,6 +836,7 @@ export default function TerminalPane({
 
     return () => {
       stopLogging();
+      highlights.dispose();
       disposed = true;
       unregister();
       observer.disconnect();

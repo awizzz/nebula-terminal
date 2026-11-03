@@ -9,7 +9,8 @@ import { globalShortcutFromEvent, globalShortcutLabel, keyboardLayout } from "..
 import { shortcutFromEvent } from "../keys";
 import { defaultFontFamily, defaultKeybindings, exportAppearance, importAppearance, keybindingLabels } from "../preferences";
 import { groupProfiles, profileGroup, profileGroupLabels } from "../profiles";
-import { accentSwatches, resolveTheme, themes, type TerminalTheme } from "../themes";
+import { accentSwatches, resolveTheme, tabColors, themes, type TerminalTheme } from "../themes";
+import { highlightPattern, MAX_HIGHLIGHTS } from "../highlights";
 import { withLook } from "../looks";
 import { MAX_CUSTOM_THEMES, parseColorSchemes, sortOutSchemes } from "../themeImport";
 import Keys from "./Keys";
@@ -851,6 +852,41 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                 <Group title="Commands">
                   <Row label="Command blocks" description="Point at a finished command to see it as one block and copy it, copy its output or run it again. Works with shell integration: Nebula, PowerShell, Git Bash and WSL.">
                     <Switch label="Command blocks" checked={preferences.commandBlocks} onChange={(value) => patch("commandBlocks", value)} />
+                  </Row>
+                </Group>
+                <Group title="Highlights" description="Words colored in every pane as they're printed, like error or FAILED. Write /E\d{4}/ for a regular expression.">
+                  {preferences.highlights.map((highlight, index) => {
+                    const change = (update: Partial<typeof highlight>) => patch("highlights", preferences.highlights.map((candidate) => candidate.id === highlight.id ? { ...candidate, ...update } : candidate));
+                    const broken = highlight.text.trim() !== "" && !highlightPattern(highlight.text);
+                    return (
+                      <div key={highlight.id} className="row highlight-row">
+                        <input
+                          className={`field field--mono ${broken ? "is-invalid" : ""}`}
+                          value={highlight.text}
+                          maxLength={200}
+                          spellCheck={false}
+                          placeholder="error"
+                          aria-label={`Highlight ${index + 1}`}
+                          aria-invalid={broken}
+                          title={broken ? "This regular expression doesn't work" : undefined}
+                          autoFocus={!highlight.text}
+                          onChange={(event) => change({ text: event.target.value })}
+                        />
+                        <div className="highlight-row__colors" role="radiogroup" aria-label={`Color of highlight ${index + 1}`}>
+                          {tabColors.map((color) => (
+                            <button key={color.id} type="button" role="radio" className="menu__swatch" style={{ "--swatch": color.value } as React.CSSProperties} aria-checked={highlight.color === color.id} aria-label={color.name} title={color.name} onClick={() => change({ color: color.id })} />
+                          ))}
+                        </div>
+                        <label className="highlight-row__notify">
+                          <Switch label={`Notify for highlight ${index + 1}`} checked={highlight.notify} onChange={(value) => change({ notify: value })} />
+                          <span>Notify</span>
+                        </label>
+                        <button className="icon-button" type="button" aria-label={`Remove highlight ${index + 1}`} title="Remove" onClick={() => patch("highlights", preferences.highlights.filter((candidate) => candidate.id !== highlight.id))}><Trash size={15} strokeWidth={1.8} /></button>
+                      </div>
+                    );
+                  })}
+                  <Row label={preferences.highlights.length ? "Add another" : "Highlight a word"} description="Notify tells you when it shows up in a tab you're not looking at.">
+                    <button className="button" type="button" disabled={preferences.highlights.length >= MAX_HIGHLIGHTS} onClick={() => patch("highlights", [...preferences.highlights, { id: crypto.randomUUID(), text: "", color: "red", notify: false }])}><Plus size={14} />Add highlight</button>
                   </Row>
                 </Group>
                 <Group title="Accessibility">

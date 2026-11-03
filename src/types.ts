@@ -108,6 +108,15 @@ export interface KeybindingPreferences {
 export type StartingFolder = "home" | "desktop" | "documents" | "custom";
 
 /** A command kept to run again from the palette. */
+export interface Highlight {
+  id: string;
+  /** The text to find in any case, or a regular expression between slashes. */
+  text: string;
+  color: TabColor;
+  /** A notification when it shows up in a tab you're not looking at. */
+  notify: boolean;
+}
+
 export interface SavedCommand {
   id: string;
   name: string;
@@ -196,6 +205,8 @@ export interface AppearancePreferences {
   /** Draw =>, != and the like as one symbol in fonts that have ligatures. */
   fontLigatures: boolean;
   savedCommands: SavedCommand[];
+  /** Words colored in every pane as they're printed, some with a notification. */
+  highlights: Highlight[];
   /** xterm's accessibility tree, which Narrator and NVDA read. */
   screenReaderMode: boolean;
   /** With a Windows contrast theme on, terminals wear High Contrast Dark or Light. */
