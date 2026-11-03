@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ChevronDown, ChevronsUp, Eye, Hourglass, Pin, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
@@ -35,6 +36,8 @@ interface TitlebarProps {
   /** A tab dragged over the panes in front, or away from them (null). True when it would split one there. */
   onDockOver?: (tabId: string, point: { x: number; y: number } | null) => boolean;
   onDock?: (tabId: string) => void;
+  /** Tabs on the side: the column the tab list goes in, instead of the title bar. */
+  sidebar?: HTMLElement | null;
   onNewTab: () => void;
   onOpenProfileMenu: (x: number, y: number) => void;
   onTabContextMenu: (tabId: string, x: number, y: number) => void;
@@ -137,6 +140,7 @@ export default function Titlebar({
   onTearOff,
   onDockOver,
   onDock,
+  sidebar,
   onNewTab,
   onOpenProfileMenu,
   onTabContextMenu,
@@ -156,6 +160,7 @@ export default function Titlebar({
   const startDrag = (event: ReactPointerEvent, tabId: string) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest(".tab__close, .tab__rename")) return;
     const startX = event.clientX;
+    const vertical = Boolean(sidebar);
     let dragging = false;
     let outside = false;
     let docked = false;
@@ -170,11 +175,13 @@ export default function Titlebar({
       }
       const strip = stripRef.current?.getBoundingClientRect();
       const inWindow = moveEvent.clientY >= -8 && moveEvent.clientX >= -8 && moveEvent.clientX <= window.innerWidth + 8 && moveEvent.clientY <= window.innerHeight + 8;
-      const overPanes = fromBackground && inWindow && moveEvent.clientY > (strip?.bottom ?? 40) + 8;
+      // How far the pointer went from the tabs toward the panes: down, or right of a side list.
+      const away = vertical ? moveEvent.clientX - (strip?.right ?? 220) : moveEvent.clientY - (strip?.bottom ?? 40);
+      const overPanes = fromBackground && inWindow && away > 8;
       docked = overPanes && (onDockOver?.(tabId, { x: moveEvent.clientX, y: moveEvent.clientY }) ?? false);
       if (!docked) onDockOver?.(tabId, null);
-      // Well below the tabs, or out of the window: the tab is leaving it.
-      const leaving = !docked && onTearOff !== undefined && (moveEvent.clientY > (strip?.bottom ?? 40) + 48 || !inWindow);
+      // Well into the panes, or out of the window: the tab is leaving it.
+      const leaving = !docked && onTearOff !== undefined && (away > 48 || !inWindow);
       if (leaving !== outside) {
         outside = leaving;
         setTearingId(leaving ? tabId : null);
@@ -182,7 +189,9 @@ export default function Titlebar({
       if (outside) return;
       const target = [...(stripRef.current?.querySelectorAll<HTMLElement>(".tab[data-tab-id]") ?? [])].find((element) => {
         const rect = element.getBoundingClientRect();
-        return moveEvent.clientX >= rect.left && moveEvent.clientX <= rect.right;
+        return vertical
+          ? moveEvent.clientY >= rect.top && moveEvent.clientY <= rect.bottom
+          : moveEvent.clientX >= rect.left && moveEvent.clientX <= rect.right;
       });
       const targetId = target?.dataset.tabId;
       if (targetId && targetId !== tabId) onMoveTab(tabId, targetId);
@@ -213,15 +222,10 @@ export default function Titlebar({
     void (action === "minimize" ? win.minimize() : action === "maximize" ? win.toggleMaximize() : win.close());
   };
 
-  return (
-    <header className="titlebar">
-      {administrator && (
-        <span className="admin-badge" data-tauri-drag-region title="Every shell in this window runs as administrator">
-          <ShieldAlert size={14} strokeWidth={2} aria-hidden="true" />
-          Administrator
-        </span>
-      )}
-      <div ref={stripRef} className="tab-strip" role="tablist" aria-label="Terminal tabs" data-tauri-drag-region>
+  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+  const activeTitle = activeTab ? tabTitle(activeTab) : "";
+  const strip = (
+      <div ref={stripRef} className="tab-strip" role="tablist" aria-label="Terminal tabs" aria-orientation={sidebar ? "vertical" : "horizontal"} data-tauri-drag-region={sidebar ? undefined : true}>
         {tabs.map((tab, index) => {
           const pane = tab.panes.find((candidate) => candidate.id === tab.activePaneId) ?? tab.panes[0];
           const active = tab.id === activeTabId;
@@ -324,6 +328,18 @@ export default function Titlebar({
           </button>
         </div>
       </div>
+  );
+
+  return (
+    <header className="titlebar">
+      {administrator && (
+        <span className="admin-badge" data-tauri-drag-region title="Every shell in this window runs as administrator">
+          <ShieldAlert size={14} strokeWidth={2} aria-hidden="true" />
+          Administrator
+        </span>
+      )}
+      {sidebar ? createPortal(strip, sidebar) : strip}
+      {sidebar && <div className="titlebar__title" data-tauri-drag-region>{activeTitle}</div>}
 
       <div className="titlebar__actions">
         <button className="icon-button" type="button" onClick={onOpenPalette} aria-label="Command palette" title={`Command palette (${paletteShortcut})`}><Search size={15} strokeWidth={1.8} /></button>

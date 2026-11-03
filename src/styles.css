@@ -375,6 +375,21 @@ kbd { font: inherit; }
 .window-controls .window-controls__close:active { background: color-mix(in srgb, var(--danger) 80%, transparent); }
 .window-controls svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
 
+/* Tabs on the side: the tab list in a column of its own, left of the panes. */
+.app.tabs-side { grid-template-columns: 220px minmax(0, 1fr); }
+.app.tabs-side > .titlebar { grid-column: 1 / -1; }
+.app.tabs-side > .workspace { grid-column: 2; }
+.titlebar__title { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; padding-left: 16px; overflow: hidden; color: var(--text-2); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.tab-sidebar { grid-column: 1; grid-row: 2; min-height: 0; overflow-y: auto; padding: 4px 8px 12px; }
+.tab-sidebar .tab-strip { flex-direction: column; align-items: stretch; gap: 2px; padding: 0; overflow: visible; }
+.tab-sidebar .tab { flex: none; min-width: 0; height: 32px; border-radius: var(--radius-m); animation: fade-in var(--dur-2) var(--ease-out); }
+.tab-sidebar .tab.is-active { background: var(--hover-strong); }
+.tab-sidebar .tab.is-active::before, .tab-sidebar .tab.is-active::after, .tab-sidebar .tab .tab__button::before { display: none; }
+.tab-sidebar .tab.is-closing { animation: tab-out-side 150ms var(--ease-standard) forwards; }
+.tab-sidebar .tab__color, .tab-sidebar .tab.is-active .tab__color { top: 8px; bottom: 8px; left: 0; right: auto; width: 3px; height: auto; border-radius: 0 2px 2px 0; }
+.tab-sidebar .new-tab { height: 32px; margin: 6px 0 0; padding: 0; }
+@keyframes tab-out-side { to { opacity: 0; height: 0; } }
+
 /* ---------- Workspace and panes ---------- */
 
 .workspace {
