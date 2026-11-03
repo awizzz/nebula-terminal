@@ -628,6 +628,9 @@ export default function App() {
     return () => void stop.then((unlisten) => unlisten());
   }, [nativeHost]);
 
+  /** The column the tab list goes in when tabs are on the side. */
+  const [sidebar, setSidebar] = useState<HTMLElement | null>(null);
+
   /** Typing in every tab of the window, on top of a tab's own "every pane". Not saved. */
   const [broadcastAll, setBroadcastAll] = useState(false);
   const broadcastAllRef = useRef(broadcastAll);
@@ -1762,8 +1765,9 @@ export default function App() {
   const showImage = preferences.backgroundMode === "image" && preferences.backgroundImage;
   const noShells = ready && nativeHost && !profiles.some((profile) => profile.available);
 
+  const tabsOnSide = preferences.tabPosition === "side" && !isQuickTerminal;
   return (
-    <main className={`app ${ready ? "is-ready" : ""}`} data-quick={isQuickTerminal ? quickMotion : undefined}>
+    <main className={`app ${ready ? "is-ready" : ""} ${tabsOnSide ? "tabs-side" : ""}`} data-quick={isQuickTerminal ? quickMotion : undefined}>
       {showImage && <div className="app__image" style={{ backgroundImage: `url("${preferences.backgroundImage}")`, opacity: preferences.backgroundImageOpacity }} />}
       <Titlebar
         tabs={tabs}
@@ -1786,6 +1790,7 @@ export default function App() {
         onTearOff={nativeHost ? tearOffTab : undefined}
         onDockOver={dockOver}
         onDock={dockTab}
+        sidebar={tabsOnSide ? sidebar : null}
         onNewTab={() => openNewTab()}
         onOpenProfileMenu={(x, y) => setMenu({ kind: "profiles", x, y })}
         onTabContextMenu={(tabId, x, y) => setMenu({ kind: "tab", tabId, x, y })}
@@ -1796,6 +1801,7 @@ export default function App() {
         onOpenSettings={() => openSettings()}
       />
 
+      {tabsOnSide && <aside className="tab-sidebar" ref={setSidebar} aria-label="Tabs" />}
       <div className="workspace">
         {tabs.map((tab) => {
           const visible = tab.id === activeTabId;

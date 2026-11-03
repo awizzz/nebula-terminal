@@ -78,6 +78,7 @@ export const defaultPreferences: AppearancePreferences = {
   backgroundImageOpacity: 0.28,
   animationLevel: "full",
   tabDensity: "comfortable",
+  tabPosition: "top",
   defaultProfileId: "",
   startingFolder: "home",
   workingDirectory: "",
@@ -189,6 +190,7 @@ export function sanitizePreferences(value: unknown): AppearancePreferences {
     backgroundImageOpacity: numberIn(value.backgroundImageOpacity, defaultPreferences.backgroundImageOpacity, 0.05, 0.85),
     animationLevel: oneOf(value.animationLevel, ["full", "reduced", "off"], defaultPreferences.animationLevel),
     tabDensity: oneOf(value.tabDensity, ["comfortable", "compact"], defaultPreferences.tabDensity),
+    tabPosition: oneOf(value.tabPosition, ["top", "side"], defaultPreferences.tabPosition),
     defaultProfileId: stringFrom(value.defaultProfileId, defaultPreferences.defaultProfileId, 80),
     // Before 1.2 a typed folder was the only choice; keep it for people who set one.
     startingFolder: oneOf(value.startingFolder, ["home", "desktop", "documents", "custom"], typeof value.workingDirectory === "string" && value.workingDirectory.trim() ? "custom" : defaultPreferences.startingFolder),

@@ -843,6 +843,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Tabs">
                     <Segmented label="Tab size" value={preferences.tabDensity} onChange={(value) => patch("tabDensity", value)} options={[{ value: "comfortable", label: "Normal" }, { value: "compact", label: "Compact" }]} />
                   </Row>
+                  <Row label="Where tabs go" description="On the side, tabs are listed down the left of the window, easier to read when there are many.">
+                    <Segmented label="Where tabs go" value={preferences.tabPosition} onChange={(value) => patch("tabPosition", value)} options={[{ value: "top", label: "Top" }, { value: "side", label: "Side" }]} />
+                  </Row>
                   <Row label="Animations" description="Reduced keeps fades and removes movement.">
                     <Segmented label="Animations" value={preferences.animationLevel} onChange={(value) => patch("animationLevel", value)} options={[{ value: "full", label: "Full" }, { value: "reduced", label: "Reduced" }, { value: "off", label: "Off" }]} />
                   </Row>

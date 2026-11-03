@@ -81,6 +81,7 @@ export type BackgroundMode = "mica" | "solid" | "image";
 export type AnimationLevel = "full" | "reduced" | "off";
 export type CursorStyle = "block" | "bar" | "underline";
 export type TabDensity = "comfortable" | "compact";
+export type TabPosition = "top" | "side";
 /** "vertical" puts panes side by side (split right), "horizontal" stacks them (split down). */
 export type SplitDirection = "horizontal" | "vertical";
 export type TabColor = "red" | "orange" | "yellow" | "green" | "teal" | "blue" | "purple" | "pink";
@@ -156,6 +157,8 @@ export interface AppearancePreferences {
   backgroundImageOpacity: number;
   animationLevel: AnimationLevel;
   tabDensity: TabDensity;
+  /** Tabs across the title bar, or in a list down the left of the window. */
+  tabPosition: TabPosition;
   defaultProfileId: string;
   startingFolder: StartingFolder;
   /** The folder typed in Settings, used when `startingFolder` is "custom". */
