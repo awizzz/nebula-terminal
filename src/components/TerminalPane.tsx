@@ -44,12 +44,16 @@ interface TerminalPaneProps {
   startCommand?: string;
   /** Nothing typed, pasted or broadcast reaches the shell. */
   readOnly?: boolean;
+  /** Points added to the font size for this pane alone. */
+  fontDelta?: number;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
   searchRequest?: { query: string; nonce: number; backwards?: boolean; caseSensitive?: boolean; wholeWord?: boolean; regex?: boolean };
   onFocus: () => void;
   onFontSizeDelta: (delta: number) => void;
+  /** Ctrl+Shift+Wheel: this pane's text alone. */
+  onPaneZoom?: (delta: number) => void;
   onTitleChange: (title: string) => void;
   onActivity: () => void;
   /** Every bit of output from the shell, seen or not. */
@@ -175,12 +179,14 @@ export default function TerminalPane({
   restoredScreen,
   startCommand,
   readOnly = false,
+  fontDelta = 0,
   preferences,
   focused,
   visible,
   searchRequest,
   onFocus,
   onFontSizeDelta,
+  onPaneZoom,
   onTitleChange,
   onActivity,
   onOutput,
@@ -214,7 +220,10 @@ export default function TerminalPane({
   startCommandRef.current = startCommand;
   const readOnlyRef = useRef(readOnly);
   readOnlyRef.current = readOnly;
-  const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight });
+  const fontSize = Math.min(40, Math.max(6, preferences.fontSize + fontDelta));
+  const fontSizeRef = useRef(fontSize);
+  fontSizeRef.current = fontSize;
+  const callbacksRef = useRef({ onFontSizeDelta, onPaneZoom, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
   const [connectionState, setConnectionState] = useState<ConnectionState>("starting");
@@ -239,7 +248,7 @@ export default function TerminalPane({
   visibleRef.current = visible;
   preferencesRef.current = preferences;
   startInRef.current = startIn;
-  callbacksRef.current = { onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight };
+  callbacksRef.current = { onFontSizeDelta, onPaneZoom, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight };
 
   const theme = useMemo(() => resolveTheme(preferences.themeId, preferences.customThemes), [preferences.customThemes, preferences.themeId]);
   const translucent = preferences.terminalOpacity < 1;
@@ -265,7 +274,7 @@ export default function TerminalPane({
       cursorStyle: preferencesRef.current.cursorStyle,
       cursorInactiveStyle: "outline",
       fontFamily: withSymbols(preferencesRef.current.fontFamily),
-      fontSize: preferencesRef.current.fontSize,
+      fontSize: fontSizeRef.current,
       lineHeight: preferencesRef.current.lineHeight,
       wordSeparator: preferencesRef.current.wordSeparators,
       scrollback: preferencesRef.current.scrollback,
@@ -788,7 +797,9 @@ export default function TerminalPane({
       if (!event.ctrlKey) return;
       event.preventDefault();
       event.stopPropagation();
-      callbacksRef.current.onFontSizeDelta(event.deltaY < 0 ? 1 : -1);
+      const delta = event.deltaY < 0 ? 1 : -1;
+      if (event.shiftKey) callbacksRef.current.onPaneZoom?.(delta);
+      else callbacksRef.current.onFontSizeDelta(delta);
     };
     host.addEventListener("wheel", handleWheel, { passive: false, capture: true });
 
@@ -955,7 +966,7 @@ export default function TerminalPane({
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.options.fontFamily = withSymbols(preferences.fontFamily);
-    terminal.options.fontSize = preferences.fontSize;
+    terminal.options.fontSize = fontSize;
     terminal.options.lineHeight = preferences.lineHeight;
     terminal.options.cursorStyle = preferences.cursorStyle;
     terminal.options.cursorBlink = preferences.cursorBlink;
@@ -972,7 +983,7 @@ export default function TerminalPane({
         // Hidden panes are fitted again when they become visible.
       }
     });
-  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, preferences.fontSize, preferences.lineHeight, preferences.scrollback, preferences.screenReaderMode, preferences.wordSeparators]);
+  }, [colors, translucent, preferences.animationLevel, preferences.cursorBlink, preferences.cursorStyle, preferences.fontFamily, fontSize, preferences.lineHeight, preferences.scrollback, preferences.screenReaderMode, preferences.wordSeparators]);
 
   // Sixel and iTerm2 images. The decoder is loaded the first time a pane wants it.
   useEffect(() => {

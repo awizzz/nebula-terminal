@@ -261,6 +261,8 @@ export interface TerminalPaneModel {
   readOnly?: boolean;
   /** The shell's latest title. */
   title?: string;
+  /** Points added to the font size for this pane alone. Not saved. */
+  fontDelta?: number;
 }
 
 export type TabWatch = "output" | "silence";
