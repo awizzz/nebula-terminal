@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Globe, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Globe, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, Undo2, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -13,7 +13,7 @@ import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, isPreferencesKey, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
-import { clearSession, forgetWindowSession, loadSession, pinnedFirst, restoreSnapshot, saveSession, saveWindowSession, takeWindowSessions } from "./session";
+import { clearSession, forgetWindowSession, loadSession, pinnedFirst, restoreSnapshot, snapshotOf, saveSession, saveWindowSession, takeWindowSessions } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, sshTarget, sshTargetProfile, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
@@ -30,10 +30,10 @@ import { MAX_PANES, computeLayout, dividerFor, evenLayout, findNeighbor, insertB
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
-import { forgetScreens, pruneScreens, saveScreens, screenKey, withScreens } from "./screens";
+import { forgetScreens, pruneScreens, restoredLine, saveScreens, screenKey, withScreens } from "./screens";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
-import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Highlight, Launchers, SavedCommand, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
+import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Highlight, Launchers, SavedCommand, SessionSnapshot, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
 const SettingsPanel = lazy(() => import("./components/SettingsPanel"));
 const CommandPalette = lazy(() => import("./components/CommandPalette"));
@@ -88,6 +88,8 @@ function closable(tabs: TerminalTab[]): string[] {
 }
 
 const TAB_CLOSE_MS = 150;
+/** Closed tabs kept to open again. */
+const MAX_CLOSED_TABS = 10;
 /** Smallest pane a split or a divider drag may produce, in pixels. */
 const MIN_PANE_WIDTH = 120;
 const MIN_PANE_HEIGHT = 72;
@@ -165,6 +167,8 @@ function cleanTitle(title: string, profile: TerminalProfile): string {
 export default function App() {
   const nativeHost = isTauri();
   const [profiles, setProfiles] = useState<TerminalProfile[]>(nativeHost ? [] : previewProfiles);
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
   // An admin window starts with the settings of the window that opened it.
   const [preferences, setPreferences] = useState<AppearancePreferences>(() => {
     const launch = administratorLaunch();
@@ -206,7 +210,9 @@ export default function App() {
   const deferredTabsRef = useRef(deferredTabs);
   deferredTabsRef.current = deferredTabs;
   const hydratedRef = useRef(false);
-  const removeTabsRef = useRef<(ids: string[]) => void>(() => undefined);
+  const removeTabsRef = useRef<(ids: string[], remember?: boolean) => void>(() => undefined);
+  /** Tabs closed lately, the newest last, with what each pane showed, to open again. */
+  const closedTabsRef = useRef<{ title: string; snapshot: SessionSnapshot; screens: string[]; closedAt: number }[]>([]);
   const closingWindowRef = useRef(false);
   /** Tabs playing their close animation; they are gone as far as every action is concerned. */
   const closingRef = useRef(new Set<string>());
@@ -770,7 +776,7 @@ export default function App() {
       setNotice(`The tab couldn't be moved: ${String(error)}`);
       return;
     }
-    removeTabsRef.current([tabId]);
+    removeTabsRef.current([tabId], false);
   }, [nativeHost]);
 
   const tearOffTab = useCallback((tabId: string) => {
@@ -930,11 +936,22 @@ export default function App() {
     return () => stops.forEach((stop) => void stop.then((unlisten) => unlisten()));
   }, [hideQuickTerminal, nativeHost]);
 
-  const removeTabs = useCallback((ids: string[]) => {
+  const removeTabs = useCallback((ids: string[], remember = true) => {
     const closingIds = closingRef.current;
     const remove = new Set(ids.filter((id) => !closingIds.has(id)));
     if (remove.size === 0) return;
     const current = tabsRef.current;
+    if (remember) {
+      for (const tab of current.filter((candidate) => remove.has(candidate.id))) {
+        closedTabsRef.current.push({
+          title: tabTitle(tab),
+          snapshot: snapshotOf([tab], tab.id, { commands: true }),
+          screens: paneIds(tab.layout).map((id) => getPane(id)?.screen() ?? ""),
+          closedAt: Date.now(),
+        });
+      }
+      closedTabsRef.current.splice(0, Math.max(0, closedTabsRef.current.length - MAX_CLOSED_TABS));
+    }
     const live = current.filter((tab) => !closingIds.has(tab.id) && !remove.has(tab.id));
     if (live.length === 0) {
       if (nativeHost && !isQuickTerminal) {
@@ -970,6 +987,20 @@ export default function App() {
     else window.setTimeout(finish, TAB_CLOSE_MS);
   }, [closeWindow, hideQuickTerminal, nativeHost, resolveProfile]);
   removeTabsRef.current = removeTabs;
+
+  /** The tab closed last, its shells started again under what they showed. */
+  const reopenClosedTab = useCallback(() => {
+    const closed = closedTabsRef.current.pop();
+    const tab = closed && restoreSnapshot(closed.snapshot, profilesRef.current)?.tabs[0];
+    if (!closed || !tab) return setNotice("No closed tab to open again");
+    paneIds(tab.layout).forEach((id, index) => {
+      const pane = tab.panes.find((candidate) => candidate.id === id);
+      const screen = closed.screens[index];
+      if (pane && screen) pane.screen = screen + restoredLine(closed.closedAt);
+    });
+    setTabs((current) => pinnedFirst([...current, tab]));
+    setActiveTabId(tab.id);
+  }, []);
 
   const closeTab = useCallback((id: string) => {
     if (tabsRef.current.find((tab) => tab.id === id)?.pinned) {
@@ -1453,6 +1484,7 @@ export default function App() {
       { id: "save-command", group: "Saved commands", label: "Save a command…", icon: <Plus size={15} />, keywords: "snippet saved commands", run: () => openSettings("behavior") },
       ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
       { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
+      { id: "reopen-tab", group: "Tabs", label: "Reopen closed tab", icon: <Undo2 size={15} />, keywords: "undo restore closed", shortcut: keys.reopenTab || undefined, run: reopenClosedTab },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
       { id: "next-tab", group: "Tabs", label: "Next tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.nextTab, run: () => cycleTab(1) },
       { id: "previous-tab", group: "Tabs", label: "Previous tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.previousTab, run: () => cycleTab(-1) },
@@ -1524,7 +1556,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder, toggleReadOnly]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder, toggleReadOnly, reopenClosedTab]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1552,6 +1584,7 @@ export default function App() {
       if (action(keys.togglePaneZoom, togglePaneZoom)) return;
       if (action(keys.markMode, () => getPane(activeTab?.activePaneId)?.markMode())) return;
       if (action(keys.toggleBroadcastAll, toggleBroadcastAll)) return;
+      if (action(keys.reopenTab, reopenClosedTab)) return;
       const saved = preferencesRef.current.savedCommands.find((candidate) => candidate.shortcut && matchesShortcut(event, candidate.shortcut));
       if (saved && saved.command.trim()) {
         event.preventDefault();
@@ -1601,7 +1634,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane, runSavedCommand, toggleBroadcastAll]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane, runSavedCommand, toggleBroadcastAll, reopenClosedTab]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {

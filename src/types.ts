@@ -101,6 +101,7 @@ export interface KeybindingPreferences {
   togglePaneZoom: string;
   markMode: string;
   toggleBroadcastAll: string;
+  reopenTab: string;
   findEverywhere: string;
   switchTab: string;
   nextCommand: string;
