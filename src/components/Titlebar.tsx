@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, ChevronsUp, Eye, Hourglass, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
+import { ChevronDown, ChevronsUp, Eye, Hourglass, Pin, Plus, Search, Settings2, ShieldAlert, X } from "lucide-react";
 import ProfileIcon from "./ProfileIcon";
 import { tabColorValue } from "../themes";
 import type { TerminalTab } from "../types";
@@ -28,6 +28,7 @@ interface TitlebarProps {
   onHide?: () => void;
   onSelectTab: (id: string) => void;
   onCloseTab: (id: string) => void;
+  onUnpinTab: (id: string) => void;
   onMoveTab: (fromId: string, toId: string) => void;
   /** A tab dropped outside the window: to another window, or a new one. */
   onTearOff?: (tabId: string) => void;
@@ -128,6 +129,7 @@ export default function Titlebar({
   settingsShortcut,
   onSelectTab,
   onCloseTab,
+  onUnpinTab,
   onMoveTab,
   onTearOff,
   onNewTab,
@@ -246,6 +248,7 @@ export default function Titlebar({
                 draggingId === tab.id && "is-dragging",
                 tearingId === tab.id && "is-tearing",
                 color && "has-color",
+                tab.pinned && "is-pinned",
               ].filter(Boolean).join(" ")}
               style={color ? { "--tab-color": color } as CSSProperties : undefined}
               onPointerDown={(event) => startDrag(event, tab.id)}
@@ -277,9 +280,15 @@ export default function Titlebar({
                   {details}
                 </button>
               )}
-              <button className="tab__close" type="button" tabIndex={-1} onClick={() => onCloseTab(tab.id)} aria-label={`Close ${title}`}>
-                <X size={13} strokeWidth={1.8} />
-              </button>
+              {tab.pinned ? (
+                <button className="tab__close tab__pin" type="button" tabIndex={-1} onClick={() => onUnpinTab(tab.id)} aria-label={`Unpin ${title}`} title="Pinned: click to unpin">
+                  <Pin size={12} strokeWidth={1.8} />
+                </button>
+              ) : (
+                <button className="tab__close" type="button" tabIndex={-1} onClick={() => onCloseTab(tab.id)} aria-label={`Close ${title}`}>
+                  <X size={13} strokeWidth={1.8} />
+                </button>
+              )}
             </div>
           );
         })}

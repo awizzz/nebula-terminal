@@ -9,6 +9,11 @@ const LEGACY_STORAGE_KEYS = ["nebula-terminal.session.v2", "nebula-terminal.sess
 const MAX_TABS = 20;
 const MAX_TITLE = 120;
 
+/** Pinned tabs on the left, each group in its own order. */
+export function pinnedFirst(tabs: TerminalTab[]): TerminalTab[] {
+  return [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)];
+}
+
 /** Where a pane's screen is kept between sessions. Workspaces keep none. */
 export type ScreenKeys = (paneId: string) => string;
 
@@ -29,6 +34,7 @@ export function snapshotOf(tabs: TerminalTab[], activeTabId: string, screens?: S
       title: tab.title,
       customTitle: tab.customTitle,
       color: tab.color,
+      ...(tab.pinned ? { pinned: true } : {}),
       activePaneIndex: Math.max(0, paneIds(tab.layout).indexOf(tab.activePaneId)),
       layout: persistLayout(tab.layout, new Map(tab.panes.map((pane) => [pane.id, pane])), screens),
     })),
@@ -89,6 +95,7 @@ function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, Terminal
     panes,
     layout,
     activePaneId: order[readIndex(saved.activePaneIndex, order.length)]!,
+    ...(saved.pinned === true ? { pinned: true } : {}),
   };
 }
 
@@ -110,6 +117,7 @@ export function restoreSnapshot(value: unknown, profiles: TerminalProfile[]): { 
       .filter((saved): saved is PersistedTab => typeof saved === "object" && saved !== null)
       .map((saved) => restoreTab(saved, available, fallback));
     if (tabs.length === 0) return null;
+    tabs.splice(0, tabs.length, ...pinnedFirst(tabs));
 
     return {
       tabs,
