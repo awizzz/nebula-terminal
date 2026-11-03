@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -26,7 +26,7 @@ import { folderParts, loadRecentFolders, rememberFolder, saveRecentFolders } fro
 import { applySynced, digestOf, loadSyncState, readSyncDocument, saveSyncState, syncDocument } from "./sync";
 import { readableOn } from "./color";
 import { resolveTheme, tabColors, themes } from "./themes";
-import { MAX_PANES, computeLayout, findNeighbor, insertBeside, minimumExtent, nodeAt, normalizeLayout, paneIds, paneLeaf, removePane, renamePanes, resizePair, setSplitSizes, splitPane, type Divider, type FocusDirection, type Rect } from "./layout";
+import { MAX_PANES, computeLayout, dividerFor, evenLayout, findNeighbor, insertBeside, minimumExtent, nodeAt, normalizeLayout, paneIds, paneLeaf, removePane, renamePanes, resizePair, setSplitSizes, splitPane, swapPanes, type Divider, type FocusDirection, type LayoutNode, type Rect } from "./layout";
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
@@ -1219,6 +1219,49 @@ export default function App() {
     if (target) void mergeIntoActiveTab(tabId, target);
   }, [mergeIntoActiveTab]);
 
+  /** The pixel boxes of a tab's panes, as drawn. */
+  const paneRects = (tab: TerminalTab) => {
+    const rects = new Map<string, Rect>();
+    for (const pane of tab.panes) {
+      const box = paneElement(pane.id)?.getBoundingClientRect();
+      if (box) rects.set(pane.id, { x: box.left, y: box.top, width: box.width, height: box.height });
+    }
+    return rects;
+  };
+
+  /** Moves an edge of the pane in front toward `direction` by a twentieth of its split. */
+  const resizeActivePane = useCallback((direction: FocusDirection) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    if (!tab || tab.panes.length < 2 || tab.zoomedPaneId) return false;
+    const found = dividerFor(tab.layout, tab.activePaneId, direction);
+    const split = found && nodeAt(tab.layout, found.path);
+    const divider = found && computeLayout(tab.layout).dividers.find((candidate) => candidate.index === found.index && candidate.path.join(".") === found.path.join("."));
+    const container = document.querySelector<HTMLElement>(".workspace__tab.is-visible");
+    if (!found || split?.type !== "split" || !divider || !container) return true;
+    const across = split.direction === "vertical";
+    const pixels = Math.max(1, across ? divider.splitRect.width * container.clientWidth : divider.splitRect.height * container.clientHeight);
+    const minimum = (node: LayoutNode) => minimumExtent(node, split.direction, across ? MIN_PANE_WIDTH : MIN_PANE_HEIGHT) / pixels;
+    const sizes = resizePair(split.sizes, found.index, found.sign * 0.05, minimum(split.children[found.index]!), minimum(split.children[found.index + 1]!));
+    setTabs((current) => current.map((candidate) => candidate.id === tab.id ? { ...candidate, layout: setSplitSizes(candidate.layout, found.path, sizes) } : candidate));
+    return true;
+  }, []);
+
+  /** The pane in front trades places with its neighbor on that side. */
+  const swapActivePane = useCallback((direction: FocusDirection) => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    if (!tab || tab.panes.length < 2) return;
+    const neighbor = findNeighbor(paneRects(tab), tab.activePaneId, direction);
+    if (!neighbor) {
+      setNotice(`No pane ${direction === "left" || direction === "right" ? `on the ${direction}` : direction === "up" ? "above" : "below"}`);
+      return;
+    }
+    setTabs((current) => current.map((candidate) => candidate.id === tab.id ? { ...candidate, layout: swapPanes(candidate.layout, tab.activePaneId, neighbor), zoomedPaneId: undefined } : candidate));
+  }, []);
+
+  const evenOutPanes = useCallback(() => {
+    setTabs((current) => current.map((tab) => tab.id === activeTabIdRef.current ? { ...tab, layout: evenLayout(tab.layout) } : tab));
+  }, []);
+
   const focusNeighborPane = useCallback((key: string) => {
     const direction = arrowDirections[key];
     if (!activeTab || activeTab.panes.length < 2 || !direction) return false;
@@ -1227,12 +1270,7 @@ export default function App() {
       togglePaneZoom();
       return true;
     }
-    const rects = new Map<string, Rect>();
-    for (const pane of activeTab.panes) {
-      const box = paneElement(pane.id)?.getBoundingClientRect();
-      if (box) rects.set(pane.id, { x: box.left, y: box.top, width: box.width, height: box.height });
-    }
-    const next = findNeighbor(rects, activeTab.activePaneId, direction);
+    const next = findNeighbor(paneRects(activeTab), activeTab.activePaneId, direction);
     if (next) setActivePane(activeTab.id, next);
     return true;
   }, [activeTab, setActivePane, togglePaneZoom]);
@@ -1379,6 +1417,12 @@ export default function App() {
       { id: "split-down", group: "Panes", label: "Split down", icon: <Rows2 size={15} />, shortcut: keys.splitHorizontal, run: () => splitActive("horizontal") },
       ...((activeTab?.panes.length ?? 0) > 1 ? [{ id: "zoom-pane", group: "Panes", label: activeTab?.zoomedPaneId ? "Show every pane" : "Zoom pane", icon: <Maximize2 size={15} />, keywords: "maximize fill focus", shortcut: keys.togglePaneZoom, run: togglePaneZoom }] : []),
       { id: "close-pane", group: "Panes", label: "Close pane", icon: <SquareX size={15} />, shortcut: keys.closePane, run: closeActivePane },
+      ...(activeTab && activeTab.panes.length > 1 ? [
+        { id: "even-panes", group: "Panes", label: "Even out panes", icon: <Equal size={15} />, keywords: "equalize balance sizes", run: evenOutPanes },
+        ...(["left", "right", "up", "down"] as const).map((direction): PaletteCommand => ({
+          id: `swap-${direction}`, group: "Panes", label: `Swap pane ${direction === "up" ? "with the one above" : direction === "down" ? "with the one below" : `with the one on the ${direction}`}`, icon: <ArrowLeftRight size={15} />, keywords: "move exchange", run: () => swapActivePane(direction),
+        })),
+      ] : []),
       ...(activeTab && activeTab.panes.length > 1 ? [{ id: "pane-to-tab", group: "Panes", label: "Move pane to a new tab", icon: <SquareArrowOutUpRight size={15} />, keywords: "break detach split", run: () => void movePaneToNewTab(activeTab.id, activeTab.activePaneId) }] : []),
       ...(activeTab?.watch
         ? [{ id: "unwatch", group: "Tabs", label: "Stop watching this tab", icon: <EyeOff size={15} />, run: () => watchTab(activeTab.id) }]
@@ -1422,7 +1466,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1470,6 +1514,12 @@ export default function App() {
         event.stopPropagation();
         return;
       }
+      const arrow = arrowDirections[event.key];
+      if (arrow && event.altKey && event.shiftKey && !event.ctrlKey && resizeActivePane(arrow)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       // On Windows AltGr arrives as Ctrl+Alt; never steal the character it types (~ # { [ | on AZERTY…).
       const typesCharacter = event.key.length === 1 && !/^[0-9]$/.test(event.key);
       if (event.ctrlKey && event.altKey && !event.shiftKey && !event.getModifierState("AltGraph") && !typesCharacter && /^Digit[1-9]$/.test(event.code)) {
@@ -1485,7 +1535,7 @@ export default function App() {
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher]);
+  }, [activeTab, adjustFontSize, closeActivePane, closeTab, cycleTab, focusNeighborPane, keys, menu, openAsAdmin, openNewTab, openSearch, openSettings, overlayOpen, settingsOpen, splitActive, toggleBroadcast, togglePaneZoom, openTabSwitcher, resizeActivePane]);
 
   const menuEntries = (open: OpenMenu): MenuEntry[] => {
     if (open.kind === "profiles") {
@@ -1574,6 +1624,7 @@ export default function App() {
       ...((activeTab?.panes.length ?? 0) > 1 ? [{ id: "zoom-pane", label: activeTab?.zoomedPaneId ? "Show every pane" : "Zoom pane", icon: <Maximize2 size={15} />, shortcut: keys.togglePaneZoom, run: togglePaneZoom }] : []),
       "separator",
       { id: "clear", label: "Clear scrollback", icon: <Eraser size={15} />, run: () => pane?.clear() },
+      ...(activeTab && activeTab.panes.length > 1 ? [{ id: "even-panes", label: "Even out panes", icon: <Equal size={15} />, run: evenOutPanes }] : []),
       ...(activeTab && activeTab.panes.length > 1 ? [{ id: "pane-to-tab", label: "Move to a new tab", icon: <SquareArrowOutUpRight size={15} />, run: () => void movePaneToNewTab(activeTab.id, activeTab.activePaneId) }] : []),
       { id: "close-pane", label: (activeTab?.panes.length ?? 0) > 1 ? "Close pane" : "Close tab", icon: <SquareX size={15} />, shortcut: (activeTab?.panes.length ?? 0) > 1 ? keys.closePane : keys.closeTab, run: closeActivePane },
     ];
