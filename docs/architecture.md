@@ -133,6 +133,10 @@ A pane can't change tabs in React without unmounting, which would end its shell.
 
 A tab dragged from the background over the panes in front asks the window, as it moves, which pane is under the pointer (`elementFromPoint`) and which edge is nearest; the half of the pane on that side is outlined, and dropping there puts the tab's layout beside that pane (`insertBeside`). The tab in front can't drop onto itself, so dragging it down still tears it off into a window.
 
+### Settings search
+
+Every `Row` and `Group` of the settings reads the search words from a context. A group whose title or description has every word shows whole; otherwise a row matches when its label, its description and its group's title have them all. While searching, every page renders, and CSS (`:has()`) hides the rows that didn't match, the groups left empty and the pages with nothing in them, so custom rows such as saved commands only show with their group.
+
 ### Restarting and reconnecting
 
 Restarting a pane makes a new xterm.js instance, so the old one's screen (`SerializeAddon`) is written into it before the shell starts again. An SSH profile whose `ssh` exits with 255, its code for a connection that failed or dropped, counts down 2, 5, 10, 20 and 30 seconds before the next try; a connection that held for a minute starts the count over.
@@ -212,7 +216,7 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | `fuzzy.rs` | Fuzzy matching for `Ctrl+R`: substrings first, then letters in order, with bonuses for word starts and runs. |
 | `frecency.rs` | The folders `z` knows, ranked by visits and age as rupa's z does, in `dirs.txt`. |
 | `prompt.rs` | The prompt line: folder, Git status (with a 300 ms budget), duration and exit code by default, and the segments, colors and symbol set in `~/.nebularc`. Toolchain versions are asked once per session; `NEBULA_PROMPT=starship` runs `starship prompt` instead. |
-| `suggest.rs` | "command not found" with a close match or the Linux equivalent of a Windows command. |
+| `suggest.rs` | "command not found" with the Linux equivalent of a Windows command, the winget package of a common tool, or a close match. |
 | `sys.rs` | Paths (`/c/…`, `/dev/null`, `~`), PATH lookup with PATHEXT, terminal capabilities. |
 
 Every command except the builtins runs as its own process, `nebula-sh <name> …`, the same way coreutils' multi-call binary works. This keeps pipes and redirections uniform: a pipeline of Nebula commands and Windows programs is just a chain of processes.
