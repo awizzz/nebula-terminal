@@ -64,6 +64,14 @@ describe("session", () => {
     expect(folders).toEqual(["C:\\Users\\me\\src", "\\\\wsl.localhost\\Debian\\home\\me", undefined]);
   });
 
+  it("remembers where each pane's screen is kept, when asked to", () => {
+    saveSession([tab(nebula, pwsh)], "tab", (paneId) => `main:${paneId}`);
+    const restored = loadSession(previewProfiles)!.tabs[0]!;
+    expect(paneIds(restored.layout).map((id) => restored.panes.find((pane) => pane.id === id)?.restoreScreen)).toEqual(["main:p0", "main:p1"]);
+    saveSession([tab(nebula)], "tab");
+    expect(loadSession(previewProfiles)!.tabs[0]!.panes[0]!.restoreScreen).toBeUndefined();
+  });
+
   it("migrates a version 2 snapshot", () => {
     localStorage.setItem("nebula-terminal.session.v2", JSON.stringify({
       version: 2,

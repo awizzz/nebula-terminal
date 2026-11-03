@@ -9,16 +9,19 @@ const LEGACY_STORAGE_KEYS = ["nebula-terminal.session.v2", "nebula-terminal.sess
 const MAX_TABS = 20;
 const MAX_TITLE = 120;
 
-function persistLayout(node: LayoutNode, panes: ReadonlyMap<string, TerminalPaneModel>): PersistedLayout {
+/** Where a pane's screen is kept between sessions. Workspaces keep none. */
+export type ScreenKeys = (paneId: string) => string;
+
+function persistLayout(node: LayoutNode, panes: ReadonlyMap<string, TerminalPaneModel>, screens?: ScreenKeys): PersistedLayout {
   if (node.type === "pane") {
     const pane = panes.get(node.id);
-    return { type: "pane", profileId: pane?.profile.id ?? "", cwd: pane?.cwd };
+    return { type: "pane", profileId: pane?.profile.id ?? "", cwd: pane?.cwd, ...(screens && pane ? { screen: screens(pane.id) } : {}) };
   }
-  return { type: "split", direction: node.direction, sizes: node.sizes, children: node.children.map((child) => persistLayout(child, panes)) };
+  return { type: "split", direction: node.direction, sizes: node.sizes, children: node.children.map((child) => persistLayout(child, panes, screens)) };
 }
 
 /** Tabs as they are saved: names, colors, splits, and the profile and folder of each pane. */
-export function snapshotOf(tabs: TerminalTab[], activeTabId: string): SessionSnapshot {
+export function snapshotOf(tabs: TerminalTab[], activeTabId: string, screens?: ScreenKeys): SessionSnapshot {
   return {
     version: 3,
     activeTabIndex: Math.max(0, tabs.findIndex((tab) => tab.id === activeTabId)),
@@ -27,14 +30,14 @@ export function snapshotOf(tabs: TerminalTab[], activeTabId: string): SessionSna
       customTitle: tab.customTitle,
       color: tab.color,
       activePaneIndex: Math.max(0, paneIds(tab.layout).indexOf(tab.activePaneId)),
-      layout: persistLayout(tab.layout, new Map(tab.panes.map((pane) => [pane.id, pane]))),
+      layout: persistLayout(tab.layout, new Map(tab.panes.map((pane) => [pane.id, pane])), screens),
     })),
   };
 }
 
-export function saveSession(tabs: TerminalTab[], activeTabId: string): void {
+export function saveSession(tabs: TerminalTab[], activeTabId: string, screens?: ScreenKeys): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotOf(tabs, activeTabId)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotOf(tabs, activeTabId, screens)));
   } catch {
     // Restoring the workspace is optional; a storage failure must never block a PTY.
   }
@@ -53,11 +56,12 @@ function readIndex(value: unknown, length: number): number {
 /** Rebuilds one tab. Version 3 saves a layout tree; older versions one row or column of panes. */
 function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, TerminalProfile>, fallback: TerminalProfile): TerminalTab {
   let panes: TerminalPaneModel[] = [];
-  const addPane = (profileId: unknown, cwd?: unknown) => {
+  const addPane = (profileId: unknown, cwd?: unknown, screen?: unknown) => {
     const pane: TerminalPaneModel = {
       id: crypto.randomUUID(),
       profile: (typeof profileId === "string" && available.get(profileId)) || fallback,
       cwd: isStartableFolder(cwd) ? cwd : undefined,
+      ...(typeof screen === "string" && screen.length <= 200 ? { restoreScreen: screen } : {}),
     };
     panes.push(pane);
     return pane.id;
@@ -65,7 +69,7 @@ function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, Terminal
 
   let layout: LayoutNode | null = null;
   if (saved.layout !== undefined) {
-    layout = sanitizeLayout(saved.layout, (leaf) => addPane(leaf.profileId, leaf.cwd));
+    layout = sanitizeLayout(saved.layout, (leaf) => addPane(leaf.profileId, leaf.cwd, leaf.screen));
   } else if (Array.isArray(saved.panes)) {
     const ids = saved.panes.slice(0, MAX_PANES).map((pane) => addPane(typeof pane === "object" && pane !== null ? pane.profileId : undefined));
     layout = layoutFromFlat(ids, saved.splitDirection === "horizontal" ? "horizontal" : "vertical", Array.isArray(saved.paneSizes) ? saved.paneSizes : undefined);
@@ -153,9 +157,9 @@ function writeWindows(windows: SavedWindows): void {
 }
 
 /** The tabs of a window other than the main one, by its label, for the next launch. */
-export function saveWindowSession(label: string, tabs: TerminalTab[], activeTabId: string): void {
+export function saveWindowSession(label: string, tabs: TerminalTab[], activeTabId: string, screens?: ScreenKeys): void {
   const windows = readWindows();
-  windows[label] = { savedAt: Date.now(), snapshot: snapshotOf(tabs, activeTabId) };
+  windows[label] = { savedAt: Date.now(), snapshot: snapshotOf(tabs, activeTabId, screens) };
   writeWindows(Object.fromEntries(Object.entries(windows).sort(([, a], [, b]) => b.savedAt - a.savedAt).slice(0, MAX_WINDOWS)));
 }
 

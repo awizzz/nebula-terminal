@@ -1094,6 +1094,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Reopen tabs on launch" description="Restores tabs, splits and the folder each one was in. Shells start fresh.">
                     <Switch label="Reopen tabs on launch" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} />
                   </Row>
+                  <Row label="Show what panes printed" description="Reopened panes show their last output, up to 1,000 lines, above the new prompt. It's kept on this PC only.">
+                    <Switch label="Show what panes printed" checked={preferences.restoreScreens && preferences.restoreSession} disabled={!preferences.restoreSession} onChange={(value) => patch("restoreScreens", value)} />
+                  </Row>
                   <Row label="Confirm closing several tabs">
                     <Switch label="Confirm closing several tabs" checked={preferences.confirmCloseMultipleTabs} onChange={(value) => patch("confirmCloseMultipleTabs", value)} />
                   </Row>

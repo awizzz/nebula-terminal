@@ -34,6 +34,8 @@ interface TerminalPaneProps {
   handoffId?: string;
   /** The screen and shell of a pane that comes from another window. */
   moved?: MovedPane;
+  /** What the pane showed in the last session, written before its shell starts. */
+  restoredScreen?: string;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -151,6 +153,7 @@ export default function TerminalPane({
   startIn,
   handoffId,
   moved,
+  restoredScreen,
   preferences,
   focused,
   visible,
@@ -184,6 +187,7 @@ export default function TerminalPane({
   const startInRef = useRef(startIn);
   const handoffRef = useRef(handoffId);
   const movedRef = useRef(moved);
+  const restoredRef = useRef(restoredScreen);
   const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
@@ -565,6 +569,14 @@ export default function TerminalPane({
       callbacksRef.current.onReady?.();
     };
 
+    // The last session's screen, once: a restart starts blank. Development runs this effect
+    // twice, so it's let go only once the pane stays.
+    const takeRestored = () => {
+      const restored = restoredRef.current;
+      queueMicrotask(() => { if (!disposed) restoredRef.current = undefined; });
+      return restored;
+    };
+
     if (isTauri()) {
       const channel = new Channel<PtyEvent>();
       channel.onmessage = (message) => {
@@ -601,7 +613,10 @@ export default function TerminalPane({
       handoffRef.current = undefined;
       const arriving = movedRef.current;
       movedRef.current = undefined;
+      const restored = takeRestored();
+      // The shell then starts under it: ConPTY takes the cursor where it is.
       if (arriving) terminal.write(arriving.screen);
+      else if (restored) terminal.write(restored);
       const started = arriving
         ? arriving.sessionId
           ? invoke("attach_session", { sessionId: arriving.sessionId, cols: terminal.cols, rows: terminal.rows, onEvent: channel }).then(() => arriving.sessionId!)
@@ -641,6 +656,8 @@ export default function TerminalPane({
       });
     } else {
       setConnectionState("preview");
+      const restored = takeRestored();
+      if (restored) terminal.write(restored);
       writePreview(terminal, profile);
       terminal.write("", ready);
     }
@@ -745,6 +762,7 @@ export default function TerminalPane({
     };
 
     const unregister = registerPane(paneId, {
+      screen: () => serializer.serialize({ scrollback: 1_000, excludeAltBuffer: true, excludeModes: true }),
       startLog: (name: string) => void startLogging(name),
       stopLog: stopLogging,
       logging: () => log !== undefined,

@@ -30,6 +30,7 @@ import { MAX_PANES, computeLayout, findNeighbor, minimumExtent, nodeAt, paneIds,
 import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
+import { forgetScreens, pruneScreens, saveScreens, screenKey, withScreens } from "./screens";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
 import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Launchers, SavedCommand, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
@@ -368,9 +369,41 @@ export default function App() {
 
   useEffect(() => {
     if (!hydratedRef.current || !preferences.restoreSession || !tabs.length || !savesSession) return;
-    if (isTabsWindow) saveWindowSession(windowLabel, tabs, activeTabId);
-    else saveSession(tabs, activeTabId);
-  }, [tabs, activeTabId, preferences.restoreSession]);
+    const screens = preferences.restoreScreens ? (paneId: string) => screenKey(windowLabel, paneId) : undefined;
+    if (isTabsWindow) saveWindowSession(windowLabel, tabs, activeTabId, screens);
+    else saveSession(tabs, activeTabId, screens);
+  }, [tabs, activeTabId, preferences.restoreSession, preferences.restoreScreens]);
+
+  // What each pane shows, for the next launch: the panes that printed something, every
+  // 15 seconds, and all of them when the window closes.
+  const changedScreensRef = useRef(new Set<string>());
+  const saveScreensNow = useCallback(async (all: boolean) => {
+    const { restoreSession, restoreScreens } = preferencesRef.current;
+    if (!savesSession || !hydratedRef.current || !restoreSession || !restoreScreens) return;
+    const panes = tabsRef.current.filter((tab) => !closingRef.current.has(tab.id)).flatMap((tab) => tab.panes);
+    const screens = new Map<string, string>();
+    for (const pane of panes) {
+      if (!all && !changedScreensRef.current.has(pane.id)) continue;
+      const screen = getPane(pane.id)?.screen();
+      if (screen !== undefined) screens.set(screenKey(windowLabel, pane.id), screen);
+    }
+    changedScreensRef.current.clear();
+    await saveScreens(windowLabel, screens, new Set(panes.map((pane) => screenKey(windowLabel, pane.id)))).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!savesSession) return;
+    const timer = window.setInterval(() => void saveScreensNow(false), 15_000);
+    return () => window.clearInterval(timer);
+  }, [saveScreensNow]);
+
+  useEffect(() => {
+    if (savesSession && (!preferences.restoreSession || !preferences.restoreScreens)) void forgetScreens().catch(() => undefined);
+  }, [preferences.restoreSession, preferences.restoreScreens]);
+
+  useEffect(() => {
+    if (savesSession && !isTabsWindow) void pruneScreens().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -450,10 +483,13 @@ export default function App() {
       if (savesSession && await invoke<number>("terminal_window_count").catch(() => 1) > 1) {
         if (isTabsWindow) forgetWindowSession(windowLabel);
         else clearSession();
+        await forgetScreens(windowLabel).catch(() => undefined);
+      } else {
+        await saveScreensNow(true);
       }
     }).then((dispose) => { if (disposed) dispose(); else unlisten = dispose; });
     return () => { disposed = true; unlisten?.(); };
-  }, [closeWindow, nativeHost]);
+  }, [closeWindow, nativeHost, saveScreensNow]);
 
   useEffect(() => {
     if (!nativeHost) return;
@@ -640,7 +676,10 @@ export default function App() {
     if (isTabsWindow) {
       const transfer = transferId ? await invoke<TabTransfer | WindowTransfer | LaunchTransfer | null>("take_transfer", { id: transferId }).catch(() => null) : null;
       if (transfer?.kind === "tab") return { restored: { tabs: [tabFromTransfer(transfer.tab)], activeTabId: transfer.tab.id } };
-      if (transfer?.kind === "window") return { restored: restoreSnapshot(transfer.snapshot, detected) };
+      if (transfer?.kind === "window") {
+        const restored = restoreSnapshot(transfer.snapshot, detected);
+        return { restored: preferencesRef.current.restoreScreens ? await withScreens(restored) : restored };
+      }
       if (transfer?.kind === "launch") return { restored: null, folder: transfer.folder ?? undefined };
       return { restored: null };
     }
@@ -649,13 +688,15 @@ export default function App() {
       ? loadWorkspaces().find((workspace) => workspace.id === preferencesRef.current.startupWorkspace)
       : undefined;
     if (startup) return { restored: openWorkspace(startup, detected) };
-    if (!nativeHost || !savesSession || !preferencesRef.current.restoreSession) return {};
+    if (!savesSession || !preferencesRef.current.restoreSession) return {};
+    const screens = preferencesRef.current.restoreScreens ? withScreens : <T,>(restored: T) => Promise.resolve(restored);
+    if (!nativeHost) return { restored: await screens(loadSession(detected)) };
     const others = takeWindowSessions();
     const own = loadSession(detected);
     // With no tabs of its own, the main window takes the first saved window's.
     const first = own ?? (others.length ? restoreSnapshot(others.shift(), detected) : null);
     if (others.length) void invoke("restore_windows", { snapshots: others.map((snapshot): WindowTransfer => ({ kind: "window", snapshot })) }).catch(() => undefined);
-    return { restored: first };
+    return { restored: await screens(first) };
   }, [nativeHost]);
 
   /** Moves a tab, its shells still running, to the window under the pointer or a new one. */
@@ -1468,6 +1509,7 @@ export default function App() {
                         startIn={pane.cwd}
                         handoffId={pane.handoffId}
                         moved={pane.moved}
+                        restoredScreen={pane.screen}
                         preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible && (!zoomed || pane.id === zoomed)}
@@ -1476,7 +1518,10 @@ export default function App() {
                         onFontSizeDelta={adjustFontSize}
                         onTitleChange={(title) => setPaneTitle(tab.id, pane, title)}
                         onActivity={() => markActivity(tab.id)}
-                        onOutput={() => watcher.output(tab.id)}
+                        onOutput={() => {
+                          watcher.output(tab.id);
+                          changedScreensRef.current.add(pane.id);
+                        }}
                         onLog={(path) => paneLogged(pane.id, path)}
                         onCommandFinished={(command) => commandFinished(tab.id, command)}
                         onNotify={(title, body) => programNotification(tab.id, title, body)}
@@ -1559,7 +1604,10 @@ export default function App() {
           onChange={setPreferences}
           onClose={() => { setSettingsOpen(false); closeOverlayFocus(); }}
           onReset={() => { setPreferences({ ...defaultPreferences, keybindings: { ...defaultKeybindings } }); setNotice("Settings reset"); }}
-          onClearSession={clearSession}
+          onClearSession={() => {
+            clearSession();
+            void forgetScreens().catch(() => undefined);
+          }}
           onProfilesChanged={refreshProfiles}
           launchers={launchers}
           defaultTerminal={defaultTerminal}
