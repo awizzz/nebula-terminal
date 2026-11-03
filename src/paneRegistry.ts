@@ -27,6 +27,8 @@ export interface PaneHandle {
   hasCommandOutput: () => boolean;
   /** Everything the pane shows, scrollback included, as text. */
   text: () => string;
+  /** The same as a web page, with the terminal's colors. */
+  html: (title: string) => string;
   /** The output of the last finished command, or undefined without one. */
   lastOutput: () => string | undefined;
   /** Every line that holds `query`, once each, 200 at most. */

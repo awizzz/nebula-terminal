@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -1036,12 +1036,12 @@ export default function App() {
   }, []);
 
   /** Saves what the pane in front shows, or its last command's output, to a file. */
-  const saveOutput = useCallback((lastOnly: boolean) => {
+  /** Saves the pane in front to a file: all it shows, its last command's output, or all of it as a web page with its colors. */
+  const saveOutput = useCallback((what: "all" | "last" | "html") => {
     const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
     const pane = getPane(tab?.activePaneId);
-    const text = lastOnly ? pane?.lastOutput() : pane?.text();
-    if (text === undefined) {
-      setNotice(lastOnly ? "No command output to save yet" : "Nothing to save");
+    if (!pane || (what === "last" && pane.lastOutput() === undefined)) {
+      setNotice(what === "last" ? "No command output to save yet" : "Nothing to save");
       return;
     }
     if (!nativeHost) {
@@ -1050,7 +1050,8 @@ export default function App() {
     }
     const stamp = new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "h");
     const name = `${tab ? tabTitle(tab) : "Nebula"} ${stamp}`;
-    void invoke<string | null>("save_text_file", { name, contents: text })
+    const contents = what === "last" ? pane.lastOutput()! : what === "html" ? pane.html(name) : pane.text();
+    void invoke<string | null>("save_text_file", { name, contents, html: what === "html" })
       .then((path) => { if (path) setNotice(`Saved to ${folderParts(path).name}`); })
       .catch((error: unknown) => setNotice(String(error)));
   }, [nativeHost]);
@@ -1448,9 +1449,10 @@ export default function App() {
       { id: "copy-output", group: "Terminal", label: "Copy last command output", icon: <ClipboardCheck size={15} />, keywords: "result", run: copyLastOutput },
       { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
-      { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput(false) },
+      { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput("all") },
+      { id: "save-html", group: "Terminal", label: "Save output as a web page…", icon: <FileCode size={15} />, keywords: "export html colors report", run: () => saveOutput("html") },
       { id: "log-output", group: "Terminal", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, keywords: "record transcript script session", run: toggleLog },
-      { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput(true) },
+      { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput("last") },
       ...recentFolders.map((folder): PaletteCommand => ({ id: `recent-${folder}`, group: "Recent folders", label: `Open a tab in ${folderParts(folder).name}`, detail: folderParts(folder).parent, icon: <FolderOpen size={15} />, keywords: `recent folder cd ${folder}`, run: () => openNewTab(undefined, folder) })),
       { id: "zoom-in", group: "View", label: "Zoom in", icon: <ZoomIn size={15} />, shortcut: keys.zoomIn, run: () => adjustFontSize(1) },
       { id: "zoom-out", group: "View", label: "Zoom out", icon: <Minus size={15} />, shortcut: keys.zoomOut, run: () => adjustFontSize(-1) },
@@ -1622,7 +1624,8 @@ export default function App() {
       { id: "paste", label: "Paste", icon: <ClipboardPaste size={15} />, shortcut: "Ctrl+V", run: () => pane?.paste() },
       { id: "select-all", label: "Select all", icon: <TextSelect size={15} />, run: () => pane?.selectAll() },
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
-      { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput(false) },
+      { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput("all") },
+      { id: "save-html", label: "Save as a web page…", icon: <FileCode size={15} />, run: () => saveOutput("html") },
       { id: "log-output", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, run: toggleLog },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },

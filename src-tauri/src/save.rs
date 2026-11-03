@@ -50,13 +50,14 @@ async fn choose_file(
     window: WebviewWindow,
     title: &'static str,
     name: String,
+    filter: (&'static str, &'static [&'static str]),
 ) -> Result<Option<PathBuf>, String> {
     let chosen = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_parent(&window)
             .set_title(title)
-            .add_filter("Text", &["txt", "log"])
+            .add_filter(filter.0, filter.1)
             .set_file_name(name)
             .set_can_create_directories(true)
             .blocking_save_file()
@@ -66,18 +67,36 @@ async fn choose_file(
     Ok(chosen.and_then(|path| path.into_path().ok()))
 }
 
-/// Asks where to save `contents`, and saves it there. None when the user cancels.
+const TEXT: (&str, &[&str]) = ("Text", &["txt", "log"]);
+const WEB_PAGE: (&str, &[&str]) = ("Web page", &["html", "htm"]);
+
+/// Asks where to save `contents`, plain text or a web page, and saves it there. None
+/// when the user cancels.
 #[tauri::command]
 pub async fn save_text_file(
     app: AppHandle,
     window: WebviewWindow,
     name: String,
     contents: String,
+    html: Option<bool>,
 ) -> Result<Option<String>, String> {
     if contents.len() > MAX_BYTES {
         return Err("This output is too large to save.".to_owned());
     }
-    let Some(path) = choose_file(app, window, "Save output", file_name(&name, "txt")).await? else {
+    let (extension, filter) = if html == Some(true) {
+        ("html", WEB_PAGE)
+    } else {
+        ("txt", TEXT)
+    };
+    let Some(path) = choose_file(
+        app,
+        window,
+        "Save output",
+        file_name(&name, extension),
+        filter,
+    )
+    .await?
+    else {
         return Ok(None);
     };
     std::fs::write(&path, contents)
@@ -110,7 +129,8 @@ pub async fn start_log(
     logs: State<'_, Logs>,
     name: String,
 ) -> Result<Option<StartedLog>, String> {
-    let Some(path) = choose_file(app, window, "Log output to", file_name(&name, "log")).await?
+    let Some(path) =
+        choose_file(app, window, "Log output to", file_name(&name, "log"), TEXT).await?
     else {
         return Ok(None);
     };
