@@ -19,6 +19,7 @@ import { windowsBuild } from "../platform";
 import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText, quoteDroppedPath, trimSingleLinePaste } from "../terminalInput";
 import { previewSession } from "../preview-session";
 import { startLog, type PaneLog } from "../paneLog";
+import { commandInput } from "../savedCommands";
 import { folderParts } from "../recentFolders";
 import { drawsText } from "../splash";
 import { parseProgress, type Progress } from "../progress";
@@ -36,6 +37,8 @@ interface TerminalPaneProps {
   moved?: MovedPane;
   /** What the pane showed in the last session, written before its shell starts. */
   restoredScreen?: string;
+  /** Typed into the shell when it starts (and restarts), from a workspace. */
+  startCommand?: string;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -154,6 +157,7 @@ export default function TerminalPane({
   handoffId,
   moved,
   restoredScreen,
+  startCommand,
   preferences,
   focused,
   visible,
@@ -188,6 +192,8 @@ export default function TerminalPane({
   const handoffRef = useRef(handoffId);
   const movedRef = useRef(moved);
   const restoredRef = useRef(restoredScreen);
+  const startCommandRef = useRef(startCommand);
+  startCommandRef.current = startCommand;
   const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
@@ -643,6 +649,8 @@ export default function TerminalPane({
         sessionRef.current = sessionId;
         setConnectionState((state) => state === "closed" ? state : "ready");
         void invoke("resize_session", { sessionId, cols: terminal.cols, rows: terminal.rows }).catch(() => undefined);
+        // A workspace's command goes first, as if typed while the shell starts.
+        if (startCommandRef.current && !arriving && !handoff) send(sessionId, commandInput(startCommandRef.current));
         for (const data of queued) send(sessionId, data);
         queued = [];
       }).catch((error) => {
@@ -659,6 +667,10 @@ export default function TerminalPane({
       const restored = takeRestored();
       if (restored) terminal.write(restored);
       writePreview(terminal, profile);
+      for (const line of startCommandRef.current?.split(/\r?\n/) ?? []) {
+        writeRaw(line);
+        writeRaw("\r");
+      }
       terminal.write("", ready);
     }
 
