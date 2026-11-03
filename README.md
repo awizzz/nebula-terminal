@@ -98,8 +98,8 @@ deploy production eu
 - **Your own profiles and SSH connections.** Settings → Profiles runs any program in a tab, with its own arguments, starting folder and color, and you see how the arguments will be split before you save. Add SSH connection does the same for a server: user, port, key file and port forwards, with the ssh command shown as you type.
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
-- **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts.
-- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, and give it a color from its right-click menu. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. Drag a tab out of the window to give it its own, or onto another window: the shells keep running.
+- **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts. Each pane can start a command too, like `npm run dev`.
+- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. A pane can move to a tab of its own and a tab into another as a split, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
 - **Images and progress.** Sixel and iTerm2 images show in the terminal, programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder. The commands you save in Settings run from there too, with blanks like `{{host}}` filled in as they start.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
@@ -118,6 +118,7 @@ deploy production eu
 - **Every command is a block.** Point at a finished command to copy it, copy its output or run it again.
 - **Find in every tab** (`Ctrl+Shift+Alt+F`), save a pane's output to a file from its right-click menu, or log everything it prints to one until you stop.
 - **Watch a tab.** Get a notification when a tab you're not looking at prints something, or when a long job has been quiet for 30 seconds.
+- **Highlights.** Words like `error` or `FAILED` stand out in color in every pane, with a mark by the scrollbar, and can notify you when they show up in another tab.
 - **Jump between commands.** `Ctrl+↑` and `Ctrl+↓` scroll from one prompt to the next, a click on a prompt selects that command's output, and failed commands leave a red mark by the scrollbar. Copy last command output is in the palette and the right-click menu.
 - **Opens where you are.** New tabs and splits start in the folder of the shell you're in, and the new-tab menu keeps the folders you were in lately. Otherwise shells start in your user folder, or your Desktop, Documents or any folder you pick.
 - **Picks up where you left off.** Your tabs, their names and colors, your splits and the folder each one was in are restored on launch, and each pane shows what it printed last time above a fresh shell.
@@ -150,7 +151,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: pinned tabs, workspaces that start commands, moving a pane to its own tab and back, and highlighting the words you care about in every pane. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: a keyboard mark mode to select and copy without the mouse, dropping a tab onto a pane to split it, `imgcat` in Nebula, and SSH panes that reconnect on their own. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
