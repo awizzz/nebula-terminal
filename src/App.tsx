@@ -1067,6 +1067,15 @@ export default function App() {
       .catch((error: unknown) => setNotice(String(error)));
   }, [nativeHost]);
 
+  /** The folder the shell in front is in, in File Explorer. */
+  const openPaneFolder = useCallback(() => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const folder = tab?.panes.find((pane) => pane.id === tab.activePaneId)?.cwd;
+    if (!folder) return setNotice("This shell hasn't said which folder it's in");
+    if (!nativeHost) return setNotice("Folders open from the desktop app");
+    void invoke("open_path", { path: folder, line: null, column: null, opener: "default", command: "" }).catch((error: unknown) => setNotice(String(error)));
+  }, [nativeHost]);
+
   /** Panes writing a log, by id. */
   const [logging, setLogging] = useState<ReadonlySet<string>>(() => new Set());
   const paneLogged = useCallback((paneId: string, path: string | null) => {
@@ -1462,6 +1471,7 @@ export default function App() {
       { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput("all") },
+      { id: "open-folder", group: "Terminal", label: "Open this folder in File Explorer", detail: activePane?.cwd ? folderParts(activePane.cwd).name : undefined, icon: <FolderOpen size={15} />, keywords: "explorer directory cwd", run: openPaneFolder },
       { id: "save-html", group: "Terminal", label: "Save output as a web page…", icon: <FileCode size={15} />, keywords: "export html colors report", run: () => saveOutput("html") },
       { id: "log-output", group: "Terminal", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, keywords: "record transcript script session", run: toggleLog },
       { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput("last") },
@@ -1480,7 +1490,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1639,6 +1649,7 @@ export default function App() {
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
       { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput("all") },
       { id: "save-html", label: "Save as a web page…", icon: <FileCode size={15} />, run: () => saveOutput("html") },
+      { id: "open-folder", label: "Open folder in File Explorer", icon: <FolderOpen size={15} />, disabled: !activePane?.cwd, run: openPaneFolder },
       { id: "log-output", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, run: toggleLog },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
