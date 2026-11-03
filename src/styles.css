@@ -430,6 +430,8 @@ kbd { font: inherit; }
 /* Command blocks: the finished command under the pointer, and what can be done with it. */
 .command-block { position: absolute; z-index: 3; left: 3px; width: 2px; border-radius: 1px; background: color-mix(in oklab, var(--accent) 70%, transparent); pointer-events: none; animation: fade-in var(--dur-2) var(--ease-out); }
 .command-block__actions { position: absolute; z-index: 4; right: 18px; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line-strong); border-radius: var(--radius-m); background: color-mix(in oklab, var(--chrome) 88%, transparent); box-shadow: var(--shadow-popover); backdrop-filter: blur(8px); animation: fade-in var(--dur-2) var(--ease-out); }
+.command-block__meta { display: flex; align-items: center; padding: 0 8px 0 6px; color: var(--text-3); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.command-block__meta.is-failed { color: var(--danger); }
 .command-block__actions button { display: grid; place-items: center; width: 24px; height: 22px; border: 0; border-radius: var(--radius-s); background: none; color: var(--text-2); cursor: pointer; }
 .command-block__actions button:hover { background: var(--hover-strong); color: var(--text); }
 .command-block__actions button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

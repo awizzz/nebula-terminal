@@ -12,6 +12,19 @@ export function formatDuration(seconds: number): string {
   return minutes % 60 ? `${hours} h ${minutes % 60} min` : `${hours} h`;
 }
 
+/** Like {@link formatDuration}, with milliseconds for what took less than a second. */
+export function formatElapsed(seconds: number): string {
+  return seconds < 1 ? `${Math.max(1, Math.round(seconds * 1000))} ms` : formatDuration(seconds);
+}
+
+/** A command and its output as Markdown, fenced so backticks in the output can't close it early. */
+export function commandMarkdown(command: string, output: string): string {
+  const body = `$ ${command}\n${output.replace(/\s+$/, "")}`;
+  let fence = "```";
+  while (body.includes(fence)) fence += "`";
+  return `${fence}console\n${body}\n${fence}\n`;
+}
+
 /** The text of the notification for a command that finished. */
 export function finishedMessage(finished: FinishedCommand, tabTitle: string): { title: string; body: string } {
   const command = finished.command.trim() || "Command";

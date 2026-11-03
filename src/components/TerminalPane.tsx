@@ -10,7 +10,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { adjacentPrompt, commandOnPromptLine, joinLines } from "../commandMarks";
-import { ClipboardCheck, Copy, Lock, RotateCcw, X } from "lucide-react";
+import { ClipboardCheck, Copy, FileText, Lock, RotateCcw, X } from "lucide-react";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { openPath, registerFileLinks } from "../fileLinks";
@@ -20,6 +20,7 @@ import { isPaste, isTerminalReport, pasteLineCount, pastePreview as previewText,
 import { previewSession } from "../preview-session";
 import { startLog, type PaneLog } from "../paneLog";
 import { commandInput } from "../savedCommands";
+import { commandMarkdown, formatElapsed } from "../notify";
 import { startHighlights } from "../highlights";
 import { startMarkMode, type MarkMode } from "../markMode";
 import { folderParts } from "../recentFolders";
@@ -94,6 +95,10 @@ interface MarkedCommand {
   end?: IMarker;
   /** The output stopped mid-line, so the end mark's line is part of it. */
   endsMidLine?: boolean;
+  startedAt?: number;
+  /** How long it ran and how it ended, once it has. */
+  seconds?: number;
+  code?: number | null;
 }
 
 /** Commands kept per pane; older ones are forgotten (their lines usually left the scrollback too). */
@@ -222,12 +227,12 @@ export default function TerminalPane({
   const [pendingPaste, setPendingPaste] = useState<string | null>(null);
   const [restartNonce, setRestartNonce] = useState(0);
   // The command block under the pointer, in pixels from the top of the pane.
-  const [block, setBlock] = useState<{ top: number; height: number } | null>(null);
+  const [block, setBlock] = useState<{ top: number; height: number; seconds?: number; code?: number | null } | null>(null);
   /** The file this pane logs to, while it does. */
   const [logFile, setLogFile] = useState<{ name: string; path: string } | null>(null);
   const [marking, setMarking] = useState(false);
   const stopLogRef = useRef<() => void>(() => undefined);
-  const blockActionsRef = useRef<{ command: () => string; output: () => string; rerun: () => void }>({ command: () => "", output: () => "", rerun: () => undefined });
+  const blockActionsRef = useRef<{ command: () => string; output: () => string; markdown: () => string; rerun: () => void }>({ command: () => "", output: () => "", markdown: () => "", rerun: () => undefined });
   const sectionRef = useRef<HTMLElement | null>(null);
 
   focusedRef.current = focused;
@@ -355,14 +360,16 @@ export default function TerminalPane({
       } else if (mark === "C") {
         running = { command: lastTitle, startedAt: Date.now() };
         const current = commands.at(-1);
-        if (current && !current.output && !current.end) current.output = cursorMarker();
-        else remember({ output: cursorMarker() });
+        if (current && !current.output && !current.end) Object.assign(current, { output: cursorMarker(), startedAt: running.startedAt });
+        else remember({ output: cursorMarker(), startedAt: running.startedAt });
       } else if (mark === "D") {
         const parsed = code === undefined ? Number.NaN : Number.parseInt(code, 10);
         const current = commands.at(-1);
         if (current?.output && !current.end) {
           current.end = cursorMarker();
           current.endsMidLine = terminal.buffer.active.cursorX > 0;
+          current.code = Number.isFinite(parsed) ? parsed : null;
+          if (current.startedAt) current.seconds = (Date.now() - current.startedAt) / 1000;
           const anchor = current.prompt ?? current.output;
           if (Number.isFinite(parsed) && parsed !== 0 && !anchor.isDisposed) {
             terminal.registerDecoration({ marker: anchor, overviewRulerOptions: { color: colorsRef.current.red ?? "#ee6f78", position: "full" } });
@@ -434,7 +441,7 @@ export default function TerminalPane({
         return;
       }
       const offset = screen.getBoundingClientRect().top - section.getBoundingClientRect().top;
-      setBlock({ top: offset + top, height: bottom - top });
+      setBlock({ top: offset + top, height: bottom - top, seconds: shownBlock.seconds, code: shownBlock.code });
     };
     const pointAt = (event: MouseEvent) => {
       // Not while selecting text, nor without shell integration's marks.
@@ -461,12 +468,14 @@ export default function TerminalPane({
       const lines = textOf(blockStart(shownBlock), Math.max(blockStart(shownBlock), shownBlock.output.line - 1)).split("\n");
       return commandOnPromptLine(lines.at(-1) ?? "");
     };
+    const blockOutput = () => {
+      const range = shownBlock && outputLines(shownBlock);
+      return range ? textOf(range[0], range[1]) : "";
+    };
     blockActionsRef.current = {
       command: blockCommand,
-      output: () => {
-        const range = shownBlock && outputLines(shownBlock);
-        return range ? textOf(range[0], range[1]) : "";
-      },
+      output: blockOutput,
+      markdown: () => commandMarkdown(blockCommand(), blockOutput()),
       rerun: () => {
         const command = blockCommand();
         if (command && !running) writeRef.current(`${command}\r`);
@@ -1152,8 +1161,14 @@ export default function TerminalPane({
         <>
           <div className="command-block" style={{ top: block.top, height: block.height }} aria-hidden="true" />
           <div className="command-block__actions" style={{ top: block.top }} onMouseDown={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+            {block.seconds !== undefined && (
+              <span className={`command-block__meta ${block.code ? "is-failed" : ""}`} title={block.code ? `Failed with exit code ${block.code}` : "Finished"}>
+                {block.code ? `exit ${block.code} · ` : ""}{formatElapsed(block.seconds)}
+              </span>
+            )}
             <button type="button" title="Copy command" aria-label="Copy command" onClick={() => { void navigator.clipboard?.writeText(blockActionsRef.current.command()); terminalRef.current?.focus(); }}><Copy size={13} strokeWidth={1.8} /></button>
             <button type="button" title="Copy output" aria-label="Copy output" onClick={() => { void navigator.clipboard?.writeText(blockActionsRef.current.output()); terminalRef.current?.focus(); }}><ClipboardCheck size={13} strokeWidth={1.8} /></button>
+            <button type="button" title="Copy as Markdown" aria-label="Copy as Markdown" onClick={() => { void navigator.clipboard?.writeText(blockActionsRef.current.markdown()); terminalRef.current?.focus(); }}><FileText size={13} strokeWidth={1.8} /></button>
             <button type="button" title="Run again" aria-label="Run again" onClick={() => blockActionsRef.current.rerun()}><RotateCcw size={13} strokeWidth={1.8} /></button>
           </div>
         </>
