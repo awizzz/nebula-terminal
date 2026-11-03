@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.6.0
+
+Search in Settings, panes from the keyboard, even panes, and Nebula telling you what to install.
+
+### Added
+
+- search in Settings: a box above the pages finds a setting by any words of its name or description, across every page, and you change it right there
+- panes from the keyboard: `Alt+Shift+Arrow` resizes the pane in front, and the palette swaps it with its neighbor on any side
+- even out panes: in the palette and a pane's right-click menu, every split of the tab gets equal shares
+- Nebula: typing a common tool that isn't installed, like `git`, `python`, `node` or `kubectl`, adds a tip with the `winget install` command that brings it
+
 ## 2.5.0
 
 Mark mode, tabs dropped onto panes, `imgcat` in Nebula, and SSH that reconnects on its own.

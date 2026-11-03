@@ -99,12 +99,12 @@ deploy production eu
 - **A look per profile.** Give any profile its own theme, font and size. Its tabs wear them, and the whole window takes its colors while one is in front. Admin windows are red, so an elevated shell never passes for an ordinary one.
 - **Any shell as administrator.** The shield next to a shell in the new-tab menu opens it in an admin window, after the usual Windows confirmation. Every tab there is elevated and the title bar says so, while your other tabs stay as they are. Open as administrator on a tab does the same in its folder, File Explorer has an entry for it too, and Settings → Keyboard can give it a shortcut.
 - **Workspaces.** Save the open tabs under a name, with their splits and folders, and open them again in one click from the new-tab menu or the palette, or every time the app starts. Each pane can start a command too, like `npm run dev`.
-- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers to resize them. A pane can move to a tab of its own, a tab dragged onto a pane splits it, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
+- **Tabs, split panes and windows.** Drag tabs to reorder them, middle-click to close, and right-click for more. Double-click a tab to rename it, give it a color, or pin it so it stays on the left and can't be closed by accident. Split any pane right or down, up to eight panes per tab, and drag the dividers or press `Alt+Shift+Arrow` to resize them; the palette swaps panes and evens them out. A pane can move to a tab of its own, a tab dragged onto a pane splits it, and a tab dragged out of the window gets its own, or joins another window: the shells keep running.
 - **Images and progress.** Sixel and iTerm2 images show in the terminal (`imgcat photo.png` in Nebula), programs that report progress (winget, for one) fill a bar on their tab and on the taskbar button, and vim or tmux over SSH can copy to your clipboard, never read it.
 - **Command palette** (`Ctrl+Shift+P`). Every action, shell and theme in one searchable list, and `Ctrl+Shift+Space` jumps to any tab by a few letters of its name or folder. The commands you save in Settings run from there too, with blanks like `{{host}}` filled in as they start.
 - **A quick terminal on a shortcut.** `` Win+` `` drops a terminal down from the top of the screen over any app, and puts it away again. It keeps its own tabs, and its height and shortcut are yours to pick.
 - **Eleven themes, and 850 more in a gallery**: Nord, Rosé Pine, Catppuccin, Solarized, Kanagawa, GitHub and the rest, searchable and sorted into dark and light. Click one and the terminal wears it at once. You can also import schemes from Windows Terminal or iTerm2, and **edit any theme**: change its 16 colors, background, text and accent with a live preview, get warned when a color is hard to read, and export the result for Windows Terminal. The window chrome follows the terminal colors, so a light theme gives you a light app, and Follow Windows switches between a dark and a light theme with Windows' app mode. You can also pick an accent color, a Mica, solid or image background, and adjust transparency.
-- **Settings without a config file, and on every PC.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts, and every change applies immediately. Point Sync settings at a file in OneDrive, Dropbox or a Git repository, and your other PCs get the same themes, shortcuts and saved commands, with no account.
+- **Settings without a config file, and on every PC.** Fonts, cursor, padding, scrollback, profiles, starting folder and shortcuts, all found from one search box, and every change applies immediately. Point Sync settings at a file in OneDrive, Dropbox or a Git repository, and your other PCs get the same themes, shortcuts and saved commands, with no account.
 - **For everyone.** Screen reader support for Narrator, NVDA and JAWS, two high contrast themes that keep every color at 7:1, and terminals that follow Windows' contrast themes on their own.
 - **Safe paste.** Pasting several lines shows exactly what will run before it reaches the shell, and a single pasted line never runs on its own.
 - **Shell integration, built in.** PowerShell, Git Bash and WSL (bash) mark their commands and report their folder without any setup, so notifications, command jumps and new tabs in the current folder work there as they do in Nebula. Your own profile and startup files still run.
@@ -133,6 +133,7 @@ deploy production eu
 | Go to tab 1–9 | `Ctrl+Alt+1` … `Ctrl+Alt+9` |
 | Split right / down | `Ctrl+Shift+D` / `Ctrl+Shift+E` |
 | Move to the pane left, right, above or below | `Alt+Arrow` |
+| Resize the pane in front | `Alt+Shift+Arrow` |
 | Close pane | `Ctrl+Shift+Q` |
 | Find (`Alt+C` match case, `Alt+W` whole word, `Alt+R` regex) | `Ctrl+Shift+F` |
 | Previous / next command | `Ctrl+↑` / `Ctrl+↓` |
@@ -152,7 +153,7 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: a search box in Settings, resizing and swapping panes from the keyboard, evening out a tab's panes, and Nebula pointing at the winget package of a tool that isn't installed. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: shortcuts for saved commands, saving output as HTML with its colors, choosing what a double-click selects, and typing in every tab at once. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
