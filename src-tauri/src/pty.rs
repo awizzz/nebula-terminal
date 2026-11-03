@@ -354,6 +354,9 @@ pub async fn start_session(
     command.env("TERM_PROGRAM", "NebulaTerminal");
     command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     command.env("NEBULA_TERMINAL", "1");
+    for variable in custom_profiles.environment(&profile_id) {
+        command.env(variable.name, variable.value);
+    }
 
     let mut child = pair
         .slave

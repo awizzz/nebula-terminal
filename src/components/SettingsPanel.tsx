@@ -516,6 +516,20 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
       </EditorField>
       </>}
 
+      <EditorField id={`${id}-environment`} label="Environment variables" error={errorFor("environment")} note="One NAME=value per line, for this profile's shells only.">
+        <textarea
+          id={`${id}-environment`}
+          className="field field--mono field--area"
+          value={draft.environment}
+          rows={Math.min(5, Math.max(2, draft.environment.split("\n").length))}
+          maxLength={8192}
+          spellCheck={false}
+          placeholder={"NODE_ENV=development\nAWS_PROFILE=work"}
+          onChange={(event) => setDraft((current) => ({ ...current, environment: event.target.value }))}
+          {...invalid("environment")}
+        />
+      </EditorField>
+
       <EditorField id={`${id}-accent`} label="Color" error={errorFor("accent")}>
         <div className="swatches" role="radiogroup" aria-labelledby={`${id}-accent-label`} id={`${id}-accent`}>
           {accentSwatches.map((color) => (

@@ -40,17 +40,19 @@ export const emptySsh: SshDraft = { host: "", user: "", port: "", identityFile: 
 
 /** A new, empty draft. */
 export function newDraft(accent: string, kind: CustomProfileDraft["kind"] = "program"): CustomProfileDraft {
-  return { name: "", executable: "", arguments: "", cwd: "", accent, kind, ssh: { ...emptySsh } };
+  return { name: "", executable: "", arguments: "", cwd: "", accent, kind, ssh: { ...emptySsh }, environment: "" };
 }
 
 /** The editor's draft for a saved profile. */
 export function draftOf(profile: CustomProfile): CustomProfileDraft {
   const { ssh } = profile;
-  if (!ssh) return { ...newDraft(profile.accent), id: profile.id, name: profile.name, executable: profile.executable, arguments: profile.arguments, cwd: profile.cwd ?? "" };
+  const environment = profile.environment ?? "";
+  if (!ssh) return { ...newDraft(profile.accent), id: profile.id, name: profile.name, executable: profile.executable, arguments: profile.arguments, cwd: profile.cwd ?? "", environment };
   return {
     ...newDraft(profile.accent, "ssh"),
     id: profile.id,
     name: profile.name,
+    environment,
     ssh: {
       host: ssh.host,
       user: ssh.user ?? "",
@@ -153,6 +155,8 @@ function fieldError(error: unknown): ProfileFieldError {
 function validatePreview(draft: CustomProfileDraft): ProfileFieldError | null {
   if (!draft.name.trim()) return { field: "name", message: "Enter a name." };
   if (draft.name.trim().length > 60) return { field: "name", message: "Use up to 60 characters, on one line." };
+  const badVariable = draft.environment.split("\n").map((line) => line.trim()).find((line) => line && !line.startsWith("#") && !/^[A-Za-z_]\w{0,63}\s*=/.test(line));
+  if (badVariable) return { field: "environment", message: `Write \u201c${badVariable}\u201d as NAME=value.` };
   if (draft.kind === "ssh") {
     const problem = validateSshPreview(draft.ssh);
     if (problem) return problem;
@@ -190,6 +194,7 @@ export async function saveCustomProfile(draft: CustomProfileDraft): Promise<Cust
     cwd: ssh ? null : draft.cwd.trim() || null,
     accent: draft.accent.trim().toLowerCase(),
     ssh,
+    environment: draft.environment,
   };
   const index = previewStore.findIndex((profile) => profile.id === saved.id);
   if (index >= 0) previewStore[index] = saved;

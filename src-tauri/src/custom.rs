@@ -23,6 +23,9 @@ const MAX_FILE_BYTES: u64 = 512 * 1024;
 const MAX_FORWARDS: usize = 16;
 const MAX_HOST: usize = 253;
 const MAX_USER: usize = 64;
+const MAX_VARIABLES: usize = 32;
+const MAX_VARIABLE_NAME: usize = 64;
+const MAX_VARIABLE_VALUE: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +43,66 @@ pub struct CustomProfile {
     /// always built from these fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh: Option<SshConnection>,
+    /// Environment variables for its shells, on top of the app's own.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env: Vec<Variable>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Variable {
+    pub name: String,
+    pub value: String,
+}
+
+/// `NODE_ENV`, `_JAVA_OPTIONS`: a letter or an underscore, then letters, digits and underscores.
+fn is_variable_name(name: &str) -> bool {
+    name.len() <= MAX_VARIABLE_NAME
+        && name.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn is_variable(variable: &Variable) -> bool {
+    is_variable_name(&variable.name)
+        && variable.value.len() <= MAX_VARIABLE_VALUE
+        && !has_control_characters(&variable.value)
+}
+
+/// `NAME=value` lines as typed in the editor; blank lines and `#` comments are skipped.
+pub fn parse_environment(text: &str) -> Result<Vec<Variable>, String> {
+    let mut variables: Vec<Variable> = Vec::new();
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+    {
+        let (name, value) = line
+            .split_once('=')
+            .ok_or_else(|| format!("Write \u{201c}{line}\u{201d} as NAME=value."))?;
+        let variable = Variable {
+            name: name.trim().to_owned(),
+            value: value.trim().to_owned(),
+        };
+        if !is_variable_name(&variable.name) {
+            return Err(format!("\u{201c}{}\u{201d} can't be a variable name: letters, digits and _, not starting with a digit.", variable.name));
+        }
+        if !is_variable(&variable) {
+            return Err(format!(
+                "The value of {} is too long or spans lines.",
+                variable.name
+            ));
+        }
+        if variables
+            .iter()
+            .any(|known| known.name.eq_ignore_ascii_case(&variable.name))
+        {
+            return Err(format!("{} is set twice.", variable.name));
+        }
+        variables.push(variable);
+    }
+    if variables.len() > MAX_VARIABLES {
+        return Err(format!("Use up to {MAX_VARIABLES} variables."));
+    }
+    Ok(variables)
 }
 
 /// An SSH connection made in the profile editor.
@@ -187,6 +250,9 @@ pub struct CustomProfileInput {
     /// Present for an SSH connection; `executable`, `arguments` and `cwd` are then unused.
     #[serde(default)]
     pub ssh: Option<SshInput>,
+    /// `NAME=value`, one per line.
+    #[serde(default)]
+    pub environment: String,
 }
 
 /// The SSH fields of the editor, as typed: forwards one per line.
@@ -206,19 +272,29 @@ pub struct SshInput {
     pub remote_forwards: String,
 }
 
-/// A stored profile plus its arguments as one line, for the editor.
+/// A stored profile plus its arguments and variables as text, for the editor.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CustomProfileView {
     #[serde(flatten)]
     pub profile: CustomProfile,
     pub arguments: String,
+    pub environment: String,
 }
 
 impl From<CustomProfile> for CustomProfileView {
     fn from(profile: CustomProfile) -> Self {
         let arguments = cmdline::join(&profile.arguments());
-        Self { profile, arguments }
+        let environment = profile
+            .env
+            .iter()
+            .map(|variable| format!("{}={}\n", variable.name, variable.value))
+            .collect();
+        Self {
+            profile,
+            arguments,
+            environment,
+        }
     }
 }
 
@@ -302,6 +378,8 @@ fn is_well_formed(profile: &CustomProfile) -> bool {
             .ssh
             .as_ref()
             .is_none_or(|ssh| profile.executable == "ssh" && ssh.is_well_formed())
+        && profile.env.len() <= MAX_VARIABLES
+        && profile.env.iter().all(is_variable)
 }
 
 fn forwards(field: &'static str, text: &str) -> Result<Vec<String>, FieldError> {
@@ -425,6 +503,8 @@ pub fn validate(
     }
 
     let accent = input.accent.trim().to_ascii_lowercase();
+    let env = parse_environment(&input.environment)
+        .map_err(|message| FieldError::on("environment", message))?;
     if let Some(ssh) = &input.ssh {
         let connection = validate_ssh(ssh, &find_program)?;
         if !is_hex_color(&accent) {
@@ -438,6 +518,7 @@ pub fn validate(
             cwd: None,
             accent,
             ssh: Some(connection),
+            env,
         });
     }
 
@@ -495,6 +576,7 @@ pub fn validate(
         cwd,
         accent,
         ssh: None,
+        env,
     })
 }
 
@@ -628,6 +710,15 @@ impl CustomProfiles {
             cwd: profile.cwd,
         })
     }
+
+    /// The variables a custom profile sets for its shells; none for any other profile.
+    pub fn environment(&self, id: &str) -> Vec<Variable> {
+        self.load()
+            .into_iter()
+            .find(|profile| profile.id == id)
+            .map(|profile| profile.env)
+            .unwrap_or_default()
+    }
 }
 
 impl From<String> for FieldError {
@@ -692,6 +783,7 @@ mod tests {
             cwd: String::new(),
             accent: "#5B8DEF".into(),
             ssh: None,
+            environment: String::new(),
         }
     }
 
@@ -879,6 +971,30 @@ mod tests {
     }
 
     #[test]
+    fn environment_lines_become_checked_variables() {
+        let parsed =
+            parse_environment("# for the API\nNODE_ENV = development\n\nAWS_PROFILE=work=2\n")
+                .unwrap();
+        assert_eq!(
+            parsed,
+            [
+                Variable {
+                    name: "NODE_ENV".into(),
+                    value: "development".into()
+                },
+                Variable {
+                    name: "AWS_PROFILE".into(),
+                    value: "work=2".into()
+                },
+            ]
+        );
+        assert!(parse_environment("NO_EQUALS").is_err());
+        assert!(parse_environment("1BAD=x").is_err());
+        assert!(parse_environment("A-B=x").is_err());
+        assert!(parse_environment("PATH=a\npath=b").is_err());
+    }
+
+    #[test]
     fn editor_view_round_trips_arguments() {
         let profile = CustomProfile {
             id: id(),
@@ -888,9 +1004,14 @@ mod tests {
             cwd: None,
             accent: "#112233".into(),
             ssh: None,
+            env: vec![Variable {
+                name: "NODE_ENV".into(),
+                value: "development".into(),
+            }],
         };
         let view = CustomProfileView::from(profile.clone());
         assert_eq!(split_arguments_line(&view.arguments).unwrap(), profile.args);
+        assert_eq!(parse_environment(&view.environment).unwrap(), profile.env);
     }
 
     #[test]
