@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.7.0
+
+Shortcuts for saved commands, output saved as a web page, word separators, and typing in every tab.
+
+### Added
+
+- shortcuts for saved commands: Settings → Behavior → Saved commands gives each one a key that runs it in the pane in front, and warns when another action has it
+- save as a web page: a pane's right-click menu and the palette save what it shows as an HTML file, with the terminal's colors, for a report or a bug
+- word separators: Settings → Behavior → Clipboard sets where a double-click stops selecting, so you choose whether `key=value` or `host:port` comes whole
+- type in every tab: the palette sends what you type to every pane of every tab of the window, and Settings → Keyboard can give it a shortcut
+
 ## 2.6.0
 
 Search in Settings, panes from the keyboard, even panes, and Nebula telling you what to install.
