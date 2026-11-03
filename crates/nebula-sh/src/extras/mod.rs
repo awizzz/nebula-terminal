@@ -6,6 +6,7 @@ mod awk;
 mod compare;
 mod find;
 mod grep;
+mod imgcat;
 mod ls;
 mod misc;
 mod procs;
@@ -41,6 +42,7 @@ pub fn run(name: &str, args: Vec<OsString>) -> Option<i32> {
         "less" => misc::less(&args),
         "xargs" => misc::xargs(&args[1..]),
         "awk" => awk::run(&args[1..]),
+        "imgcat" => imgcat::run(&args[1..]),
         _ => return None,
     })
 }
