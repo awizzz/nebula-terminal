@@ -122,6 +122,8 @@ export interface SavedCommand {
   id: string;
   name: string;
   command: string;
+  /** Runs it from anywhere in the window, like the palette does. */
+  shortcut?: string;
 }
 
 /** A profile's own look; anything it leaves out is the app's. */

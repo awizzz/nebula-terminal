@@ -18,7 +18,8 @@ import Segmented from "./Segmented";
 import ThemeSection from "./ThemeSection";
 import { describe as describeWorkspace, renamed, withPaneCommand, workspacePanes, type Workspace } from "../workspaces";
 import ProfileIcon from "./ProfileIcon";
-import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, ProfileLook, SshDraft, TerminalProfile } from "../types";
+import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomProfileField, DefaultTerminal, KeybindingPreferences, Launchers, ProfileFieldError, ProfileLook, SavedCommand, SshDraft, TerminalProfile } from "../types";
+import { savedCommandLabel } from "../savedCommands";
 
 const quickHeights = [0.3, 0.5, 0.7, 0.9];
 
@@ -730,13 +731,18 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
     }
   };
 
-  const conflictFor = (key: keyof KeybindingPreferences) => {
-    const value = preferences.keybindings[key].toLowerCase();
+  /** What else a shortcut does: another action, or a saved command. */
+  const usedBy = (shortcut: string, except: { key?: keyof KeybindingPreferences; saved?: string }) => {
+    const value = shortcut.toLowerCase();
     if (!value) return undefined;
-    const other = (Object.keys(preferences.keybindings) as Array<keyof KeybindingPreferences>)
-      .find((candidate) => candidate !== key && preferences.keybindings[candidate].toLowerCase() === value);
-    return other ? keybindingLabels[other] : undefined;
+    const binding = (Object.keys(preferences.keybindings) as Array<keyof KeybindingPreferences>)
+      .find((candidate) => candidate !== except.key && preferences.keybindings[candidate].toLowerCase() === value);
+    if (binding) return keybindingLabels[binding];
+    const saved = preferences.savedCommands.find((candidate) => candidate.id !== except.saved && candidate.shortcut?.toLowerCase() === value);
+    return saved ? `the saved command ${savedCommandLabel(saved)}` : undefined;
   };
+  const conflictFor = (key: keyof KeybindingPreferences) => usedBy(preferences.keybindings[key], { key });
+  const savedShortcutConflict = (saved: SavedCommand) => usedBy(saved.shortcut ?? "", { saved: saved.id });
 
   return (
     <div className="overlay overlay--settings" role="presentation" onMouseDown={onClose}>
@@ -1182,6 +1188,12 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                         placeholder="git pull --rebase && npm install"
                         aria-label={`Saved command ${index + 1}`}
                         onChange={(event) => patch("savedCommands", preferences.savedCommands.map((candidate) => candidate.id === saved.id ? { ...candidate, command: event.target.value } : candidate))}
+                      />
+                      <ShortcutRecorder
+                        action={saved.name || `saved command ${index + 1}`}
+                        value={saved.shortcut ?? ""}
+                        conflict={savedShortcutConflict(saved)}
+                        onChange={(shortcut) => patch("savedCommands", preferences.savedCommands.map((candidate) => candidate.id === saved.id ? { ...candidate, shortcut: shortcut || undefined } : candidate))}
                       />
                       <button className="icon-button" type="button" aria-label={`Remove ${saved.name || `saved command ${index + 1}`}`} title="Remove" onClick={() => patch("savedCommands", preferences.savedCommands.filter((candidate) => candidate.id !== saved.id))}><Trash size={15} strokeWidth={1.8} /></button>
                     </div>

@@ -754,8 +754,10 @@ kbd { font: inherit; }
 .workspace-commands__where { display: grid; gap: 2px; min-width: 0; font-size: 13px; }
 .workspace-commands__where > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 640px) { .workspace-commands__pane { grid-template-columns: 1fr; gap: 6px; } }
-.saved-command { display: grid; grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1.4fr) auto; align-items: start; gap: 10px; }
+.saved-command { display: grid; grid-template-columns: minmax(120px, 0.6fr) minmax(0, 1.4fr) auto auto; align-items: start; gap: 10px; }
 .field.saved-command__text { min-height: 32px; }
+.saved-command .shortcut { flex-direction: column; align-items: flex-end; gap: 4px; }
+.saved-command .shortcut__conflict { order: 1; max-width: 220px; text-align: right; }
 .highlight-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 14px; }
 .highlight-row__colors { display: flex; gap: 6px; }
 .highlight-row .field.is-invalid { border-color: var(--danger); box-shadow: inset 0 -1px 0 var(--danger); }
@@ -763,7 +765,7 @@ kbd { font: inherit; }
 .highlight-row__colors .menu__swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--text-2); }
 .highlight-row__notify { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 12px; }
 @media (max-width: 760px) { .highlight-row { grid-template-columns: minmax(0, 1fr) auto; } .highlight-row__colors { grid-column: 1; } }
-@media (max-width: 760px) { .saved-command { grid-template-columns: minmax(0, 1fr) auto; } .saved-command__text { grid-column: 1 / -1; grid-row: 2; } }
+@media (max-width: 760px) { .saved-command { grid-template-columns: minmax(0, 1fr) auto auto; } .saved-command__text { grid-column: 1 / -1; grid-row: 2; } }
 .dialog__field { display: grid; gap: 6px; margin-top: 16px; color: var(--text-2); font-size: 12px; }
 .dialog__field .field { width: 100%; }
 .dialog__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
