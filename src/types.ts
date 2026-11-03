@@ -143,6 +143,8 @@ export interface AppearancePreferences {
   cursorStyle: CursorStyle;
   cursorBlink: boolean;
   terminalPadding: number;
+  /** A title bar over each pane of a split tab: its shell's title and folder. */
+  paneTitles: boolean;
   terminalOpacity: number;
   backgroundMode: BackgroundMode;
   backgroundImage?: string;
@@ -252,6 +254,8 @@ export interface TerminalPaneModel {
   startCommand?: string;
   /** Keys, pastes and broadcasts don't reach the shell; only its output shows. Not saved. */
   readOnly?: boolean;
+  /** The shell's latest title. */
+  title?: string;
 }
 
 export type TabWatch = "output" | "silence";
