@@ -304,6 +304,8 @@ kbd { font: inherit; }
 .tab:hover .tab__close, .tab.is-active .tab__close { opacity: 1; }
 .tab__close:hover { background: var(--hover-strong); color: var(--text); }
 .tab__close:active { background: var(--press); }
+.tab__pin { opacity: 1; color: var(--text-3); }
+.tab__pin:hover { color: var(--text); }
 .profile-icon { flex: none; display: block; }
 
 .new-tab {

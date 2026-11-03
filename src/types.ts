@@ -250,6 +250,8 @@ export interface TerminalTab {
   zoomedPaneId?: string;
   /** Tell the user when the tab prints something, or goes quiet. Not saved. */
   watch?: TabWatch;
+  /** Kept on the left with the other pinned tabs, and closed only once unpinned. */
+  pinned?: boolean;
 }
 
 export interface PersistedPane {
@@ -264,6 +266,7 @@ export interface PersistedTab {
   title: string;
   customTitle?: string;
   color?: TabColor;
+  pinned?: boolean;
   /** Index of the active pane in reading order. */
   activePaneIndex: number;
   /** Version 3. */

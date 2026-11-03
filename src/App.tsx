@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Copy, CopyPlus, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareX, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -13,7 +13,7 @@ import Menu, { type MenuEntry } from "./components/Menu";
 import ProfileIcon from "./components/ProfileIcon";
 import { defaultKeybindings, defaultPreferences, isPreferencesKey, loadPreferences, sanitizePreferences, savePreferences } from "./preferences";
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
-import { clearSession, forgetWindowSession, loadSession, restoreSnapshot, saveSession, saveWindowSession, takeWindowSessions } from "./session";
+import { clearSession, forgetWindowSession, loadSession, pinnedFirst, restoreSnapshot, saveSession, saveWindowSession, takeWindowSessions } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
 import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
@@ -53,7 +53,7 @@ interface Launch {
 /** A tab on its way to another window (windows.rs keeps it until that window asks). */
 interface TabTransfer {
   kind: "tab";
-  tab: Pick<TerminalTab, "id" | "title" | "customTitle" | "color" | "layout" | "activePaneId" | "panes">;
+  tab: Pick<TerminalTab, "id" | "title" | "customTitle" | "color" | "pinned" | "layout" | "activePaneId" | "panes">;
 }
 
 /** The tabs another window had when the app closed. */
@@ -74,6 +74,11 @@ const windowLabel = isTauri() ? getCurrentWindow().label : "main";
 
 function tabFromTransfer(transfer: TabTransfer["tab"]): TerminalTab {
   return { ...transfer, broadcast: false };
+}
+
+/** Tabs that "close others" and "close to the right" may close: never pinned ones. */
+function closable(tabs: TerminalTab[]): string[] {
+  return tabs.filter((tab) => !tab.pinned).map((tab) => tab.id);
 }
 
 const TAB_CLOSE_MS = 150;
@@ -712,7 +717,7 @@ export default function App() {
     })));
     const transfer: TabTransfer = {
       kind: "tab",
-      tab: { id: tab.id, title: tab.title, customTitle: tab.customTitle, color: tab.color, layout: tab.layout, activePaneId: tab.activePaneId, panes },
+      tab: { id: tab.id, title: tab.title, customTitle: tab.customTitle, color: tab.color, pinned: tab.pinned, layout: tab.layout, activePaneId: tab.activePaneId, panes },
     };
     try {
       await invoke("move_tab", { transfer, newWindow });
@@ -922,7 +927,19 @@ export default function App() {
   }, [closeWindow, hideQuickTerminal, nativeHost, resolveProfile]);
   removeTabsRef.current = removeTabs;
 
-  const closeTab = useCallback((id: string) => removeTabs([id]), [removeTabs]);
+  const closeTab = useCallback((id: string) => {
+    if (tabsRef.current.find((tab) => tab.id === id)?.pinned) {
+      setNotice("Unpin this tab to close it");
+      return;
+    }
+    removeTabs([id]);
+  }, [removeTabs]);
+
+  const togglePin = useCallback((id: string) => {
+    const pinned = !tabsRef.current.find((tab) => tab.id === id)?.pinned;
+    setTabs((current) => pinnedFirst(current.map((tab) => tab.id === id ? { ...tab, pinned: pinned || undefined } : tab)));
+    setNotice(pinned ? "Pinned: this tab stays open until you unpin it" : "Unpinned");
+  }, []);
 
   const moveTab = useCallback((fromId: string, toId: string) => {
     setTabs((current) => {
@@ -933,7 +950,8 @@ export default function App() {
       const [moved] = next.splice(from, 1);
       if (!moved) return current;
       next.splice(to, 0, moved);
-      return next;
+      // A tab dragged across the line between pinned and unpinned tabs stays on its side.
+      return pinnedFirst(next);
     });
   }, []);
 
@@ -1238,7 +1256,8 @@ export default function App() {
       { id: "next-tab", group: "Tabs", label: "Next tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.nextTab, run: () => cycleTab(1) },
       { id: "previous-tab", group: "Tabs", label: "Previous tab", icon: <ArrowLeftRight size={15} />, shortcut: keys.previousTab, run: () => cycleTab(-1) },
       { id: "close-tab", group: "Tabs", label: "Close tab", icon: <X size={15} />, shortcut: keys.closeTab, run: () => activeTab && closeTab(activeTab.id) },
-      { id: "close-other-tabs", group: "Tabs", label: "Close other tabs", icon: <PanelTopClose size={15} />, run: () => activeTab && removeTabs(tabsRef.current.filter((tab) => tab.id !== activeTab.id).map((tab) => tab.id)) },
+      { id: "close-other-tabs", group: "Tabs", label: "Close other tabs", icon: <PanelTopClose size={15} />, run: () => activeTab && removeTabs(closable(tabsRef.current.filter((tab) => tab.id !== activeTab.id))) },
+      ...(activeTab ? [{ id: "pin-tab", group: "Tabs", label: activeTab.pinned ? "Unpin this tab" : "Pin this tab", icon: activeTab.pinned ? <PinOff size={15} /> : <Pin size={15} />, keywords: "keep lock", run: () => togglePin(activeTab.id) }] : []),
       ...profiles.filter((profile) => profile.available).map((profile): PaletteCommand => ({
         id: `new-${profile.id}`, group: "Profiles", label: profileCommandLabel(profile), detail: profileTag(profile) ?? (profileGroup(profile) === "custom" ? "Custom" : undefined),
         icon: <ProfileIcon kind={profile.kind} accent={profile.accent} size={15} />, keywords: `${profile.kind} ${profileGroupLabels[profileGroup(profile)]} shell`, run: () => openNewTab(profile.id),
@@ -1292,7 +1311,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1395,6 +1414,7 @@ export default function App() {
       const color = tabs[index]?.color;
       return [
         { id: "rename", label: "Rename tab", icon: <Pencil size={15} />, run: () => setRenamingTabId(open.tabId) },
+        { id: "pin", label: tabs[index]?.pinned ? "Unpin tab" : "Pin tab", icon: tabs[index]?.pinned ? <PinOff size={15} /> : <Pin size={15} />, run: () => togglePin(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
         ...(nativeHost && tabs.length > 1 ? [{ id: "new-window", label: "Move to new window", icon: <AppWindow size={15} />, run: () => void moveTabOut(open.tabId, true) }] : []),
         ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
@@ -1419,8 +1439,8 @@ export default function App() {
           })),
         },
         "separator",
-        { id: "close-right", label: "Close tabs to the right", disabled: index === tabs.length - 1, run: () => removeTabs(tabs.slice(index + 1).map((tab) => tab.id)) },
-        { id: "close-others", label: "Close other tabs", disabled: tabs.length < 2, run: () => removeTabs(tabs.filter((tab) => tab.id !== open.tabId).map((tab) => tab.id)) },
+        { id: "close-right", label: "Close tabs to the right", disabled: closable(tabs.slice(index + 1)).length === 0, run: () => removeTabs(closable(tabs.slice(index + 1))) },
+        { id: "close-others", label: "Close other tabs", disabled: closable(tabs.filter((tab) => tab.id !== open.tabId)).length === 0, run: () => removeTabs(closable(tabs.filter((tab) => tab.id !== open.tabId))) },
         { id: "close", label: "Close tab", icon: <X size={15} />, shortcut: open.tabId === activeTabId ? keys.closeTab : undefined, run: () => closeTab(open.tabId) },
       ];
     }
@@ -1476,6 +1496,7 @@ export default function App() {
         settingsShortcut={keys.settings}
         onSelectTab={setActiveTabId}
         onCloseTab={closeTab}
+        onUnpinTab={togglePin}
         onMoveTab={moveTab}
         onTearOff={nativeHost ? tearOffTab : undefined}
         onNewTab={() => openNewTab()}

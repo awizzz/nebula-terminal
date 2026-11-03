@@ -72,6 +72,14 @@ describe("session", () => {
     expect(loadSession(previewProfiles)!.tabs[0]!.panes[0]!.restoreScreen).toBeUndefined();
   });
 
+  it("keeps pinned tabs pinned, and on the left", () => {
+    const loose = tab(nebula);
+    const pinned = { ...tab(pwsh), pinned: true };
+    saveSession([loose, pinned], loose.id);
+    const restored = loadSession(previewProfiles)!.tabs;
+    expect(restored.map((saved) => [saved.panes[0]!.profile.id, saved.pinned])).toEqual([["pwsh", true], ["nebula", undefined]]);
+  });
+
   it("migrates a version 2 snapshot", () => {
     localStorage.setItem("nebula-terminal.session.v2", JSON.stringify({
       version: 2,
