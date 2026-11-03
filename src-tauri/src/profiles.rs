@@ -32,6 +32,8 @@ pub struct ResolvedProfile {
 
 const WSL_PREFIX: &str = "wsl:";
 const SSH_PREFIX: &str = "ssh:";
+/// A server typed in the command palette, `[user@]host[:port]`, not one from the ssh config.
+const SSH_TARGET_PREFIX: &str = "ssh-to:";
 const WSL_ACCENT: &str = "#e0a040";
 const SSH_ACCENT: &str = "#4f9d8f";
 
@@ -337,6 +339,46 @@ fn resolve_ssh(host: &str) -> Result<ResolvedProfile, String> {
     })
 }
 
+/// `ssh.exe`'s arguments for `[user@]host[:port]`. The user and the host may only hold
+/// letters, digits, dots, dashes and underscores, and start with a letter or a digit, so
+/// no part of it can pass for an ssh option.
+fn ssh_target_args(target: &str) -> Option<Vec<String>> {
+    let (destination, port) = match target.rsplit_once(':') {
+        Some((destination, port)) => (
+            destination,
+            Some(port.parse::<u16>().ok().filter(|port| *port > 0)?),
+        ),
+        None => (target, None),
+    };
+    let (user, host) = match destination.split_once('@') {
+        Some((user, host)) => (Some(user), host),
+        None => (None, destination),
+    };
+    if !ssh::is_valid_alias(host)
+        || user.is_some_and(|user| user.len() > 64 || !ssh::is_valid_alias(user))
+    {
+        return None;
+    }
+    let mut args = Vec::new();
+    if let Some(port) = port {
+        args.extend(["-p".to_owned(), port.to_string()]);
+    }
+    args.push(destination.to_owned());
+    Some(args)
+}
+
+fn resolve_ssh_target(target: &str) -> Result<ResolvedProfile, String> {
+    let args = ssh_target_args(target)
+        .ok_or_else(|| format!("'{target}' isn't a server to connect to."))?;
+    let executable = find_executable("ssh.exe")
+        .ok_or_else(|| "OpenSSH (ssh.exe) is not installed.".to_owned())?;
+    Ok(ResolvedProfile {
+        executable,
+        args,
+        cwd: None,
+    })
+}
+
 /// Resolves a profile id sent by the UI. WSL distributions and SSH hosts must still be
 /// installed or configured, and custom profiles must be saved: the UI never decides
 /// what runs. With a custom starting folder, WSL starts there (as /mnt/...) instead of
@@ -351,6 +393,9 @@ pub fn resolve_profile(
     }
     if let Some(host) = profile_id.strip_prefix(SSH_PREFIX) {
         return resolve_ssh(host);
+    }
+    if let Some(target) = profile_id.strip_prefix(SSH_TARGET_PREFIX) {
+        return resolve_ssh_target(target);
     }
     if custom::is_valid_id(profile_id) {
         return custom.resolve(profile_id);
@@ -461,6 +506,32 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[test]
+    fn palette_targets_become_ssh_arguments_and_nothing_else() {
+        assert_eq!(
+            ssh_target_args("deploy@build-01.local").unwrap(),
+            ["deploy@build-01.local"]
+        );
+        assert_eq!(ssh_target_args("pi:2222").unwrap(), ["-p", "2222", "pi"]);
+        assert_eq!(
+            ssh_target_args("me@10.0.0.4:22").unwrap(),
+            ["-p", "22", "me@10.0.0.4"]
+        );
+        for bad in [
+            "-oProxyCommand=calc",
+            "me@-host",
+            "-l@host",
+            "host:0",
+            "host:99999",
+            "a b",
+            "me@",
+            "x@y@z",
+            "host;calc",
+        ] {
+            assert!(ssh_target_args(bad).is_none(), "{bad}");
+        }
+    }
+
     fn scratch(name: &str) -> PathBuf {
         let directory =
             env::temp_dir().join(format!("nebula-profiles-{name}-{}", std::process::id()));
@@ -541,6 +612,7 @@ mod tests {
         let custom = custom::CustomProfiles::new(None);
         assert!(resolve_profile("wsl:--exec", false, &custom).is_err());
         assert!(resolve_profile("ssh:-oProxyCommand=calc", false, &custom).is_err());
+        assert!(resolve_profile("ssh-to:-oProxyCommand=calc", false, &custom).is_err());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupProfiles, MENU_GROUPING_THRESHOLD, pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
+import { groupProfiles, MENU_GROUPING_THRESHOLD, pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileMenuSections, profileTag, refreshTabProfiles, sshTarget } from "./profiles";
 import { paneLeaf } from "./layout";
 import type { TerminalProfile, TerminalTab } from "./types";
 
@@ -90,5 +90,16 @@ describe("refreshTabProfiles", () => {
   it("leaves a pane alone when its profile was removed", () => {
     const [refreshed] = refreshTabProfiles([tab(custom)], previewProfiles);
     expect(refreshed!.panes[0]!.profile).toBe(custom);
+  });
+});
+
+describe("servers typed in the palette", () => {
+  it("are user@host, host:port, or anything after ssh", () => {
+    expect(sshTarget("deploy@build-01")).toBe("deploy@build-01");
+    expect(sshTarget("ssh pi")).toBe("pi");
+    expect(sshTarget("10.0.0.4:2222")).toBe("10.0.0.4:2222");
+    expect(sshTarget("split")).toBeNull();
+    expect(sshTarget("ssh -oProxyCommand=calc")).toBeNull();
+    expect(sshTarget("me@host; rm")).toBeNull();
   });
 });

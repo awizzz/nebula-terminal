@@ -95,3 +95,23 @@ export function refreshTabProfiles(tabs: TerminalTab[], profiles: TerminalProfil
     panes: tab.panes.map((pane) => ({ ...pane, profile: byId.get(pane.profile.id) ?? pane.profile })),
   }));
 }
+
+const SSH_TARGET = /^(?:ssh\s+)?((?:[A-Za-z0-9][\w.-]{0,63}@)?[A-Za-z0-9][\w.-]{0,252}(?::\d{1,5})?)$/;
+
+/**
+ * A server typed in the command palette: `user@host`, `host:port`, or anything after
+ * `ssh `. A bare word is only a server with `ssh ` in front, so a search stays a search.
+ * Rust checks it again before ssh runs.
+ */
+export function sshTarget(query: string): string | null {
+  const text = query.trim();
+  const match = SSH_TARGET.exec(text);
+  if (!match) return null;
+  const target = match[1]!;
+  return /^ssh\s/.test(text) || /[@:]/.test(target) ? target : null;
+}
+
+/** The profile of a tab connected to such a server. */
+export function sshTargetProfile(target: string): TerminalProfile {
+  return { id: `ssh-to:${target}`, name: target, kind: "ssh", available: true, executable: "ssh.exe", commandLine: `ssh ${target}`, accent: "#4f9d8f" };
+}

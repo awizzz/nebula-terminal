@@ -1,6 +1,12 @@
 import { isStartableFolder } from "./folders";
 import { MAX_PANES, layoutFromFlat, paneIds, paneLeaf, sanitizeLayout, type LayoutNode } from "./layout";
-import { pickProfile } from "./profiles";
+import { pickProfile, sshTarget, sshTargetProfile } from "./profiles";
+
+/** A tab connected to a server typed in the palette comes back connected to it. */
+function palettedSsh(profileId: string) {
+  const target = profileId.startsWith("ssh-to:") ? sshTarget(`ssh ${profileId.slice(7)}`) : null;
+  return target ? sshTargetProfile(target) : undefined;
+}
 import { isTabColor } from "./themes";
 import type { PersistedLayout, PersistedTab, SessionSnapshot, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
 
@@ -78,7 +84,7 @@ function restoreTab(saved: PersistedTab, available: ReadonlyMap<string, Terminal
   const addPane = (profileId: unknown, cwd?: unknown, screen?: unknown, command?: unknown) => {
     const pane: TerminalPaneModel = {
       id: crypto.randomUUID(),
-      profile: (typeof profileId === "string" && available.get(profileId)) || fallback,
+      profile: (typeof profileId === "string" && (available.get(profileId) ?? palettedSsh(profileId))) || fallback,
       cwd: isStartableFolder(cwd) ? cwd : undefined,
       ...(typeof screen === "string" && screen.length <= 200 ? { restoreScreen: screen } : {}),
       ...(typeof command === "string" && command.trim() && command.length <= MAX_COMMAND ? { startCommand: command } : {}),
