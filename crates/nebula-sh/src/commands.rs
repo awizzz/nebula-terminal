@@ -57,8 +57,8 @@ pub fn runs_code(name: &str) -> bool {
 
 /// Commands implemented by Nebula on top of coreutils.
 pub const EXTRAS: &[&str] = &[
-    "awk", "cmp", "diff", "find", "grep", "kill", "killall", "less", "ls", "open", "pkill", "ps",
-    "sed", "tree", "xargs", "xdg-open",
+    "awk", "cmp", "diff", "find", "grep", "imgcat", "kill", "killall", "less", "ls", "open",
+    "pkill", "ps", "sed", "tree", "xargs", "xdg-open",
 ];
 
 pub fn is_builtin(name: &str) -> bool {
@@ -128,6 +128,7 @@ pub fn describe(name: &str) -> Option<&'static str> {
         "touch" => "create files or update times",
         "ls" => "list directory contents",
         "tree" => "show a directory tree",
+        "imgcat" => "show an image in the terminal",
         "find" => "search for files",
         "grep" => "search text with patterns",
         "head" => "first lines of a file",

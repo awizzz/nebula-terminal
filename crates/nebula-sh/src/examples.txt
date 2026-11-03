@@ -199,6 +199,14 @@ kill: stop a program
 - Every process with that name:
   killall node
 
+imgcat: show an image in the terminal
+- A screenshot, as wide as it is:
+  imgcat screenshot.png
+- Every PNG here, each half the pane wide:
+  imgcat -w 50% *.png
+- An image a command downloads:
+  curl -s https://nebula.awizz.space/og.png | imgcat
+
 open: open a file or a link with its app
 - This folder in File Explorer:
   open .

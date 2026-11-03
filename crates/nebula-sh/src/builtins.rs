@@ -1511,7 +1511,7 @@ fn help(out: &mut dyn Write) -> Outcome {
             "Files",
             &[
                 "ls", "tree", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "ln",
-                "find", "du", "df", "realpath",
+                "find", "du", "df", "realpath", "imgcat",
             ],
         ),
         (
