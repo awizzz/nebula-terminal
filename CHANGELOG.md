@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.9.0
+
+Closed tabs that come back, servers typed in the palette, and environment variables per profile.
+
+### Added
+
+- reopen a closed tab: `Ctrl+Shift+Alt+T` brings back the last tab you closed, with its splits and folders and what each pane showed; the last ten are kept
+- connect from the palette: type `user@server`, `server:2222` or `ssh server` in the command palette to open an SSH tab there
+- environment variables per profile: the profile editor takes `NAME=value` lines, set for that profile's shells only, SSH connections included
+
 ## 2.8.0
 
 Pane titles, read-only panes, a pane's folder in File Explorer, and settings you can back up.
