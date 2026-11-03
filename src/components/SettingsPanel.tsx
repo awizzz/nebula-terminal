@@ -875,6 +875,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Padding">
                     <Slider label="Padding" value={preferences.terminalPadding} min={0} max={32} step={1} format={(value) => `${value} px`} onChange={(value) => patch("terminalPadding", value)} />
                   </Row>
+                  <Row label="Pane titles" description="In a split tab, each pane shows its shell's title and folder above it.">
+                    <Switch label="Pane titles" checked={preferences.paneTitles} onChange={(value) => patch("paneTitles", value)} />
+                  </Row>
                   <Row label="Background opacity" description="Below 100% the window background shows through.">
                     <Slider label="Background opacity" value={preferences.terminalOpacity} min={0.6} max={1} step={0.01} format={(value) => `${Math.round(value * 100)}%`} onChange={(value) => patch("terminalOpacity", value)} />
                   </Row>

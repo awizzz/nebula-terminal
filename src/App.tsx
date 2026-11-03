@@ -1031,7 +1031,14 @@ export default function App() {
 
   const setPaneTitle = useCallback((tabId: string, pane: TerminalPaneModel, title: string) => {
     const clean = cleanTitle(title, pane.profile);
-    setTabs((current) => current.map((tab) => tab.id === tabId && tab.activePaneId === pane.id && tab.title !== clean ? { ...tab, title: clean } : tab));
+    setTabs((current) => current.map((tab) => {
+      if (tab.id !== tabId) return tab;
+      const panes = tab.panes.some((candidate) => candidate.id === pane.id && candidate.title !== clean)
+        ? tab.panes.map((candidate) => candidate.id === pane.id ? { ...candidate, title: clean } : candidate)
+        : tab.panes;
+      const title = tab.activePaneId === pane.id ? clean : tab.title;
+      return panes === tab.panes && title === tab.title ? tab : { ...tab, panes, title };
+    }));
   }, []);
 
   const [recentFolders, setRecentFolders] = useState(loadRecentFolders);
@@ -1730,6 +1737,7 @@ export default function App() {
           if (!visible && deferredTabs.has(tab.id)) return null;
           const { panes: rects, dividers } = computeLayout(tab.layout);
           const zoomed = tab.zoomedPaneId && tab.panes.length > 1 ? tab.zoomedPaneId : undefined;
+          const titled = preferences.paneTitles && tab.panes.length > 1 && !zoomed;
           return (
             <div key={tab.id} className={`workspace__tab ${visible ? "is-visible" : ""}`} aria-hidden={!visible}>
               {/* Panes stay in one flat, keyed list whatever the tree looks like, so React never
@@ -1738,7 +1746,14 @@ export default function App() {
                 {tab.panes.map((pane) => {
                   const focused = visible && pane.id === tab.activePaneId && !overlayOpen && !searchOpen && !menu && !renaming;
                   return (
-                    <div key={pane.id} className={`pane ${pane.id === tab.activePaneId ? "is-active" : ""}`} data-pane-id={pane.id} style={paneStyle(zoomed ? (pane.id === zoomed ? WHOLE_TAB : undefined) : rects.get(pane.id))}>
+                    <div key={pane.id} className={`pane ${pane.id === tab.activePaneId ? "is-active" : ""} ${titled ? "has-title" : ""}`} data-pane-id={pane.id} style={paneStyle(zoomed ? (pane.id === zoomed ? WHOLE_TAB : undefined) : rects.get(pane.id))}>
+                      {titled && (
+                        <div className="pane__title" onMouseDown={() => setActivePane(tab.id, pane.id)}>
+                          <ProfileIcon kind={pane.profile.kind} accent={pane.profile.accent} size={13} />
+                          <span className="pane__name">{pane.title ?? pane.profile.name}</span>
+                          {pane.cwd && <span className="pane__folder">{folderParts(pane.cwd).name}</span>}
+                        </div>
+                      )}
                       <TerminalPane
                         paneId={pane.id}
                         profile={pane.profile}
