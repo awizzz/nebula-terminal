@@ -459,6 +459,7 @@ kbd { font: inherit; }
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 .terminal__log { top: 8px; right: 18px; opacity: 0.7; transition: opacity var(--dur-1); }
+.terminal__locked { bottom: 8px; right: 18px; gap: 6px; padding: 2px 8px; color: var(--text-2); pointer-events: none; }
 .terminal__log:hover, .terminal__log:focus-within { opacity: 1; }
 .terminal__mark { bottom: 12px; left: 50%; max-width: calc(100% - 32px); padding: 4px 10px; color: var(--text); transform: translateX(-50%); pointer-events: none; }
 .terminal__mark kbd { padding: 0 5px; border-radius: var(--radius-s); background: var(--hover-strong); color: var(--text-2); font-size: 10px; }

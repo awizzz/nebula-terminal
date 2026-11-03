@@ -10,7 +10,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { ClipboardAddon, type IClipboardProvider } from "@xterm/addon-clipboard";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import { adjacentPrompt, commandOnPromptLine, joinLines } from "../commandMarks";
-import { ClipboardCheck, Copy, RotateCcw, X } from "lucide-react";
+import { ClipboardCheck, Copy, Lock, RotateCcw, X } from "lucide-react";
 import { openExternal } from "../external";
 import { folderFromReport } from "../folders";
 import { openPath, registerFileLinks } from "../fileLinks";
@@ -41,6 +41,8 @@ interface TerminalPaneProps {
   restoredScreen?: string;
   /** Typed into the shell when it starts (and restarts), from a workspace. */
   startCommand?: string;
+  /** Nothing typed, pasted or broadcast reaches the shell. */
+  readOnly?: boolean;
   preferences: AppearancePreferences;
   focused: boolean;
   visible: boolean;
@@ -167,6 +169,7 @@ export default function TerminalPane({
   moved,
   restoredScreen,
   startCommand,
+  readOnly = false,
   preferences,
   focused,
   visible,
@@ -204,6 +207,8 @@ export default function TerminalPane({
   const restoredRef = useRef(restoredScreen);
   const startCommandRef = useRef(startCommand);
   startCommandRef.current = startCommand;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
   const callbacksRef = useRef({ onFontSizeDelta, onTitleChange, onActivity, onOutput, onSearchResult, onContextMenu, onCommandFinished, onNotify, onFolderChange, onInput, onNotice, onReady, onProgress, onLog, onHighlight });
   /** The shell's folder, from its OSC 7 reports; relative paths in its output start there. */
   const folderRef = useRef(startIn);
@@ -541,7 +546,11 @@ export default function TerminalPane({
         if (!disposed) terminal.writeln(`\r\n\x1b[31m${String(error)}\x1b[0m`);
       });
     };
+    // A read-only pane still answers the program's own questions (cursor position and the like).
+    const locked = (data: string) => readOnlyRef.current && !isTerminalReport(data);
+    let toldLocked = 0;
     const writeRaw = (data: string) => {
+      if (locked(data)) return;
       const sessionId = sessionRef.current;
       if (isTauri()) {
         if (sessionId) send(sessionId, data);
@@ -556,6 +565,11 @@ export default function TerminalPane({
     writeRef.current = writeRaw;
 
     const typed = (data: string) => {
+      if (locked(data)) {
+        if (Date.now() - toldLocked > 3000) callbacksRef.current.onNotice?.("This pane is read-only: unlock it from its right-click menu");
+        toldLocked = Date.now();
+        return;
+      }
       writeRaw(data);
       callbacksRef.current.onInput?.(data);
     };
@@ -749,7 +763,7 @@ export default function TerminalPane({
       // Ctrl+Z while Nebula runs a command pauses it, as in bash. The program has the
       // keyboard then, so the shell hears it through the host instead of the key.
       const sessionId = sessionRef.current;
-      if (isControlLetter(event, "z") && !event.shiftKey && running && sessionId && isTauri() && profile.id === "nebula") {
+      if (isControlLetter(event, "z") && !event.shiftKey && running && sessionId && isTauri() && profile.id === "nebula" && !readOnlyRef.current) {
         event.preventDefault();
         void invoke<boolean>("suspend_foreground", { sessionId })
           .then((paused) => { if (!paused) writeRef.current("\x1a"); })
@@ -1117,6 +1131,11 @@ export default function TerminalPane({
       onMouseDown={onFocus}
     >
       <div ref={hostRef} className="terminal__host" />
+      {readOnly && (
+        <div className="terminal__chip terminal__locked" role="status" title="Keys, pastes and broadcasts don't reach this shell">
+          <Lock size={12} strokeWidth={2} aria-hidden="true" />Read-only
+        </div>
+      )}
       {marking && (
         <div className="terminal__chip terminal__mark" role="status">
           Mark mode: arrows move, Shift selects, <kbd>Enter</kbd> copies, <kbd>Esc</kbd> leaves

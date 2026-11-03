@@ -250,6 +250,8 @@ export interface TerminalPaneModel {
   screen?: string;
   /** Typed into the shell once it starts, from a workspace. */
   startCommand?: string;
+  /** Keys, pastes and broadcasts don't reach the shell; only its output shows. Not saved. */
+  readOnly?: boolean;
 }
 
 export type TabWatch = "output" | "silence";

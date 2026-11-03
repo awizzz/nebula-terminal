@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -1067,6 +1067,18 @@ export default function App() {
       .catch((error: unknown) => setNotice(String(error)));
   }, [nativeHost]);
 
+  const toggleReadOnly = useCallback(() => {
+    const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
+    const pane = tab?.panes.find((candidate) => candidate.id === tab.activePaneId);
+    if (!tab || !pane) return;
+    const readOnly = !pane.readOnly;
+    setTabs((current) => current.map((candidate) => candidate.id !== tab.id ? candidate : {
+      ...candidate,
+      panes: candidate.panes.map((other) => other.id === pane.id ? { ...other, readOnly: readOnly || undefined } : other),
+    }));
+    setNotice(readOnly ? "Read-only: what you type won't reach this shell" : "This pane takes your keys again");
+  }, []);
+
   /** The folder the shell in front is in, in File Explorer. */
   const openPaneFolder = useCallback(() => {
     const tab = tabsRef.current.find((candidate) => candidate.id === activeTabIdRef.current);
@@ -1471,6 +1483,7 @@ export default function App() {
       { id: "switch-tab", group: "Tabs", label: "Switch to a tab…", icon: <ArrowLeftRight size={15} />, keywords: "go jump find tab", shortcut: keys.switchTab, run: () => requestAnimationFrame(openTabSwitcher) },
       { id: "find-everywhere", group: "Terminal", label: "Find in every tab…", icon: <Search size={15} />, keywords: "search grep all tabs panes", shortcut: keys.findEverywhere, run: () => setFindEverywhereOpen(true) },
       { id: "save-output", group: "Terminal", label: "Save output to a file…", icon: <FileDown size={15} />, keywords: "export log text scrollback", run: () => saveOutput("all") },
+      { id: "read-only", group: "Panes", label: activePane?.readOnly ? "Unlock pane" : "Make pane read-only", icon: activePane?.readOnly ? <LockOpen size={15} /> : <Lock size={15} />, keywords: "lock protect input keys", run: toggleReadOnly },
       { id: "open-folder", group: "Terminal", label: "Open this folder in File Explorer", detail: activePane?.cwd ? folderParts(activePane.cwd).name : undefined, icon: <FolderOpen size={15} />, keywords: "explorer directory cwd", run: openPaneFolder },
       { id: "save-html", group: "Terminal", label: "Save output as a web page…", icon: <FileCode size={15} />, keywords: "export html colors report", run: () => saveOutput("html") },
       { id: "log-output", group: "Terminal", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, keywords: "record transcript script session", run: toggleLog },
@@ -1490,7 +1503,7 @@ export default function App() {
       { id: "keyboard", group: "App", label: "Keyboard shortcuts", icon: <Keyboard size={15} />, keywords: "keybindings", run: () => openSettings("keyboard") },
       { id: "profiles", group: "App", label: "Profile settings", icon: <Monitor size={15} />, keywords: "shells wsl ssh custom default", run: () => openSettings("profiles") },
     ];
-  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder]);
+  }, [activePane?.id, activeTab, adjustFontSize, closeActivePane, closeTab, copyLastOutput, cycleTab, duplicateTab, jumpToCommand, keys, openAsAdmin, openNewTab, openSavedWorkspace, openSearch, saveTabsAsWorkspace, workspaces, openSettings, preferences.customThemes, preferences.tabDensity, profiles, removeTabs, resolveProfile, setTabColor, splitActive, toggleBroadcast, togglePaneZoom, watchTab, runSavedCommand, preferences.savedCommands, saveOutput, recentFolders, logging, toggleLog, togglePin, movePaneToNewTab, evenOutPanes, swapActivePane, broadcastAll, toggleBroadcastAll, openPaneFolder, toggleReadOnly]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1649,6 +1662,7 @@ export default function App() {
       { id: "copy-output", label: "Copy last output", icon: <ClipboardCheck size={15} />, disabled: !pane?.hasCommandOutput(), run: copyLastOutput },
       { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput("all") },
       { id: "save-html", label: "Save as a web page…", icon: <FileCode size={15} />, run: () => saveOutput("html") },
+      { id: "read-only", label: activePane?.readOnly ? "Unlock pane" : "Make read-only", icon: activePane?.readOnly ? <LockOpen size={15} /> : <Lock size={15} />, run: toggleReadOnly },
       { id: "open-folder", label: "Open folder in File Explorer", icon: <FolderOpen size={15} />, disabled: !activePane?.cwd, run: openPaneFolder },
       { id: "log-output", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, run: toggleLog },
       "separator",
@@ -1733,6 +1747,7 @@ export default function App() {
                         moved={pane.moved}
                         restoredScreen={pane.screen}
                         startCommand={pane.startCommand}
+                        readOnly={pane.readOnly}
                         preferences={lookOf(pane.profile.id)}
                         focused={focused}
                         visible={visible && (!zoomed || pane.id === zoomed)}
