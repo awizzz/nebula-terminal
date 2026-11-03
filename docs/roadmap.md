@@ -1,13 +1,13 @@
 # Roadmap
 
-Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, pinned tabs, tabs dropped onto panes, profiles with their own look, SSH connections that reconnect, workspaces that start commands, a quick terminal, images, pane zoom, saved commands with blanks, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, highlights, mark mode, search in Settings, panes from the keyboard, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
+Nebula Terminal covers daily use: shells, scripts, tabs, mixed splits, several windows, pinned tabs, tabs dropped onto panes, profiles with their own look, SSH connections that reconnect, workspaces that start commands, a quick terminal, images, pane zoom, saved commands with blanks and shortcuts, command blocks, find in every tab, a tab switcher, pane logs, restored output, watched tabs, highlights, mark mode, search in Settings, panes from the keyboard, clickable file paths, shell integration, settings sync, accessibility, Windows on Arm, a profile in Windows Terminal, notifications and updates. This is what comes next, roughly in order. Nothing here is a promise or has a date, and ideas move up when people ask for them: open an issue or vote on one with a 👍.
 
-## Next (2.7)
+## Next (2.8)
 
-- **Shortcuts for saved commands:** give the commands you run most a key of their own.
-- **Output as HTML:** Save output… keeps the colors too, for a report or a bug.
-- **What a double-click selects:** choose the characters that end a word, so a path or a URL comes whole.
-- **Type in every tab:** send what you type to all the tabs of a window, not only the panes of one.
+- **Pane titles:** in a split tab, each pane can show its shell's title and folder above it.
+- **Read-only panes:** lock a pane that shows a log or a dashboard, so a stray key never reaches it.
+- **The folder in File Explorer:** open the folder a pane is in from its right-click menu.
+- **Back up your settings:** save every setting to a file and bring them back, on this PC or another, without setting up sync.
 - **The winget package:** `winget install Awizz.NebulaTerminal`, once Microsoft's reviewers get to it. Scoop already works (see the README).
 
 ## Later
