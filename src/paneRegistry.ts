@@ -36,6 +36,8 @@ export interface PaneHandle {
   /** Keeps the shell running for another window and gives its screen. The pane then
    * unmounts without stopping the shell. */
   detach: () => Promise<MovedPane>;
+  /** The screen and up to 1,000 lines of scrollback, with their colors, to show it again later. */
+  screen: () => string;
   /** Takes the shell back after a move that failed. */
   undoDetach: () => void;
   /** Asks where, then writes what the pane prints there as plain text until stopped. */

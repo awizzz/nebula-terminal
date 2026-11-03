@@ -145,6 +145,8 @@ export interface AppearancePreferences {
   /** PowerShell, Git Bash and WSL get a script that marks their commands. */
   shellIntegration: boolean;
   restoreSession: boolean;
+  /** Restored panes show what they last printed. */
+  restoreScreens: boolean;
   /** "Open in Nebula Terminal" in File Explorer. Null until the user decides: installed copies add it. */
   explorerMenu: boolean | null;
   /** The `nebula-terminal` command on the user's PATH. Null until the user decides, like `explorerMenu`. */
@@ -223,6 +225,10 @@ export interface TerminalPaneModel {
   /** A console Windows handed over (Nebula as the default terminal). The pane shows it
    * instead of starting its profile, which only runs if the pane is restarted. */
   handoffId?: string;
+  /** The key of the screen it showed in the last session, read before the pane mounts. */
+  restoreScreen?: string;
+  /** That screen, written before the shell starts. */
+  screen?: string;
 }
 
 export type TabWatch = "output" | "silence";
@@ -251,7 +257,7 @@ export interface PersistedPane {
 }
 
 export type PersistedLayout =
-  | { type: "pane"; profileId: string; cwd?: string }
+  | { type: "pane"; profileId: string; cwd?: string; screen?: string }
   | { type: "split"; direction: SplitDirection; sizes: number[]; children: PersistedLayout[] };
 
 export interface PersistedTab {
