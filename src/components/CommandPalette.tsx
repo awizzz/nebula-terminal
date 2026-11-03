@@ -19,6 +19,8 @@ interface CommandPaletteProps {
   onClose: () => void;
   placeholder?: string;
   empty?: string;
+  /** Commands made from what's typed, listed first (a server to connect to, say). */
+  fromQuery?: (query: string) => PaletteCommand[];
 }
 
 export interface Match {
@@ -56,7 +58,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{[...text].map((char, index) => marked.has(index) ? <mark key={index}>{char}</mark> : <Fragment key={index}>{char}</Fragment>)}</>;
 }
 
-export default function CommandPalette({ open, commands, onClose, placeholder = "Type a command", empty = "No matching command" }: CommandPaletteProps) {
+export default function CommandPalette({ open, commands, onClose, placeholder = "Type a command", empty = "No matching command", fromQuery }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -73,8 +75,10 @@ export default function CommandPalette({ open, commands, onClose, placeholder = 
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     const matches = commands.map((command) => matchCommand(command, normalized)).filter((item): item is Match => item !== null);
-    return normalized ? matches.sort((a, b) => b.score - a.score) : matches;
-  }, [commands, query]);
+    const sorted = normalized ? matches.sort((a, b) => b.score - a.score) : matches;
+    const typed = fromQuery?.(query).map((command): Match => ({ command, score: Infinity, positions: [] })) ?? [];
+    return [...typed, ...sorted];
+  }, [commands, fromQuery, query]);
 
   useEffect(() => setActiveIndex(0), [query]);
 

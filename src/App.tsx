@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, ProgressBarStatus } from "@tauri-apps/api/window";
-import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
+import { AppWindow, ArrowDownToLine, FileCode, FileDown, FolderOpen, Maximize2, SquareTerminal as TerminalSquare, ArrowLeftRight, ArrowUpToLine, ClipboardCheck, ClipboardPaste, Columns2, Combine, Copy, CopyPlus, Equal, Eraser, Eye, EyeOff, Globe, Hourglass, Keyboard, Lock, LockOpen, Minus, Monitor, Palette, PanelTopClose, Pencil, Pin, PinOff, Plus, LayoutPanelTop, Radio, Rows2, Save, ScrollText, Search, Settings2, ShieldCheck, SquareArrowOutUpRight, SquareX, TextCursorInput, TextSelect, X, ZoomIn } from "lucide-react";
 import Titlebar, { tabTitle } from "./components/Titlebar";
 import TerminalPane, { type FinishedCommand } from "./components/TerminalPane";
 import { finishedMessage, notify } from "./notify";
@@ -15,7 +15,7 @@ import { defaultKeybindings, defaultPreferences, isPreferencesKey, loadPreferenc
 import { administratorLaunch, isAdministrator, openAsAdministrator } from "./administrator";
 import { clearSession, forgetWindowSession, loadSession, pinnedFirst, restoreSnapshot, saveSession, saveWindowSession, takeWindowSessions } from "./session";
 import { describe as describeWorkspace, loadWorkspaces, openWorkspace, saveWorkspaces, suggestName, withWorkspace, type Workspace } from "./workspaces";
-import { pickProfile, previewProfiles, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
+import { pickProfile, previewProfiles, sshTarget, sshTargetProfile, profileCommandLabel, profileGroup, profileGroupLabels, profileMenuSections, profileTag, refreshTabProfiles } from "./profiles";
 import { detectProfiles } from "./customProfiles";
 import * as splash from "./splash";
 import { isQuickTerminal, isTabsWindow, transferId } from "./windowKind";
@@ -543,6 +543,20 @@ export default function App() {
     setTabs((current) => [...current, next]);
     setActiveTabId(next.id);
   }, [currentFolder, resolveProfile]);
+
+  /** `user@server` typed in the palette: a tab connected to it. */
+  const paletteSsh = useCallback((query: string): PaletteCommand[] => {
+    const target = sshTarget(query);
+    if (!target) return [];
+    return [{
+      id: "ssh-to", group: "SSH", label: `Connect to ${target}`, detail: "New tab", icon: <Globe size={15} />,
+      run: () => {
+        const next = makeTab(sshTargetProfile(target));
+        setTabs((current) => [...current, next]);
+        setActiveTabId(next.id);
+      },
+    }];
+  }, []);
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>(() => loadWorkspaces());
   const changeWorkspaces = useCallback((next: Workspace[]) => {
@@ -1877,6 +1891,7 @@ export default function App() {
           commands={switchingTabs ? tabCommands : commands}
           placeholder={switchingTabs ? "Type part of a tab's name, folder or shell" : undefined}
           empty={switchingTabs ? "No tab matches" : undefined}
+          fromQuery={switchingTabs ? undefined : paletteSsh}
           onClose={() => { setPaletteOpen(false); setSwitchingTabs(false); closeOverlayFocus(); }}
         />
       </Suspense>
