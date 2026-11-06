@@ -28,7 +28,7 @@ sed = "0.3.0"
 # package.json scripts for completion.
 serde_json = "1"
 strsim = "0.11.1"
-sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
+sysinfo = { version = "0.40.1", default-features = false, features = ["system"] }
 terminal_size = "0.4.4"
 unicode-width = "0.2.2"
 uucore = "0.12.0"
