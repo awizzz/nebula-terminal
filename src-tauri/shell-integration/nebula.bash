@@ -1,4 +1,4 @@
-# Nebula Terminal shell integration for bash (Git Bash and WSL).
+# Nebula Terminal shell integration for bash (Git Bash, WSL and Linux).
 #
 # Bash runs this file instead of its usual startup files, so it reads them first,
 # as a login shell would. Then it marks each prompt and command (OSC 133), which
@@ -15,7 +15,8 @@ __nebula_folder_pwd=
 __nebula_folder_url=
 
 # Turns $PWD into a file URL Windows understands: C:/Users/me for drives, and the
-# distribution's share (\\wsl$\Ubuntu\home\me) for the rest of a WSL file system.
+# distribution's share (\\wsl$\Ubuntu\home\me) for the rest of a WSL file system. On
+# Linux itself, the folder is the folder.
 __nebula_update_folder() {
   __nebula_folder_pwd=$PWD
   __nebula_folder_url=
@@ -33,6 +34,8 @@ __nebula_update_folder() {
       /[a-zA-Z] | /[a-zA-Z]/*) folder="${PWD:1:1}:${PWD:2}" ;;
       *) folder=$(builtin pwd -W 2>/dev/null) ;;
     esac
+  else
+    __nebula_folder_url="file://${HOSTNAME:-localhost}$PWD"
   fi
   if [ -n "$folder" ]; then
     case $folder in

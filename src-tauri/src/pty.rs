@@ -320,9 +320,10 @@ pub async fn start_session(
     let known_folder = known_folder.as_deref().and_then(profiles::known_folder);
     let custom_cwd = cwd.is_some() || known_folder.is_some() || start_in.is_some();
     let mut profile = profiles::resolve_profile(&profile_id, custom_cwd, &custom_profiles)?;
-    if let Some(kind) = Kind::of(&profile_id).filter(|_| shell_integration) {
-        scripts.apply(kind, &mut profile.args);
-    }
+    let integration = match Kind::of(&profile_id).filter(|_| shell_integration) {
+        Some(kind) => scripts.apply(kind, &mut profile.args),
+        None => Vec::new(),
+    };
     // A profile's own starting folder wins, then the pane's own, then Settings.
     let directory = match (&profile.cwd, start_in, &cwd) {
         (Some(folder), _, _) => Some(existing_directory(folder)?),
@@ -354,6 +355,9 @@ pub async fn start_session(
     command.env("TERM_PROGRAM", "NebulaTerminal");
     command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
     command.env("NEBULA_TERMINAL", "1");
+    for (name, value) in integration {
+        command.env(name, value);
+    }
     for variable in custom_profiles.environment(&profile_id) {
         command.env(variable.name, variable.value);
     }
@@ -374,7 +378,9 @@ pub async fn start_session(
         .map_err(|error| format!("Unable to open PTY input: {error}"))?;
     let killer = child.clone_killer();
     // Only Nebula listens for the pause request; elsewhere SIGUSR1 would end the shell.
-    let pid = child.process_id().filter(|_| cfg!(windows) || profile_id == "nebula");
+    let pid = child
+        .process_id()
+        .filter(|_| cfg!(windows) || profile_id == "nebula");
     let parts = SessionParts {
         reader,
         writer,
@@ -492,6 +498,7 @@ fn spawn_session(
 impl PtyState {
     /// Keeps a console Windows handed over until a tab attaches to it. A console that
     /// asked to be hidden runs without a tab until its program exits.
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub fn receive_handoff(&self, title: String, hidden: bool, parts: SessionParts) {
         if hidden {
             let _ = spawn_session(self, parts, Channel::new(|_| Ok(())));

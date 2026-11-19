@@ -1,6 +1,7 @@
-//! Shell integration for PowerShell, Git Bash and WSL. Each shell gets a small script
-//! that marks its prompts and commands (OSC 133) and reports its folder (OSC 7), as
-//! Nebula does on its own. The user's profile and startup files still run first.
+//! Shell integration for PowerShell, Git Bash, WSL, and bash and zsh on Linux. Each
+//! shell gets a small script that marks its prompts and commands (OSC 133) and reports
+//! its folder (OSC 7), as Nebula does on its own. The user's profile and startup files
+//! still run first.
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::{
@@ -10,7 +11,10 @@ use std::{
 
 const BASH_SCRIPT: &str = include_str!("../shell-integration/nebula.bash");
 const POWERSHELL_SCRIPT: &str = include_str!("../shell-integration/nebula.ps1");
+const ZSH_SCRIPT: &str = include_str!("../shell-integration/nebula.zsh");
 const BASH_FILE: &str = "nebula.bash";
+/// Zsh reads `.zshenv` from ZDOTDIR, so the script gets a folder of its own.
+const ZSH_FOLDER: &str = "zsh";
 
 /// Starts the distribution's login shell. Bash reads Nebula's script, which reads the
 /// usual startup files itself; any other shell starts as it always does.
@@ -19,7 +23,9 @@ const WSL_LAUNCHER: &str = r#"f=$(wslpath -u "$1" 2>/dev/null); s=${SHELL:-$(get
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     PowerShell,
-    GitBash,
+    /// Git Bash on Windows, bash itself elsewhere: the same script and arguments.
+    Bash,
+    Zsh,
     Wsl,
 }
 
@@ -27,7 +33,8 @@ impl Kind {
     pub fn of(profile_id: &str) -> Option<Self> {
         match profile_id {
             "pwsh" | "powershell" => Some(Self::PowerShell),
-            "gitbash" => Some(Self::GitBash),
+            "gitbash" | "bash" => Some(Self::Bash),
+            "zsh" => Some(Self::Zsh),
             "wsl" => Some(Self::Wsl),
             id if id.starts_with("wsl:") => Some(Self::Wsl),
             _ => None,
@@ -45,27 +52,30 @@ impl Scripts {
         Self { directory }
     }
 
-    /// The bash script on disk, rewritten when it's missing or from another version.
-    fn bash(&self) -> Option<PathBuf> {
-        let directory = self.directory.as_ref()?;
-        let path = directory.join(BASH_FILE);
-        // A checkout with Windows line endings must not reach bash.
-        let content = BASH_SCRIPT.replace("\r\n", "\n");
+    /// A script on disk, rewritten when it's missing or from another version.
+    fn script(&self, file: &Path, content: &str) -> Option<PathBuf> {
+        let path = self.directory.as_ref()?.join(file);
+        // A checkout with Windows line endings must not reach a Unix shell.
+        let content = content.replace("\r\n", "\n");
         if fs::read_to_string(&path).ok().as_deref() != Some(content.as_str()) {
-            fs::create_dir_all(directory).ok()?;
+            fs::create_dir_all(path.parent()?).ok()?;
             fs::write(&path, content).ok()?;
         }
         Some(path)
     }
 
-    /// Adds the integration to a shell's arguments. They stay as they were when the
-    /// script can't be written.
-    pub fn apply(&self, kind: Kind, args: &mut Vec<String>) {
+    fn bash(&self) -> Option<PathBuf> {
+        self.script(Path::new(BASH_FILE), BASH_SCRIPT)
+    }
+
+    /// Adds the integration to a shell's arguments, and returns the environment it
+    /// needs. Both stay as they were when the script can't be written.
+    pub fn apply(&self, kind: Kind, args: &mut Vec<String>) -> Vec<(String, String)> {
         match kind {
             Kind::PowerShell => powershell_args(args),
-            Kind::GitBash => {
+            Kind::Bash => {
                 if let Some(script) = self.bash() {
-                    git_bash_args(args, &script);
+                    bash_args(args, &script);
                 }
             }
             Kind::Wsl => {
@@ -73,7 +83,15 @@ impl Scripts {
                     wsl_args(args, &script);
                 }
             }
+            Kind::Zsh => {
+                if let Some(script) =
+                    self.script(&Path::new(ZSH_FOLDER).join(".zshenv"), ZSH_SCRIPT)
+                {
+                    return zsh_environment(&script, std::env::var("ZDOTDIR").ok());
+                }
+            }
         }
+        Vec::new()
     }
 }
 
@@ -91,9 +109,24 @@ fn powershell_args(args: &mut Vec<String>) {
     ]);
 }
 
+/// ZDOTDIR points zsh at the script's folder; the script puts the user's own back
+/// from NEBULA_ZDOTDIR (empty when they had none, so zsh uses their home).
+fn zsh_environment(script: &Path, user_zdotdir: Option<String>) -> Vec<(String, String)> {
+    let Some(folder) = script.parent() else {
+        return Vec::new();
+    };
+    vec![
+        ("ZDOTDIR".to_owned(), folder.to_string_lossy().into_owned()),
+        (
+            "NEBULA_ZDOTDIR".to_owned(),
+            user_zdotdir.unwrap_or_default(),
+        ),
+    ]
+}
+
 /// `--init-file` replaces `--login`, which bash doesn't combine with it: the script
 /// reads the login files instead.
-fn git_bash_args(args: &mut Vec<String>, script: &Path) {
+fn bash_args(args: &mut Vec<String>, script: &Path) {
     args.retain(|arg| arg != "--login" && arg != "-i");
     args.extend([
         "--init-file".to_owned(),
@@ -128,7 +161,10 @@ mod tests {
     fn knows_which_profiles_get_it() {
         assert_eq!(Kind::of("pwsh"), Some(Kind::PowerShell));
         assert_eq!(Kind::of("powershell"), Some(Kind::PowerShell));
-        assert_eq!(Kind::of("gitbash"), Some(Kind::GitBash));
+        assert_eq!(Kind::of("gitbash"), Some(Kind::Bash));
+        assert_eq!(Kind::of("bash"), Some(Kind::Bash));
+        assert_eq!(Kind::of("zsh"), Some(Kind::Zsh));
+        assert_eq!(Kind::of("fish"), None);
         assert_eq!(Kind::of("wsl"), Some(Kind::Wsl));
         assert_eq!(Kind::of("wsl:Ubuntu"), Some(Kind::Wsl));
         assert_eq!(Kind::of("nebula"), None);
@@ -154,7 +190,7 @@ mod tests {
     #[test]
     fn git_bash_reads_the_script_instead_of_logging_in() {
         let mut args = vec!["--login".to_owned(), "-i".to_owned()];
-        git_bash_args(
+        bash_args(
             &mut args,
             Path::new(r"C:\Users\me\AppData\Local\nebula\nebula.bash"),
         );
@@ -200,7 +236,29 @@ mod tests {
     fn leaves_bash_alone_without_a_folder_for_the_script() {
         let scripts = Scripts::new(None);
         let mut args = vec!["--login".to_owned(), "-i".to_owned()];
-        scripts.apply(Kind::GitBash, &mut args);
+        assert!(scripts.apply(Kind::Bash, &mut args).is_empty());
         assert_eq!(args, ["--login", "-i"]);
+    }
+
+    #[test]
+    fn zsh_reads_the_script_through_zdotdir_and_gets_its_own_back() {
+        let folder = scratch("zsh");
+        let scripts = Scripts::new(Some(folder.clone()));
+        let mut args = Vec::new();
+        let environment = scripts.apply(Kind::Zsh, &mut args);
+        assert!(args.is_empty());
+        let zdotdir = folder.join(ZSH_FOLDER);
+        assert_eq!(
+            environment,
+            [
+                ("ZDOTDIR".to_owned(), zdotdir.to_string_lossy().into_owned()),
+                (
+                    "NEBULA_ZDOTDIR".to_owned(),
+                    std::env::var("ZDOTDIR").unwrap_or_default()
+                ),
+            ]
+        );
+        let script = fs::read_to_string(zdotdir.join(".zshenv")).unwrap();
+        assert!(script.contains("133;A") && !script.contains('\r'));
     }
 }

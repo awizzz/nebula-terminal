@@ -248,6 +248,7 @@ pub fn uninstall() {
 
 /// Entries in a `;`-separated PATH, with `folder` added once or removed everywhere.
 /// Everything else is kept as it was, empty entries included.
+#[cfg_attr(not(windows), allow(dead_code))]
 fn edit_path(path: &str, folder: &str, present: bool) -> Option<String> {
     let same = |entry: &str| {
         entry.trim().trim_end_matches('\\').to_lowercase()
@@ -451,6 +452,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(windows)]
     fn windows_terminal_gets_a_nebula_profile() {
         let folder = env::temp_dir().join(format!("nebula-wt-{}", std::process::id()));
         let fragment = folder.join("Nebula Terminal").join("nebula.json");
