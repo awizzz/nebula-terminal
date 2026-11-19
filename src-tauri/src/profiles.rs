@@ -39,6 +39,7 @@ const SSH_ACCENT: &str = "#4f9d8f";
 
 /// Built-in profiles in order of preference. The first available one is the
 /// default for a fresh install.
+#[cfg(windows)]
 const PROFILES: &[(&str, &str, &str)] = &[
     ("nebula", "Nebula", "#e8a33d"),
     ("pwsh", "PowerShell", "#5b8def"),
@@ -48,6 +49,32 @@ const PROFILES: &[(&str, &str, &str)] = &[
     ("wsl", "WSL", "#e0a040"),
 ];
 
+/// Elsewhere the shells are the system's own, and the login shell comes first (see
+/// `detect_all`), so it opens by default.
+#[cfg(not(windows))]
+const PROFILES: &[(&str, &str, &str)] = &[
+    ("nebula", "Nebula", "#e8a33d"),
+    ("bash", "Bash", "#4eaa25"),
+    ("zsh", "Zsh", "#c678dd"),
+    ("fish", "Fish", "#4fb0c6"),
+    ("pwsh", "PowerShell", "#5b8def"),
+];
+
+/// A program's file name: `ssh.exe` on Windows, `ssh` elsewhere.
+pub fn program(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_owned()
+    }
+}
+
+#[cfg(not(windows))]
+fn path_extensions() -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(windows)]
 fn path_extensions() -> Vec<String> {
     env::var_os("PATHEXT")
         .and_then(|value| value.into_string().ok())
@@ -61,6 +88,21 @@ fn path_extensions() -> Vec<String> {
         .unwrap_or_else(|| vec![".exe".into(), ".cmd".into(), ".bat".into(), ".com".into()])
 }
 
+/// A file that can run: on Windows any file (PATHEXT decides), elsewhere one with an
+/// execute bit.
+fn is_program(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
 fn find_in_path(name: &str, path: Option<OsString>, extensions: &[String]) -> Option<PathBuf> {
     let input = Path::new(name);
     if input.components().count() > 1 {
@@ -70,7 +112,7 @@ fn find_in_path(name: &str, path: Option<OsString>, extensions: &[String]) -> Op
     let has_extension = input.extension().is_some();
     env::split_paths(&path?).find_map(|directory| {
         let direct = directory.join(name);
-        if direct.is_file() {
+        if is_program(&direct) {
             return Some(direct);
         }
         if has_extension {
@@ -89,6 +131,7 @@ pub fn find_executable(name: &str) -> Option<PathBuf> {
 
 /// Git for Windows ships `bash.exe` under `<root>\bin`. `bash.exe` on PATH is
 /// usually the WSL launcher in System32, so it is never used directly.
+#[cfg(windows)]
 fn git_bash_candidates(git_on_path: Option<&Path>, roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(root) = git_on_path.and_then(Path::parent).and_then(Path::parent) {
@@ -100,6 +143,7 @@ fn git_bash_candidates(git_on_path: Option<&Path>, roots: &[PathBuf]) -> Vec<Pat
     candidates
 }
 
+#[cfg(windows)]
 fn find_git_bash() -> Option<PathBuf> {
     let roots: Vec<PathBuf> = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"]
         .iter()
@@ -140,6 +184,7 @@ fn find_nebula() -> Option<PathBuf> {
 }
 
 fn locate(id: &str) -> Option<ResolvedProfile> {
+    #[cfg(windows)]
     let (executable, args): (Option<PathBuf>, &[&str]) = match id {
         "nebula" => (find_nebula(), &[]),
         "pwsh" => (find_executable("pwsh.exe"), &["-NoLogo"]),
@@ -147,6 +192,13 @@ fn locate(id: &str) -> Option<ResolvedProfile> {
         "cmd" => (find_executable("cmd.exe"), &[]),
         "gitbash" => (find_git_bash(), &["--login", "-i"]),
         "wsl" => (find_executable("wsl.exe"), &["--cd", "~"]),
+        _ => (None, &[]),
+    };
+    #[cfg(not(windows))]
+    let (executable, args): (Option<PathBuf>, &[&str]) = match id {
+        "nebula" => (find_nebula(), &[]),
+        "bash" | "zsh" | "fish" => (find_executable(id), &[]),
+        "pwsh" => (find_executable("pwsh"), &["-NoLogo"]),
         _ => (None, &[]),
     };
     executable.map(|executable| ResolvedProfile {
@@ -207,8 +259,10 @@ fn detect_all(custom_path: Option<PathBuf>) -> Vec<TerminalProfile> {
         .iter()
         .map(|(id, name, accent)| profile((*id).into(), (*name).into(), id, accent, locate(id)))
         .collect();
+    #[cfg(not(windows))]
+    login_shell_first(&mut profiles, env::var_os("SHELL"));
 
-    let ssh_exe = find_executable("ssh.exe");
+    let ssh_exe = find_executable(&program("ssh"));
     let hosts = match (&ssh_exe, home_directory()) {
         (Some(_), Some(home)) => ssh::user_hosts(&home),
         _ => Vec::new(),
@@ -263,6 +317,26 @@ fn detect_all(custom_path: Option<PathBuf>) -> Vec<TerminalProfile> {
         profiles.push(profile(entry.id, entry.name, kind, &entry.accent, resolved));
     }
     profiles
+}
+
+/// The login shell (`$SHELL`) first, so a fresh install opens the shell people use.
+#[cfg(not(windows))]
+fn login_shell_first(profiles: &mut Vec<TerminalProfile>, shell: Option<OsString>) {
+    let Some(name) = shell
+        .as_deref()
+        .map(Path::new)
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+    else {
+        return;
+    };
+    if let Some(index) = profiles
+        .iter()
+        .position(|profile| profile.id == name && profile.available)
+    {
+        let login = profiles.remove(index);
+        profiles.insert(0, login);
+    }
 }
 
 /// The first detection, started with the app rather than when the page asks for it:
@@ -325,8 +399,8 @@ fn resolve_ssh(host: &str) -> Result<ResolvedProfile, String> {
     if !ssh::is_valid_alias(host) {
         return Err(unknown());
     }
-    let executable = find_executable("ssh.exe")
-        .ok_or_else(|| "OpenSSH (ssh.exe) is not installed.".to_owned())?;
+    let executable = find_executable(&program("ssh"))
+        .ok_or_else(|| "OpenSSH (ssh) is not installed.".to_owned())?;
     let home = home_directory().ok_or_else(unknown)?;
     let host = ssh::user_hosts(&home)
         .into_iter()
@@ -370,8 +444,8 @@ fn ssh_target_args(target: &str) -> Option<Vec<String>> {
 fn resolve_ssh_target(target: &str) -> Result<ResolvedProfile, String> {
     let args = ssh_target_args(target)
         .ok_or_else(|| format!("'{target}' isn't a server to connect to."))?;
-    let executable = find_executable("ssh.exe")
-        .ok_or_else(|| "OpenSSH (ssh.exe) is not installed.".to_owned())?;
+    let executable = find_executable(&program("ssh"))
+        .ok_or_else(|| "OpenSSH (ssh) is not installed.".to_owned())?;
     Ok(ResolvedProfile {
         executable,
         args,
@@ -563,11 +637,14 @@ mod tests {
         let early = EarlyDetection::start(None);
         let first = early.take().expect("started with the app").join().unwrap();
         // Every built-in shell is listed, installed or not.
-        assert!(first.iter().any(|profile| profile.id == "cmd"));
+        assert!(PROFILES
+            .iter()
+            .all(|(id, _, _)| first.iter().any(|profile| profile.id == *id)));
         assert!(early.take().is_none());
     }
 
     #[test]
+    #[cfg(windows)]
     fn git_bash_is_derived_from_git_install_root() {
         let git = Path::new("C:/Tools/Git/cmd/git.exe");
         let candidates = git_bash_candidates(Some(git), &[PathBuf::from("C:/Program Files")]);
@@ -644,6 +721,30 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
+    fn the_login_shell_comes_first() {
+        let installed = |id: &str, available: bool| TerminalProfile {
+            available,
+            ..profile(id.into(), id.into(), id, "#123456", None)
+        };
+        let mut profiles = vec![
+            installed("nebula", true),
+            installed("bash", true),
+            installed("zsh", true),
+            installed("fish", false),
+        ];
+        login_shell_first(&mut profiles, Some("/usr/bin/zsh".into()));
+        assert_eq!(profiles[0].id, "zsh");
+        login_shell_first(&mut profiles, Some("/usr/bin/fish".into()));
+        assert_eq!(
+            profiles[0].id, "zsh",
+            "a shell that isn't installed stays where it is"
+        );
+        login_shell_first(&mut profiles, None);
+        assert_eq!(profiles[0].id, "zsh");
+    }
+
+    #[test]
     fn detection_lists_built_ins_first_and_custom_profiles_last() {
         let directory = scratch("detect");
         let path = directory.join("custom-profiles.json");
@@ -657,15 +758,16 @@ mod tests {
         .unwrap();
 
         let detected = detect_all(Some(path));
-        let ids: Vec<_> = detected
+        // In their own order, but for the login shell, which may come first.
+        let mut ids: Vec<_> = detected
             .iter()
             .take(PROFILES.len())
             .map(|profile| profile.id.as_str())
             .collect();
-        assert_eq!(
-            ids,
-            ["nebula", "pwsh", "powershell", "cmd", "gitbash", "wsl"]
-        );
+        let mut expected: Vec<_> = PROFILES.iter().map(|(id, _, _)| *id).collect();
+        ids.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(ids, expected);
         let last = detected.last().unwrap();
         assert_eq!((last.id.as_str(), last.kind.as_str()), (id, "custom"));
         assert!(!last.available);

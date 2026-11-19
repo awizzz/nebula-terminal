@@ -22,6 +22,7 @@ pub const FLAG: &str = "--administrator";
 pub const EXPLORER_FLAG: &str = "--open-as-administrator";
 
 /// What the command answers when the user says no to UAC.
+#[cfg(windows)]
 const CANCELLED: &str = "cancelled";
 
 /// Where admin windows keep their web data. An elevated WebView2 can't share the

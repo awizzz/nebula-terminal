@@ -17,6 +17,7 @@ const MAX_LENGTH: usize = 512;
 
 /// Files that would run if the default app "opened" them. Those are shown in File
 /// Explorer instead: a path printed by a program is no reason to start it.
+#[cfg(windows)]
 const RUNNABLE: &[&str] = &[
     "exe",
     "com",
@@ -87,14 +88,49 @@ fn normalize(path: &str) -> Option<String> {
     Some(format!("{root}\\{}", parts.join("\\")))
 }
 
-/// A path as a shell printed it, read from `cwd` (a drive folder or a WSL share), with
-/// `/c/Users` (Git Bash), `~` and, in WSL, `/home/me` understood. None for anything
-/// that isn't local.
+/// A path as a shell printed it, made absolute: see `resolve_windows` and `resolve_unix`.
 pub fn resolve(cwd: Option<&str>, home: Option<&str>, text: &str) -> Option<String> {
-    let text = text.trim();
-    if text.is_empty() || text.len() > MAX_LENGTH || text.chars().any(|c| c.is_control()) {
-        return None;
+    if cfg!(windows) {
+        resolve_windows(cwd, home, text)
+    } else {
+        resolve_unix(cwd, home, text)
     }
+}
+
+fn plausible(text: &str) -> Option<&str> {
+    let text = text.trim();
+    (!text.is_empty() && text.len() <= MAX_LENGTH && !text.chars().any(|c| c.is_control()))
+        .then_some(text)
+}
+
+/// On Linux and macOS: absolute, from `~`, or from `cwd`, with `.` and `..` worked out.
+fn resolve_unix(cwd: Option<&str>, home: Option<&str>, text: &str) -> Option<String> {
+    let text = plausible(text)?;
+    let absolute = if text == "~" || text.starts_with("~/") {
+        format!("{}/{}", home?, &text[1..])
+    } else if text.starts_with('/') {
+        text.to_owned()
+    } else {
+        let cwd = cwd.filter(|cwd| cwd.starts_with('/'))?;
+        format!("{cwd}/{text}")
+    };
+    let mut parts: Vec<&str> = Vec::new();
+    for part in absolute.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other),
+        }
+    }
+    Some(format!("/{}", parts.join("/")))
+}
+
+/// On Windows: read from `cwd` (a drive folder or a WSL share), with `/c/Users` (Git
+/// Bash), `~` and, in WSL, `/home/me` understood. None for anything that isn't local.
+fn resolve_windows(cwd: Option<&str>, home: Option<&str>, text: &str) -> Option<String> {
+    let text = plausible(text)?;
     let windows = text.replace('/', "\\");
     let bytes = text.as_bytes();
     let absolute = if is_drive_path(&windows) {
@@ -155,12 +191,24 @@ pub fn find_paths(cwd: Option<String>, candidates: Vec<String>) -> Vec<FoundPath
         .collect()
 }
 
+#[cfg(windows)]
 fn program_file(folder: &str, parts: &[&str]) -> Option<PathBuf> {
     let mut path = PathBuf::from(std::env::var_os(folder)?);
     path.extend(parts);
     path.is_file().then_some(path)
 }
 
+#[cfg(not(windows))]
+fn vscode() -> Option<PathBuf> {
+    profiles::find_executable("code")
+}
+
+#[cfg(not(windows))]
+fn cursor() -> Option<PathBuf> {
+    profiles::find_executable("cursor")
+}
+
+#[cfg(windows)]
 fn vscode() -> Option<PathBuf> {
     program_file(
         "LOCALAPPDATA",
@@ -175,6 +223,7 @@ fn vscode() -> Option<PathBuf> {
     })
 }
 
+#[cfg(windows)]
 fn cursor() -> Option<PathBuf> {
     program_file("LOCALAPPDATA", &["Programs", "cursor", "Cursor.exe"])
 }
@@ -220,6 +269,16 @@ pub fn custom_command(
     Some((program, args))
 }
 
+/// A file that would run rather than open: an executable on Linux, one of the
+/// extensions Windows runs on a double click there.
+#[cfg(unix)]
+fn runnable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(windows)]
 fn runnable(path: &Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -238,11 +297,32 @@ fn spawn(program: &Path, args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("Could not start {}: {error}", program.display()))
 }
 
-fn reveal(path: &str) -> Result<(), String> {
+#[cfg(windows)]
+fn reveal(_app: &AppHandle, path: &str) -> Result<(), String> {
     spawn(Path::new("explorer.exe"), &[format!("/select,{path}")])
 }
 
-/// Opens a path found by `find_paths`: a folder in File Explorer, a file in the chosen
+/// The folder it's in, since a file manager can't be asked to select one everywhere.
+#[cfg(not(windows))]
+fn reveal(app: &AppHandle, path: &str) -> Result<(), String> {
+    let folder = Path::new(path).parent().unwrap_or(Path::new("/"));
+    open_folder(app, &folder.to_string_lossy())
+}
+
+#[cfg(windows)]
+fn open_folder(_app: &AppHandle, path: &str) -> Result<(), String> {
+    spawn(Path::new("explorer.exe"), &[path.to_owned()])
+}
+
+#[cfg(not(windows))]
+fn open_folder(app: &AppHandle, path: &str) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|error| format!("Could not open {path}: {error}"))
+}
+
+/// Opens a path found by `find_paths`: a folder in the file manager, a file in the chosen
 /// editor at its line. `opener` is "auto", "vscode", "cursor", "default" or "custom".
 #[tauri::command]
 pub fn open_path(
@@ -257,7 +337,7 @@ pub fn open_path(
     let path = resolve(None, None, &path).ok_or("Only files on this PC can be opened.")?;
     let metadata = std::fs::metadata(&path).map_err(|_| format!("{path} isn't there any more."))?;
     if metadata.is_dir() {
-        return spawn(Path::new("explorer.exe"), &[path]);
+        return open_folder(&app, &path);
     }
     let editor = match opener.as_str() {
         "vscode" => Some(vscode().ok_or("VS Code isn't installed.")?),
@@ -275,7 +355,7 @@ pub fn open_path(
         return spawn(&program, &args);
     }
     if runnable(Path::new(&path)) {
-        return reveal(&path);
+        return reveal(&app, &path);
     }
     use tauri_plugin_opener::OpenerExt;
     app.opener()
@@ -293,62 +373,94 @@ fn custom_program(program: &str) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{custom_command, resolve};
+    use super::{custom_command, resolve_unix, resolve_windows};
 
     #[test]
     fn resolves_what_shells_print() {
         let cwd = Some("C:\\Users\\me\\app");
         let home = Some("C:\\Users\\me");
         assert_eq!(
-            resolve(cwd, home, "src/main.rs").as_deref(),
+            resolve_windows(cwd, home, "src/main.rs").as_deref(),
             Some("C:\\Users\\me\\app\\src\\main.rs")
         );
         assert_eq!(
-            resolve(cwd, home, "..\\notes.txt").as_deref(),
+            resolve_windows(cwd, home, "..\\notes.txt").as_deref(),
             Some("C:\\Users\\me\\notes.txt")
         );
         assert_eq!(
-            resolve(cwd, home, "D:/data/log.txt").as_deref(),
+            resolve_windows(cwd, home, "D:/data/log.txt").as_deref(),
             Some("D:\\data\\log.txt")
         );
         assert_eq!(
-            resolve(cwd, home, "/c/Windows/win.ini").as_deref(),
+            resolve_windows(cwd, home, "/c/Windows/win.ini").as_deref(),
             Some("C:\\Windows\\win.ini")
         );
         assert_eq!(
-            resolve(cwd, home, "~/.bashrc").as_deref(),
+            resolve_windows(cwd, home, "~/.bashrc").as_deref(),
             Some("C:\\Users\\me\\.bashrc")
         );
         // Never above the drive.
         assert_eq!(
-            resolve(cwd, home, "../../../../../x").as_deref(),
+            resolve_windows(cwd, home, "../../../../../x").as_deref(),
             Some("C:\\x")
         );
+    }
+
+    #[test]
+    fn reads_unix_paths_on_linux() {
+        let cwd = Some("/home/me/app");
+        let home = Some("/home/me");
+        assert_eq!(
+            resolve_unix(cwd, home, "src/main.rs").as_deref(),
+            Some("/home/me/app/src/main.rs")
+        );
+        assert_eq!(
+            resolve_unix(cwd, home, "./a/../b.txt").as_deref(),
+            Some("/home/me/app/b.txt")
+        );
+        assert_eq!(
+            resolve_unix(cwd, home, "/etc/hosts").as_deref(),
+            Some("/etc/hosts")
+        );
+        assert_eq!(
+            resolve_unix(cwd, home, "~/.bashrc").as_deref(),
+            Some("/home/me/.bashrc")
+        );
+        assert_eq!(
+            resolve_unix(cwd, home, "../../../../x").as_deref(),
+            Some("/x")
+        );
+        assert_eq!(resolve_unix(None, home, "src/main.rs"), None);
+        assert_eq!(resolve_unix(Some("C:\\app"), home, "x.txt"), None);
+        assert_eq!(resolve_unix(cwd, home, "a\u{7}b"), None);
     }
 
     #[test]
     fn reads_linux_paths_inside_wsl_only() {
         let wsl = Some("\\\\wsl.localhost\\Ubuntu\\home\\me");
         assert_eq!(
-            resolve(wsl, None, "/etc/hosts").as_deref(),
+            resolve_windows(wsl, None, "/etc/hosts").as_deref(),
             Some("\\\\wsl.localhost\\Ubuntu\\etc\\hosts")
         );
         assert_eq!(
-            resolve(wsl, None, "src/lib.rs").as_deref(),
+            resolve_windows(wsl, None, "src/lib.rs").as_deref(),
             Some("\\\\wsl.localhost\\Ubuntu\\home\\me\\src\\lib.rs")
         );
-        assert_eq!(resolve(Some("C:\\app"), None, "/etc/hosts"), None);
+        assert_eq!(resolve_windows(Some("C:\\app"), None, "/etc/hosts"), None);
     }
 
     #[test]
     fn leaves_network_paths_and_garbage_alone() {
         assert_eq!(
-            resolve(Some("C:\\app"), None, "\\\\server\\share\\x.txt"),
+            resolve_windows(Some("C:\\app"), None, "\\\\server\\share\\x.txt"),
             None
         );
-        assert_eq!(resolve(Some("\\\\server\\share"), None, "x.txt"), None);
-        assert_eq!(resolve(None, None, "src/main.rs"), None);
-        assert_eq!(resolve(Some("C:\\app"), None, "a\u{7}b"), None);
+        assert_eq!(
+            resolve_windows(Some("\\\\server\\share"), None, "x.txt"),
+            None
+        );
+        assert_eq!(resolve_windows(None, None, "src/main.rs"), None);
+        assert_eq!(resolve_windows(Some("C:\\app"), None, "a\u{7}b"), None);
     }
 
     #[test]
