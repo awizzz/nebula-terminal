@@ -62,7 +62,8 @@ export const keybindingLabels: Record<keyof KeybindingPreferences, string> = {
   nextCommand: "Next command",
 };
 
-export const defaultFontFamily = '"Cascadia Mono", "Cascadia Code", Consolas, monospace';
+/** Windows' fonts first, then the ones Linux desktops ship. */
+export const defaultFontFamily = '"Cascadia Mono", "Cascadia Code", Consolas, "JetBrains Mono", "Ubuntu Mono", "DejaVu Sans Mono", "Noto Sans Mono", "Liberation Mono", monospace';
 
 export const defaultPreferences: AppearancePreferences = {
   accent: "#e8a33d",

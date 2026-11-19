@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Window controls for the custom titlebar of the main window and the quick terminal, progress on the taskbar button, opening web links in the default browser, and desktop notifications when a long command finishes.",
+  "description": "Window controls for the custom titlebar of the main window, windows of moved tabs and the quick terminal (with resize borders on Linux), progress on the taskbar button, opening web links in the default browser, and desktop notifications when a long command finishes.",
   "windows": [
     "main",
-    "quick"
+    "quick",
+    "tabs-*"
   ],
   "permissions": [
     "core:event:default",
@@ -14,6 +15,7 @@
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
     "core:window:allow-start-dragging",
+    "core:window:allow-start-resize-dragging",
     "core:window:allow-set-progress-bar",
     {
       "identifier": "opener:allow-open-url",

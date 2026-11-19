@@ -1313,3 +1313,23 @@ kbd { font: inherit; }
 /* Focus indicators for controls whose native outline is removed above. */
 .slider input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--accent); }
 .swatch--custom:focus-within { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--accent); }
+
+/* Window borders on Linux (ResizeEdges.tsx): invisible, above everything, a few pixels wide. */
+.resize-edges {
+  display: contents;
+}
+.resize-edges__edge {
+  position: fixed;
+  z-index: 10000;
+}
+.resize-edges__edge--north, .resize-edges__edge--south { left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.resize-edges__edge--east, .resize-edges__edge--west { top: 8px; bottom: 8px; width: 4px; cursor: ew-resize; }
+.resize-edges__edge--north { top: 0; }
+.resize-edges__edge--south { bottom: 0; }
+.resize-edges__edge--east { right: 0; }
+.resize-edges__edge--west { left: 0; }
+.resize-edges__edge--northeast, .resize-edges__edge--northwest, .resize-edges__edge--southeast, .resize-edges__edge--southwest { width: 8px; height: 8px; }
+.resize-edges__edge--northwest { top: 0; left: 0; cursor: nwse-resize; }
+.resize-edges__edge--southeast { bottom: 0; right: 0; cursor: nwse-resize; }
+.resize-edges__edge--northeast { top: 0; right: 0; cursor: nesw-resize; }
+.resize-edges__edge--southwest { bottom: 0; left: 0; cursor: nesw-resize; }

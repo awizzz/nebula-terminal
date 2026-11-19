@@ -31,6 +31,8 @@ import { matchesShortcut } from "./keys";
 import { getPane } from "./paneRegistry";
 import { SILENCE_SECONDS, TabWatcher } from "./tabWatch";
 import { forgetScreens, pruneScreens, restoredLine, saveScreens, screenKey, withScreens } from "./screens";
+import { fileManagerName, isWindows } from "./platform";
+import ResizeEdges from "./components/ResizeEdges";
 import type { PaletteCommand } from "./components/CommandPalette";
 import type { SettingsPage } from "./components/SettingsPanel";
 import type { AppearancePreferences, DefaultTerminal, HandoffInfo, Highlight, Launchers, SavedCommand, SessionSnapshot, SplitDirection, TabColor, TabWatch, TerminalPaneModel, TerminalProfile, TerminalTab } from "./types";
@@ -70,6 +72,8 @@ interface LaunchTransfer {
 
 /** Windows that keep tabs in the session: the main one and the windows opened for tabs. */
 const savesSession = !isAdministrator && !isQuickTerminal;
+/** Administrator windows exist on Windows, through UAC; elsewhere there's sudo. */
+const offersAdministrator = isWindows && !isAdministrator;
 const windowLabel = isTauri() ? getCurrentWindow().label : "main";
 
 function tabFromTransfer(transfer: TabTransfer["tab"]): TerminalTab {
@@ -315,7 +319,7 @@ export default function App() {
     root.dataset.scheme = theme.scheme;
     root.dataset.animation = preferences.animationLevel;
     root.dataset.density = preferences.tabDensity;
-    root.dataset.background = preferences.backgroundMode === "mica" && micaFailed ? "solid" : preferences.backgroundMode;
+    root.dataset.background = preferences.backgroundMode === "mica" && (micaFailed || !isWindows) ? "solid" : preferences.backgroundMode;
     root.dataset.host = nativeHost ? "native" : "browser";
     root.style.setProperty("--on-accent", readableOn(activeLook.accent));
     root.style.setProperty("--term-surface", preferences.terminalOpacity >= 1 ? theme.background : `color-mix(in srgb, ${theme.background} ${Math.round(preferences.terminalOpacity * 100)}%, transparent)`);
@@ -823,7 +827,7 @@ export default function App() {
   // The main window owns the quick terminal's shortcut, so there's one, whichever window changed it.
   const [quickTerminalProblem, setQuickTerminalProblem] = useState<string | null>(null);
   useEffect(() => {
-    if (!nativeHost || isAdministrator || isQuickTerminal) return;
+    if (!nativeHost || !isWindows || isAdministrator || isQuickTerminal) return;
     invoke("set_quick_terminal", { enabled: preferences.quickTerminal, shortcut: preferences.quickTerminalShortcut, height: preferences.quickTerminalHeight, keepRunning: preferences.quickTerminalKeepRunning })
       .then(() => setQuickTerminalProblem(null))
       .catch((error: unknown) => setQuickTerminalProblem(String(error)));
@@ -1500,7 +1504,7 @@ export default function App() {
         icon: <TerminalSquare size={15} />, keywords: `run snippet ${saved.command}`, shortcut: saved.shortcut, run: () => runSavedCommand(saved),
       })),
       { id: "save-command", group: "Saved commands", label: "Save a command…", icon: <Plus size={15} />, keywords: "snippet saved commands", run: () => openSettings("behavior") },
-      ...(isAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
+      ...(!offersAdministrator ? [] : [{ id: "new-administrator-tab", group: "Tabs", label: "New tab as administrator", detail: defaultProfile?.name, icon: <ShieldCheck size={15} />, keywords: "admin elevated uac sudo", shortcut: keys.newAdministratorTab, run: () => openAsAdmin() }]),
       { id: "rename-tab", group: "Tabs", label: "Rename tab", icon: <Pencil size={15} />, keywords: "title name", run: () => activeTab && setRenamingTabId(activeTab.id) },
       { id: "reopen-tab", group: "Tabs", label: "Reopen closed tab", icon: <Undo2 size={15} />, keywords: "undo restore closed", shortcut: keys.reopenTab || undefined, run: reopenClosedTab },
       { id: "duplicate-tab", group: "Tabs", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => activeTab && duplicateTab(activeTab.id) },
@@ -1513,7 +1517,7 @@ export default function App() {
         id: `new-${profile.id}`, group: "Profiles", label: profileCommandLabel(profile), detail: profileTag(profile) ?? (profileGroup(profile) === "custom" ? "Custom" : undefined),
         icon: <ProfileIcon kind={profile.kind} accent={profile.accent} size={15} />, keywords: `${profile.kind} ${profileGroupLabels[profileGroup(profile)]} shell`, run: () => openNewTab(profile.id),
       })),
-      ...(isAdministrator ? [] : profiles.filter((profile) => profile.available && profileGroup(profile) !== "ssh").map((profile): PaletteCommand => ({
+      ...(!offersAdministrator ? [] : profiles.filter((profile) => profile.available && profileGroup(profile) !== "ssh").map((profile): PaletteCommand => ({
         id: `administrator-${profile.id}`, group: "Run as administrator", label: `${profile.name} as administrator`,
         icon: <ShieldCheck size={15} />, keywords: `admin elevated uac sudo ${profile.kind}`, run: () => openAsAdmin(profile.id),
       }))),
@@ -1558,7 +1562,7 @@ export default function App() {
       { id: "pane-zoom-out", group: "Panes", label: "Smaller text in this pane", icon: <ZoomOut size={15} />, keywords: "font size zoom pane only", run: () => zoomPane(-1) },
       ...(activePane?.fontDelta ? [{ id: "pane-zoom-reset", group: "Panes", label: "Reset this pane's text size", icon: <ZoomIn size={15} />, keywords: "font size zoom pane", run: () => zoomPane(0) }] : []),
       { id: "read-only", group: "Panes", label: activePane?.readOnly ? "Unlock pane" : "Make pane read-only", icon: activePane?.readOnly ? <LockOpen size={15} /> : <Lock size={15} />, keywords: "lock protect input keys", run: toggleReadOnly },
-      { id: "open-folder", group: "Terminal", label: "Open this folder in File Explorer", detail: activePane?.cwd ? folderParts(activePane.cwd).name : undefined, icon: <FolderOpen size={15} />, keywords: "explorer directory cwd", run: openPaneFolder },
+      { id: "open-folder", group: "Terminal", label: `Open this folder in ${fileManagerName}`, detail: activePane?.cwd ? folderParts(activePane.cwd).name : undefined, icon: <FolderOpen size={15} />, keywords: "explorer directory cwd", run: openPaneFolder },
       { id: "save-html", group: "Terminal", label: "Save output as a web page…", icon: <FileCode size={15} />, keywords: "export html colors report", run: () => saveOutput("html") },
       { id: "log-output", group: "Terminal", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, keywords: "record transcript script session", run: toggleLog },
       { id: "save-last-output", group: "Terminal", label: "Save last command output to a file…", icon: <FileDown size={15} />, keywords: "export log result", run: () => saveOutput("last") },
@@ -1596,7 +1600,7 @@ export default function App() {
       if (action(keys.settings, () => (settingsOpen ? setSettingsOpen(false) : openSettings()))) return;
       if (overlayOpen || menu) return;
       if (action(keys.newTab, () => openNewTab())) return;
-      if (action(keys.newAdministratorTab, () => openAsAdmin())) return;
+      if (offersAdministrator && action(keys.newAdministratorTab, () => openAsAdmin())) return;
       if (action(keys.find, openSearch)) return;
       if (action(keys.splitVertical, () => splitActive("vertical"))) return;
       if (action(keys.splitHorizontal, () => splitActive("horizontal"))) return;
@@ -1674,7 +1678,7 @@ export default function App() {
             icon: <ProfileIcon kind={profile.kind} accent={profile.accent} />,
             shortcut: profile.id === defaultId ? keys.newTab : undefined,
             run: () => openNewTab(profile.id),
-            alternate: isAdministrator || profileGroup(profile) === "ssh" ? undefined : { label: "Run as administrator", icon: <ShieldCheck size={14} />, run: () => openAsAdmin(profile.id) },
+            alternate: !offersAdministrator || profileGroup(profile) === "ssh" ? undefined : { label: "Run as administrator", icon: <ShieldCheck size={14} />, run: () => openAsAdmin(profile.id) },
           })),
         ]),
         ...(recentFolders.length ? [
@@ -1699,7 +1703,7 @@ export default function App() {
         { id: "pin", label: tabs[index]?.pinned ? "Unpin tab" : "Pin tab", icon: tabs[index]?.pinned ? <PinOff size={15} /> : <Pin size={15} />, run: () => togglePin(open.tabId) },
         { id: "duplicate", label: "Duplicate tab", icon: <CopyPlus size={15} />, run: () => duplicateTab(open.tabId) },
         ...(nativeHost && tabs.length > 1 ? [{ id: "new-window", label: "Move to new window", icon: <AppWindow size={15} />, run: () => void moveTabOut(open.tabId, true) }] : []),
-        ...(isAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
+        ...(!offersAdministrator ? [] : [{ id: "administrator", label: "Open as administrator", icon: <ShieldCheck size={15} />, run: () => openTabAsAdmin(open.tabId) }]),
         { id: "split-right", label: "Split right", icon: <Columns2 size={15} />, disabled: open.tabId !== activeTabId, run: () => splitActive("vertical") },
         { id: "broadcast", label: tabs[index]?.broadcast ? "Stop typing in every pane" : "Type in every pane", icon: <Radio size={15} />, shortcut: open.tabId === activeTabId ? keys.toggleBroadcast : undefined, run: () => toggleBroadcast(open.tabId) },
         ...(open.tabId !== activeTabId && activeTab ? [{ id: "merge", label: "Move into the tab in front", detail: tabTitle(activeTab), icon: <Combine size={15} />, disabled: activeTab.panes.length + (tabs[index]?.panes.length ?? 0) > MAX_PANES, run: () => void mergeIntoActiveTab(open.tabId) }] : []),
@@ -1738,7 +1742,7 @@ export default function App() {
       { id: "save-output", label: "Save output…", icon: <FileDown size={15} />, run: () => saveOutput("all") },
       { id: "save-html", label: "Save as a web page…", icon: <FileCode size={15} />, run: () => saveOutput("html") },
       { id: "read-only", label: activePane?.readOnly ? "Unlock pane" : "Make read-only", icon: activePane?.readOnly ? <LockOpen size={15} /> : <Lock size={15} />, run: toggleReadOnly },
-      { id: "open-folder", label: "Open folder in File Explorer", icon: <FolderOpen size={15} />, disabled: !activePane?.cwd, run: openPaneFolder },
+      { id: "open-folder", label: `Open folder in ${fileManagerName}`, icon: <FolderOpen size={15} />, disabled: !activePane?.cwd, run: openPaneFolder },
       { id: "log-output", label: logging.has(activePane?.id ?? "") ? "Stop logging" : "Log output to a file…", icon: <ScrollText size={15} />, run: toggleLog },
       "separator",
       { id: "find", label: "Find…", icon: <Search size={15} />, shortcut: keys.find, run: openSearch },
@@ -1768,6 +1772,7 @@ export default function App() {
   const tabsOnSide = preferences.tabPosition === "side" && !isQuickTerminal;
   return (
     <main className={`app ${ready ? "is-ready" : ""} ${tabsOnSide ? "tabs-side" : ""}`} data-quick={isQuickTerminal ? quickMotion : undefined}>
+      {nativeHost && !isWindows && !isQuickTerminal && <ResizeEdges />}
       {showImage && <div className="app__image" style={{ backgroundImage: `url("${preferences.backgroundImage}")`, opacity: preferences.backgroundImageOpacity }} />}
       <Titlebar
         tabs={tabs}
@@ -1887,7 +1892,9 @@ export default function App() {
         {noShells && (
           <div className="empty-state">
             <h2>No shell found</h2>
-            <p>Nebula Terminal looks for PowerShell, Command Prompt, Git Bash and WSL. None of them could be found on this PC.</p>
+            <p>{isWindows
+              ? "Nebula Terminal looks for PowerShell, Command Prompt, Git Bash and WSL. None of them could be found on this PC."
+              : "Nebula Terminal looks for bash, zsh, fish and PowerShell. None of them could be found on this computer."}</p>
           </div>
         )}
 

@@ -159,7 +159,8 @@ pub fn create_window(app: &tauri::App, administrator: bool) -> tauri::Result<()>
     else {
         return Ok(());
     };
-    let mut builder = WebviewWindowBuilder::from_config(app.handle(), config)?;
+    let mut builder = WebviewWindowBuilder::from_config(app.handle(), config)?
+        .initialization_script(crate::platform::page_script());
     if administrator {
         let args: Vec<String> = std::env::args().collect();
         let request = take_request(app.handle(), &args).unwrap_or_default();
