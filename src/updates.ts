@@ -1,7 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { version } from "../package.json";
 
-export type InstallKind = "installer" | "msi" | "manual";
+export type InstallKind = "installer" | "msi" | "appImage" | "manual";
 
 export interface UpdateInfo {
   version: string;

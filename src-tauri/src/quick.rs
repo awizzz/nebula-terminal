@@ -190,6 +190,7 @@ pub fn toggle(app: &AppHandle) {
                 .skip_taskbar(true)
                 .resizable(false)
                 .visible(false)
+                .initialization_script(crate::platform::page_script())
                 .initialization_script("window.__NEBULA_WINDOW__ = 'quick';")
                 .build();
             if let Ok(window) = built {

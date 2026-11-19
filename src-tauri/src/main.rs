@@ -7,6 +7,7 @@ mod elevation;
 mod files;
 mod integration;
 mod launcher;
+mod platform;
 mod profiles;
 mod pty;
 mod quick;

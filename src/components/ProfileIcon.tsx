@@ -72,6 +72,38 @@ export default function ProfileIcon({ kind, accent, size = 16 }: { kind: Profile
     );
   }
 
+  if (kind === "bash") {
+    return (
+      <svg {...common}>
+        <rect x="1" y="2" width="14" height="12" rx="2.4" fill="#2f6b26" />
+        <path d="m4 6 2.4 2L4 10" fill="none" stroke="#e9f6e4" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M8 10.5h4" stroke="#e9f6e4" strokeWidth="1.3" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (kind === "zsh") {
+    // A percent sign, zsh's own prompt.
+    return (
+      <svg {...common}>
+        <rect x="1" y="1" width="14" height="14" rx="3" fill="#6b3f86" />
+        <path d="M5 11 11 5" stroke="#f4eaf9" strokeWidth="1.3" strokeLinecap="round" />
+        <circle cx="5.4" cy="5.4" r="1.25" fill="#f4eaf9" />
+        <circle cx="10.6" cy="10.6" r="1.25" fill="#f4eaf9" />
+      </svg>
+    );
+  }
+
+  if (kind === "fish") {
+    return (
+      <svg {...common}>
+        <rect x="1" y="1" width="14" height="14" rx="3" fill="#256f7f" />
+        <path d="M3.4 8c1.6-2.3 4.6-3.1 7-1.6L13 4.8v6.4l-2.6-1.6c-2.4 1.5-5.4.7-7-1.6Z" fill="#e6f6f9" />
+        <circle cx="5.6" cy="7.7" r=".6" fill="#256f7f" />
+      </svg>
+    );
+  }
+
   if (kind === "gitbash") {
     return (
       <svg {...common}>

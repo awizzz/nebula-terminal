@@ -531,21 +531,52 @@ pub fn known_folder(name: &str) -> Option<PathBuf> {
     path.filter(|path| path.is_dir())
 }
 
+/// The desktop or documents folder as `user-dirs.dirs` names it (`~/Bureau` on a French
+/// desktop), or the English name in the home folder.
 #[cfg(not(windows))]
 pub fn known_folder(name: &str) -> Option<PathBuf> {
-    let folder = match name {
-        "desktop" => "Desktop",
-        "documents" => "Documents",
+    let (key, fallback) = match name {
+        "desktop" => ("XDG_DESKTOP_DIR", "Desktop"),
+        "documents" => ("XDG_DOCUMENTS_DIR", "Documents"),
         _ => return None,
     };
-    home_directory()
-        .map(|home| home.join(folder))
-        .filter(|path| path.is_dir())
+    let home = home_directory()?;
+    let config = env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+    let folder = std::fs::read_to_string(config.join("user-dirs.dirs"))
+        .ok()
+        .and_then(|dirs| user_dir(&dirs, key, &home))
+        .unwrap_or_else(|| home.join(fallback));
+    folder.is_dir().then_some(folder)
+}
+
+/// `XDG_DESKTOP_DIR="$HOME/Bureau"` in a user-dirs.dirs file.
+#[cfg(not(windows))]
+fn user_dir(dirs: &str, key: &str, home: &Path) -> Option<PathBuf> {
+    let value = dirs
+        .lines()
+        .filter(|line| !line.trim_start().starts_with('#'))
+        .find_map(|line| line.trim().strip_prefix(key)?.strip_prefix('='))?
+        .trim()
+        .trim_matches('"');
+    let path = match value.strip_prefix("$HOME") {
+        Some(rest) => home.join(rest.trim_start_matches('/')),
+        None => PathBuf::from(value),
+    };
+    // "$HOME/" alone means the feature is off: no folder of its own.
+    (path.is_absolute() && path != home).then_some(path)
 }
 
 /// Expands a leading `~` and `%VAR%` references in a user-supplied directory.
 pub fn expand_directory(input: &str) -> PathBuf {
-    let trimmed = input.trim();
+    let dollars;
+    let trimmed = if cfg!(windows) {
+        input.trim()
+    } else {
+        dollars = expand_dollars(input.trim(), |name| env::var(name).ok());
+        dollars.as_str()
+    };
     let mut expanded = String::with_capacity(trimmed.len());
     let mut rest = trimmed;
     while let Some(start) = rest.find('%') {
@@ -575,10 +606,50 @@ pub fn expand_directory(input: &str) -> PathBuf {
     PathBuf::from(expanded)
 }
 
+/// `$NAME` and `${NAME}`, as a Unix shell writes them. Unknown names stay as written.
+#[cfg_attr(windows, allow(dead_code))]
+fn expand_dollars(input: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+    let mut expanded = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find('$') {
+        expanded.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let (name, length) = match after.strip_prefix('{') {
+            Some(braced) => match braced.find('}') {
+                Some(end) => (&braced[..end], end + 2),
+                None => ("", 0),
+            },
+            None => {
+                let end = after
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(after.len());
+                (&after[..end], end)
+            }
+        };
+        match lookup(name).filter(|_| !name.is_empty()) {
+            Some(value) => expanded.push_str(&value),
+            None => expanded.push_str(&rest[start..start + 1 + length]),
+        }
+        rest = &after[length..];
+    }
+    expanded.push_str(rest);
+    expanded
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn expands_unix_variables() {
+        let lookup = |name: &str| (name == "HOME").then(|| "/home/me".to_owned());
+        assert_eq!(expand_dollars("$HOME/src", lookup), "/home/me/src");
+        assert_eq!(expand_dollars("${HOME}x", lookup), "/home/mex");
+        assert_eq!(expand_dollars("$NOPE/a$", lookup), "$NOPE/a$");
+        assert_eq!(expand_dollars("${HOME", lookup), "${HOME");
+        assert_eq!(expand_dollars("cost: 5$", lookup), "cost: 5$");
+    }
 
     #[test]
     fn palette_targets_become_ssh_arguments_and_nothing_else() {
@@ -718,6 +789,23 @@ mod tests {
         );
         let missing = profile("x".into(), "X".into(), "custom", "#123456", None);
         assert!(!missing.available && missing.command_line.is_none());
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn reads_user_dirs() {
+        let home = Path::new("/home/me");
+        let dirs = "# written by xdg-user-dirs-update\nXDG_DESKTOP_DIR=\"$HOME/Bureau\"\nXDG_DOCUMENTS_DIR=\"/data/docs\"\nXDG_MUSIC_DIR=\"$HOME/\"\n";
+        assert_eq!(
+            user_dir(dirs, "XDG_DESKTOP_DIR", home),
+            Some(PathBuf::from("/home/me/Bureau"))
+        );
+        assert_eq!(
+            user_dir(dirs, "XDG_DOCUMENTS_DIR", home),
+            Some(PathBuf::from("/data/docs"))
+        );
+        assert_eq!(user_dir(dirs, "XDG_MUSIC_DIR", home), None);
+        assert_eq!(user_dir(dirs, "XDG_VIDEOS_DIR", home), None);
     }
 
     #[test]

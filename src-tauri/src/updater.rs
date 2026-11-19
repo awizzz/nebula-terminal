@@ -26,6 +26,8 @@ pub enum InstallKind {
     Installer,
     /// The MSI: updated through msiexec.
     Msi,
+    /// The Linux AppImage: the new one replaces it, then starts.
+    AppImage,
     /// The portable zip, or a build from source: the user downloads it.
     Manual,
 }
@@ -97,8 +99,16 @@ fn newer_version(tag: &str, current: &str) -> Option<semver::Version> {
 }
 
 /// How this copy was installed. The NSIS installer leaves `uninstall.exe` next to
-/// the app; the MSI bundle marks the executable it ships.
+/// the app; the MSI bundle marks the executable it ships; an AppImage says where it is
+/// in $APPIMAGE. The .deb and .rpm packages are updated like any other package.
 pub fn install_kind() -> InstallKind {
+    if cfg!(target_os = "linux") {
+        return if appimage().is_some() {
+            InstallKind::AppImage
+        } else {
+            InstallKind::Manual
+        };
+    }
     let Some(directory) = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
@@ -122,6 +132,19 @@ const ARCH: &str = if cfg!(target_arch = "aarch64") {
 } else {
     "x64"
 };
+/// The same in the AppImage's name, which follows Debian's names.
+const LINUX_ARCH: &str = if cfg!(target_arch = "aarch64") {
+    "aarch64"
+} else {
+    "amd64"
+};
+
+/// The AppImage this copy runs from.
+fn appimage() -> Option<PathBuf> {
+    std::env::var_os("APPIMAGE")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+}
 
 fn installer_asset(release: &Release, kind: InstallKind) -> Option<&Asset> {
     release.assets.iter().find(|asset| {
@@ -129,6 +152,7 @@ fn installer_asset(release: &Release, kind: InstallKind) -> Option<&Asset> {
         match kind {
             InstallKind::Installer => name.ends_with(&format!("_{ARCH}-setup.exe")),
             InstallKind::Msi => name.ends_with(".msi") && name.contains(&format!("_{ARCH}")),
+            InstallKind::AppImage => name.ends_with(&format!("_{LINUX_ARCH}.appimage")),
             InstallKind::Manual => false,
         }
     })
@@ -281,12 +305,35 @@ fn launch(installer: &Path, kind: InstallKind) -> Result<(), String> {
                 .args(["/passive", "AUTOLAUNCHAPP=True"]);
             command
         }
+        InstallKind::AppImage => return replace_appimage(installer),
         InstallKind::Manual => return Err("This copy can't update itself.".into()),
     };
     command
         .spawn()
         .map(|_| ())
         .map_err(|error| format!("Could not start the installer: {error}"))
+}
+
+/// Puts the new AppImage where the running one is, in one step, then starts it once
+/// this copy has quit (or the new one would hand itself over to it and stop).
+fn replace_appimage(downloaded: &Path) -> Result<(), String> {
+    let target = appimage().ok_or("This copy isn't an AppImage.")?;
+    let name = target.file_name().ok_or("Unexpected AppImage path.")?;
+    let staged = target.with_file_name(format!(".{}.new", name.to_string_lossy()));
+    let failed = |error: std::io::Error| format!("Could not replace {}: {error}", target.display());
+    fs::copy(downloaded, &staged).map_err(failed)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).map_err(failed)?;
+    }
+    fs::rename(&staged, &target).map_err(failed)?;
+    Command::new("sh")
+        .args(["-c", "sleep 1; exec \"$0\""])
+        .arg(&target)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not start the new version: {error}"))
 }
 
 #[tauri::command]

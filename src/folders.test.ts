@@ -39,3 +39,20 @@ describe("isStartableFolder", () => {
     expect(isStartableFolder(42)).toBe(false);
   });
 });
+
+describe("folders on Linux", () => {
+  it("reads this machine's folders and leaves a server's alone", () => {
+    expect(folderFromReport("file://laptop/home/me/My%20Projects", false, "laptop")).toBe("/home/me/My Projects");
+    expect(folderFromReport("file:///tmp", false, "laptop")).toBe("/tmp");
+    expect(folderFromReport("file://localhost/srv/100%25", false, "laptop")).toBe("/srv/100%");
+    expect(folderFromReport("file://build-server/home/deploy", false, "laptop")).toBeNull();
+    expect(folderFromReport("file://laptop/C:/Users", false, "laptop")).toBe("/C:/Users");
+  });
+
+  it("starts in absolute paths only", () => {
+    expect(isStartableFolder("/home/me", false)).toBe(true);
+    expect(isStartableFolder("home/me", false)).toBe(false);
+    expect(isStartableFolder("C:\\Users", false)).toBe(false);
+    expect(isStartableFolder("/a\nb", false)).toBe(false);
+  });
+});

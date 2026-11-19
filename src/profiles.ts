@@ -1,7 +1,7 @@
+import { isWindows } from "./platform";
 import type { TerminalProfile, TerminalTab } from "./types";
 
-/** Shown in the browser preview, where no PTY backend is available. */
-export const previewProfiles: TerminalProfile[] = [
+const windowsPreview: TerminalProfile[] = [
   { id: "nebula", name: "Nebula", kind: "nebula", available: true, executable: "nebula-sh.exe", commandLine: "C:\\Program Files\\Nebula Terminal\\nebula-sh.exe", accent: "#e8a33d" },
   { id: "pwsh", name: "PowerShell", kind: "pwsh", available: true, executable: "pwsh.exe", commandLine: "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo", accent: "#5b8def" },
   { id: "powershell", name: "Windows PowerShell", kind: "powershell", available: true, executable: "powershell.exe", commandLine: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoLogo", accent: "#3f7cc4" },
@@ -13,6 +13,19 @@ export const previewProfiles: TerminalProfile[] = [
   { id: "ssh:build-server", name: "build-server", kind: "ssh", available: true, executable: "ssh.exe", commandLine: "C:\\Windows\\System32\\OpenSSH\\ssh.exe build-server", accent: "#4f9d8f" },
   { id: "ssh:pi", name: "pi", kind: "ssh", available: true, executable: "ssh.exe", commandLine: "C:\\Windows\\System32\\OpenSSH\\ssh.exe pi", accent: "#4f9d8f" },
 ];
+
+const linuxPreview: TerminalProfile[] = [
+  { id: "bash", name: "Bash", kind: "bash", available: true, executable: "bash", commandLine: "/usr/bin/bash", accent: "#4eaa25" },
+  { id: "nebula", name: "Nebula", kind: "nebula", available: true, executable: "nebula-sh", commandLine: "/usr/bin/nebula-sh", accent: "#e8a33d" },
+  { id: "zsh", name: "Zsh", kind: "zsh", available: true, executable: "zsh", commandLine: "/usr/bin/zsh", accent: "#c678dd" },
+  { id: "fish", name: "Fish", kind: "fish", available: false, accent: "#4fb0c6" },
+  { id: "pwsh", name: "PowerShell", kind: "pwsh", available: false, accent: "#5b8def" },
+  { id: "ssh:build-server", name: "build-server", kind: "ssh", available: true, executable: "ssh", commandLine: "/usr/bin/ssh build-server", accent: "#4f9d8f" },
+  { id: "ssh:pi", name: "pi", kind: "ssh", available: true, executable: "ssh", commandLine: "/usr/bin/ssh pi", accent: "#4f9d8f" },
+];
+
+/** Shown in the browser preview, where no PTY backend is available. */
+export const previewProfiles: TerminalProfile[] = isWindows ? windowsPreview : linuxPreview;
 
 export type ProfileGroup = "shell" | "wsl" | "ssh" | "custom";
 

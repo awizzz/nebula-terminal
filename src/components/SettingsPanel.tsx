@@ -22,6 +22,13 @@ import type { AppearancePreferences, CustomProfile, CustomProfileDraft, CustomPr
 import { savedCommandLabel } from "../savedCommands";
 import { backupDocument, readBackup, type Backup } from "../backup";
 import { download } from "../download";
+import { fileManagerName, isWindows } from "../platform";
+
+/** How profile fields name environment variables on this system. */
+const VARIABLES = isWindows ? "%VARIABLES%" : "$VARIABLES";
+/** The shells that get shell integration, besides Nebula. */
+const INTEGRATED_SHELLS = isWindows ? "PowerShell, Git Bash and WSL" : "Bash and zsh";
+const COMPUTER = isWindows ? "PC" : "computer";
 
 const quickHeights = [0.3, 0.5, 0.7, 0.9];
 
@@ -62,7 +69,9 @@ const pages: Array<{ id: SettingsPage; label: string; icon: typeof Palette }> = 
   { id: "about", label: "About", icon: Info },
 ];
 
-const monospaceFonts = ["Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Lucida Console"];
+const monospaceFonts = isWindows
+  ? ["Cascadia Mono", "Cascadia Code", "Consolas", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Lucida Console"]
+  : ["DejaVu Sans Mono", "Ubuntu Mono", "Noto Sans Mono", "Liberation Mono", "JetBrains Mono", "Fira Code", "Source Code Pro", "Iosevka", "Hack", "Cascadia Code"];
 const REPOSITORY = "https://github.com/awizzz/nebula-terminal";
 
 /**
@@ -474,14 +483,14 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
 
         <div className="editor-field-row">
           <EditorField id={`${id}-user`} label="User" error={errorFor("user")}>
-            <input id={`${id}-user`} className="field field--mono" value={draft.ssh.user} maxLength={64} spellCheck={false} autoCapitalize="off" placeholder="Same as on Windows" onChange={setSsh("user")} {...invalid("user")} />
+            <input id={`${id}-user`} className="field field--mono" value={draft.ssh.user} maxLength={64} spellCheck={false} autoCapitalize="off" placeholder={isWindows ? "Same as on Windows" : "Same as here"} onChange={setSsh("user")} {...invalid("user")} />
           </EditorField>
           <EditorField id={`${id}-port`} label="Port" error={errorFor("port")}>
             <input id={`${id}-port`} className="field field--mono" value={draft.ssh.port} maxLength={5} inputMode="numeric" spellCheck={false} placeholder="22" onChange={setSsh("port")} {...invalid("port")} />
           </EditorField>
         </div>
 
-        <EditorField id={`${id}-identityFile`} label="Key file" error={errorFor("identityFile")} note="Optional. Without one, ssh tries your keys in ~/.ssh and the ssh-agent. Accepts ~ and %VARIABLES%.">
+        <EditorField id={`${id}-identityFile`} label="Key file" error={errorFor("identityFile")} note={`Optional. Without one, ssh tries your keys in ~/.ssh and the ssh-agent. Accepts ~ and ${VARIABLES}.`}>
           <input id={`${id}-identityFile`} className="field field--mono" value={draft.ssh.identityFile} maxLength={1024} spellCheck={false} placeholder="~\.ssh\id_ed25519" onChange={setSsh("identityFile")} {...invalid("identityFile")} />
         </EditorField>
 
@@ -489,7 +498,7 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
           <ChevronRight size={14} aria-hidden="true" />Port forwarding
         </button>
         {showForwards && <div className="editor-field-row" id={`${id}-forwards`}>
-          <EditorField id={`${id}-localForwards`} label="Local ports" error={errorFor("localForwards")} note="A port on this PC, then where the server sends it. One per line.">
+          <EditorField id={`${id}-localForwards`} label="Local ports" error={errorFor("localForwards")} note={`A port on this ${COMPUTER}, then where the server sends it. One per line.`}>
             <textarea id={`${id}-localForwards`} className="field field--mono field--area" rows={3} value={draft.ssh.localForwards} maxLength={2048} spellCheck={false} placeholder="8080:localhost:80" onChange={setSsh("localForwards")} {...invalid("localForwards")} />
           </EditorField>
           <EditorField id={`${id}-remoteForwards`} label="Remote ports" error={errorFor("remoteForwards")} note="A port on the server, then where this PC sends it. One per line.">
@@ -502,7 +511,7 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
           <code className="arg-chip">{sshCommand(draft.ssh)}</code>
         </div>
       </> : <>
-      <EditorField id={`${id}-executable`} label="Program" error={errorFor("executable")} note="A full path, or the name of a program on PATH. Accepts %VARIABLES%.">
+      <EditorField id={`${id}-executable`} label="Program" error={errorFor("executable")} note={`A full path, or the name of a program on PATH. Accepts ${VARIABLES}.`}>
         <input id={`${id}-executable`} className="field field--mono" value={draft.executable} maxLength={1024} spellCheck={false} placeholder="C:\Python313\python.exe" onChange={set("executable")} {...invalid("executable")} />
       </EditorField>
 
@@ -511,7 +520,7 @@ function ProfileEditor({ initial, onSave, onCancel }: { initial: CustomProfileDr
         {!errorFor("arguments") && <ArgumentPreview line={draft.arguments} />}
       </EditorField>
 
-      <EditorField id={`${id}-cwd`} label="Starting folder" error={errorFor("cwd")} note="Leave empty to use the starting folder above. Accepts ~ and %VARIABLES%.">
+      <EditorField id={`${id}-cwd`} label="Starting folder" error={errorFor("cwd")} note={`Leave empty to use the starting folder above. Accepts ~ and ${VARIABLES}.`}>
         <input id={`${id}-cwd`} className="field field--mono" value={draft.cwd} maxLength={1024} spellCheck={false} placeholder="Default starting folder" onChange={set("cwd")} {...invalid("cwd")} />
       </EditorField>
       </>}
@@ -806,8 +815,8 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
               {shows("appearance") && <section className="settings__section" aria-label={searching ? pageLabel("appearance") : undefined}>
                 {searching && <h2 className="settings__section-title">{pageLabel("appearance")}</h2>}
                 <Group title="Theme">
-                  <Row label="Follow Windows" description={preferences.followSystemTheme ? "Pick one dark and one light theme below. The window wears the one that matches Windows' app mode." : "Switch between a dark and a light theme with Windows' app mode."}>
-                    <Switch label="Follow Windows" checked={preferences.followSystemTheme} onChange={(value) => patch("followSystemTheme", value)} />
+                  <Row label={isWindows ? "Follow Windows" : "Follow the system"} description={preferences.followSystemTheme ? `Pick one dark and one light theme below. The window wears the one that matches ${isWindows ? "Windows' app mode" : "the system's dark or light style"}.` : `Switch between a dark and a light theme with ${isWindows ? "Windows' app mode" : "the system's dark or light style"}.`}>
+                    <Switch label={isWindows ? "Follow Windows" : "Follow the system"} checked={preferences.followSystemTheme} onChange={(value) => patch("followSystemTheme", value)} />
                   </Row>
                   <ThemeSection preferences={preferences} onChange={onChange} />
                 </Group>
@@ -823,17 +832,24 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                       </label>
                     </div>
                   </Row>
-                  <Row label="Mark administrator windows" description="Administrator windows get a red accent, so you always know which shells are elevated.">
-                    <Switch label="Mark administrator windows" checked={preferences.markAdministratorWindows} onChange={(value) => patch("markAdministratorWindows", value)} />
-                  </Row>
-                  <Row label="Background" description="Mica lets your desktop color show through on Windows 11.">
-                    <Segmented label="Background" value={preferences.backgroundMode} onChange={(value) => value === "image" && !preferences.backgroundImage ? imageInputRef.current?.click() : patch("backgroundMode", value)} options={[{ value: "mica", label: "Mica" }, { value: "solid", label: "Solid" }, { value: "image", label: "Image" }]} />
+                  {isWindows && (
+                    <Row label="Mark administrator windows" description="Administrator windows get a red accent, so you always know which shells are elevated.">
+                      <Switch label="Mark administrator windows" checked={preferences.markAdministratorWindows} onChange={(value) => patch("markAdministratorWindows", value)} />
+                    </Row>
+                  )}
+                  <Row label="Background" description={isWindows ? "Mica lets your desktop color show through on Windows 11." : undefined}>
+                    <Segmented
+                      label="Background"
+                      value={!isWindows && preferences.backgroundMode === "mica" ? "solid" : preferences.backgroundMode}
+                      onChange={(value) => value === "image" && !preferences.backgroundImage ? imageInputRef.current?.click() : patch("backgroundMode", value)}
+                      options={[...(isWindows ? [{ value: "mica" as const, label: "Mica" }] : []), { value: "solid", label: "Solid" }, { value: "image", label: "Image" }]}
+                    />
                   </Row>
                   {preferences.backgroundMode === "image" && preferences.backgroundImage && <>
                     <Row label="Background image">
                       <div className="button-row">
                         <button className="button" type="button" onClick={() => imageInputRef.current?.click()}>Change…</button>
-                        <button className="button" type="button" onClick={() => onChange({ ...preferences, backgroundImage: undefined, backgroundMode: "mica" })}>Remove</button>
+                        <button className="button" type="button" onClick={() => onChange({ ...preferences, backgroundImage: undefined, backgroundMode: isWindows ? "mica" : "solid" })}>Remove</button>
                       </div>
                     </Row>
                     <Row label="Image visibility">
@@ -922,7 +938,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Commands">
-                  <Row label="Command blocks" description="Point at a finished command to see it as one block and copy it, copy its output or run it again. Works with shell integration: Nebula, PowerShell, Git Bash and WSL.">
+                  <Row label="Command blocks" description={`Point at a finished command to see it as one block and copy it, copy its output or run it again. Works with shell integration: Nebula, ${INTEGRATED_SHELLS}.`}>
                     <Switch label="Command blocks" checked={preferences.commandBlocks} onChange={(value) => patch("commandBlocks", value)} />
                   </Row>
                 </Group>
@@ -962,12 +978,14 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Accessibility">
-                  <Row label="Screen reader support" description="Narrator, NVDA and JAWS can read the output and follow the cursor. Uses a little more memory and time per line.">
+                  <Row label="Screen reader support" description={`${isWindows ? "Narrator, NVDA and JAWS" : "Orca and other screen readers"} can read the output and follow the cursor. Uses a little more memory and time per line.`}>
                     <Switch label="Screen reader support" checked={preferences.screenReaderMode} onChange={(value) => patch("screenReaderMode", value)} />
                   </Row>
-                  <Row label="Follow Windows contrast themes" description="When a contrast theme is on in Windows, terminals use High Contrast Dark or Light, whatever their own theme.">
-                    <Switch label="Follow Windows contrast themes" checked={preferences.followContrastThemes} onChange={(value) => patch("followContrastThemes", value)} />
-                  </Row>
+                  {isWindows && (
+                    <Row label="Follow Windows contrast themes" description="When a contrast theme is on in Windows, terminals use High Contrast Dark or Light, whatever their own theme.">
+                      <Switch label="Follow Windows contrast themes" checked={preferences.followContrastThemes} onChange={(value) => patch("followContrastThemes", value)} />
+                    </Row>
+                  )}
                 </Group>
                 <Group title="What programs can do">
                   <Row label="Show images" description="Sixel and iTerm2 images, from tools like chafa, timg or viu.">
@@ -1010,7 +1028,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Open new tabs and splits in the current folder" description="Uses the folder the focused shell is in.">
                     <Switch label="Open new tabs and splits in the current folder" checked={preferences.openInCurrentFolder} onChange={(value) => patch("openInCurrentFolder", value)} />
                   </Row>
-                  <Row label="Shell integration" description="PowerShell, Git Bash and WSL mark their commands and report their folder, as Nebula does. Your profile still runs first. Applies to new tabs.">
+                  <Row label="Shell integration" description={`${INTEGRATED_SHELLS} mark their commands and report their folder, as Nebula does. Your profile still runs first. Applies to new tabs.`}>
                     <Switch label="Shell integration" checked={preferences.shellIntegration} onChange={(value) => patch("shellIntegration", value)} />
                   </Row>
                 </Group>
@@ -1019,7 +1037,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                 {groupProfiles(profiles.filter((profile) => !profile.id.startsWith("custom:"))).map(({ group, profiles: members }) => (
                   <Group
                     key={group}
-                    title={group === "shell" ? "Detected on this PC" : profileGroupLabels[group]}
+                    title={group === "shell" ? `Detected on this ${COMPUTER}` : profileGroupLabels[group]}
                     description={group === "wsl" ? "One profile for each installed distribution." : group === "ssh" ? "Hosts from your ~/.ssh/config. Edit that file to add more." : undefined}
                   >
                     {members.map((profile) => <ProfileRow key={profile.id} profile={profile} preferences={preferences} onChange={onChange} />)}
@@ -1030,7 +1048,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
               {shows("keyboard") && <section className="settings__section" aria-label={searching ? pageLabel("keyboard") : undefined}>
                 {searching && <h2 className="settings__section-title">{pageLabel("keyboard")}</h2>}
                 <Group title="Shortcuts">
-                  {(Object.keys(defaultKeybindings) as Array<keyof KeybindingPreferences>).map((key) => (
+                  {(Object.keys(defaultKeybindings) as Array<keyof KeybindingPreferences>).filter((key) => isWindows || key !== "newAdministratorTab").map((key) => (
                     <Row key={key} label={keybindingLabels[key]}>
                       <ShortcutRecorder action={keybindingLabels[key]} value={preferences.keybindings[key]} conflict={conflictFor(key)} onChange={(value) => patchBinding(key, value)} />
                     </Row>
@@ -1066,12 +1084,12 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   </Row>
                 </Group>
                 <Group title="Files in the output">
-                  <Row label="Open files with" description="Ctrl+Click a path like src/main.rs:42 to open it at that line. Folders open in File Explorer.">
+                  <Row label="Open files with" description={`Ctrl+Click a path like src/main.rs:42 to open it at that line. Folders open in ${fileManagerName}.`}>
                     <select className="field field--select" value={preferences.fileOpener} onChange={(event) => patch("fileOpener", event.target.value as AppearancePreferences["fileOpener"])}>
                       <option value="auto">VS Code or Cursor, if installed</option>
                       <option value="vscode">VS Code</option>
                       <option value="cursor">Cursor</option>
-                      <option value="default">The app Windows uses for the file</option>
+                      <option value="default">{isWindows ? "The app Windows uses for the file" : "The system's default app"}</option>
                       <option value="custom">A command of my own</option>
                     </select>
                   </Row>
@@ -1082,7 +1100,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   )}
                 </Group>
                 <Group title="Notifications">
-                  <Row label="Notify when a long command finishes" description="When its tab is in the background or the window is not in front. Works in Nebula, in PowerShell, Git Bash and WSL with shell integration, and with programs that send notifications.">
+                  <Row label="Notify when a long command finishes" description={`When its tab is in the background or the window is not in front. Works in Nebula, in ${INTEGRATED_SHELLS} with shell integration, and with programs that send notifications.`}>
                     <Switch label="Notify when a long command finishes" checked={preferences.notifyLongCommands} onChange={(value) => patch("notifyLongCommands", value)} />
                   </Row>
                   <Row label="Long means at least">
@@ -1091,6 +1109,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </select>
                   </Row>
                 </Group>
+                {isWindows && <>
                 <Group title="Quick terminal" description={administrator ? "Change this from an ordinary window." : undefined}>
                   <Row label="Quick terminal" description="A shortcut drops a terminal down from the top of the screen, over whatever you're doing, and the same shortcut puts it away. It has tabs of its own and works while Nebula Terminal is open.">
                     <Switch label="Quick terminal" checked={preferences.quickTerminal} disabled={administrator} onChange={(value) => patch("quickTerminal", value)} />
@@ -1132,6 +1151,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     <Switch label="nebula-terminal command" checked={launchers?.command ?? false} disabled={!launchers} onChange={(value) => patch("pathCommand", value)} />
                   </Row>
                 </Group>
+                </>}
                 <Group title="Workspaces" description={workspaces.length ? "Opened from the new-tab menu or the command palette, next to the tabs already open." : "Save the tabs you have open (splits and folders included) from the new-tab menu or the command palette, and open them again in one click."}>
                   {workspaces.length > 0 && (
                     <Row label="At startup, open" description="What the main window opens when Nebula Terminal starts.">
@@ -1194,7 +1214,9 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                     </Fragment>
                   ))}
                 </Group>
-                <Group title="Sync settings" description="Keep one settings file in OneDrive, Dropbox or a Git repository, and every PC that uses it gets the same themes, fonts, shortcuts and saved commands. Explorer and PATH entries, the starting folder, what opens files and the background image stay on each PC.">
+                <Group title="Sync settings" description={isWindows
+                  ? "Keep one settings file in OneDrive, Dropbox or a Git repository, and every PC that uses it gets the same themes, fonts, shortcuts and saved commands. Explorer and PATH entries, the starting folder, what opens files and the background image stay on each PC."
+                  : "Keep one settings file in Nextcloud, Dropbox or a Git repository, and every computer that uses it, Windows PCs included, gets the same themes, fonts, shortcuts and saved commands. The starting folder, what opens files and the background image stay on each computer."}>
                   <Row
                     label="Settings file"
                     description={sync?.problem ?? (preferences.syncFile ? preferences.syncFile : sync ? "Not synced. Choosing a file that already has settings uses them here." : "Change this from the main window.")}
@@ -1252,7 +1274,7 @@ export default function SettingsPanel({ open, initialPage, profiles, preferences
                   <Row label="Reopen tabs on launch" description="Restores tabs, splits and the folder each one was in. Shells start fresh.">
                     <Switch label="Reopen tabs on launch" checked={preferences.restoreSession} onChange={(value) => patch("restoreSession", value)} />
                   </Row>
-                  <Row label="Show what panes printed" description="Reopened panes show their last output, up to 1,000 lines, above the new prompt. It's kept on this PC only.">
+                  <Row label="Show what panes printed" description={`Reopened panes show their last output, up to 1,000 lines, above the new prompt. It's kept on this ${COMPUTER} only.`}>
                     <Switch label="Show what panes printed" checked={preferences.restoreScreens && preferences.restoreSession} disabled={!preferences.restoreSession} onChange={(value) => patch("restoreScreens", value)} />
                   </Row>
                   <Row label="Reconnect SSH when it drops" description="A connection that drops tries again after 2, 5, 10, 20 and 30 seconds, with a countdown you can cancel.">

@@ -3,7 +3,7 @@ import type { LayoutNode } from "./layout";
 
 export type FileOpener = "auto" | "vscode" | "cursor" | "default" | "custom";
 
-export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl" | "ssh" | "custom";
+export type ProfileKind = "nebula" | "pwsh" | "powershell" | "cmd" | "gitbash" | "wsl" | "bash" | "zsh" | "fish" | "ssh" | "custom";
 
 /**
  * Something a tab can open. Ids are `nebula`, `pwsh`… for the built-in shells,
