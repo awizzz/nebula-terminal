@@ -358,6 +358,13 @@ pub async fn start_session(
     for (name, value) in integration {
         command.env(name, value);
     }
+    #[cfg(target_os = "linux")]
+    for (name, value) in crate::platform::appimage_cleanup() {
+        match value {
+            Some(value) => command.env(name, value),
+            None => command.env_remove(name),
+        }
+    }
     for variable in custom_profiles.environment(&profile_id) {
         command.env(variable.name, variable.value);
     }

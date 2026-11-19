@@ -21,8 +21,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: Release / windows-x64
+  version:
+    name: Release / version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Resolve version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          config=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          [ "$version" = "$config" ] || { echo "package.json and tauri.conf.json versions differ."; exit 1; }
+          for manifest in src-tauri/Cargo.toml crates/nebula-sh/Cargo.toml; do
+            cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' "$manifest" | head -n 1)
+            [ "$version" = "$cargo" ] || { echo "package.json and $manifest versions differ."; exit 1; }
+          done
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            requested=${REQUESTED#v}
+            [ "$requested" = "$version" ] || { echo "Requested version '$requested' does not match package version '$version'."; exit 1; }
+            tag="v$requested"
+          else
+            tag="${{ github.ref_name }}"
+            [ "$tag" = "v$version" ] || { echo "Tag '$tag' does not match package version 'v$version'."; exit 1; }
+          fi
+
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Release $tag already exists."; exit 1; fi
+
+          prerelease=false
+          case $version in *-*) prerelease=true ;; esac
+          { echo "version=$version"; echo "tag=$tag"; echo "prerelease=$prerelease"; } >> "$GITHUB_OUTPUT"
+
+  windows:
+    name: Release / windows
+    needs: version
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -41,38 +83,6 @@ jobs:
           toolchain: 1.98.1
           components: rustfmt, clippy
           targets: aarch64-pc-windows-msvc
-
-      - name: Resolve version
-        id: version
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $package = Get-Content package.json | ConvertFrom-Json
-          $config = Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json
-          $version = [string]$package.version
-          if ($version -ne [string]$config.version) { throw "package.json and tauri.conf.json versions differ." }
-          foreach ($manifest in @('src-tauri/Cargo.toml', 'crates/nebula-sh/Cargo.toml')) {
-            $cargo = Select-String -Path $manifest -Pattern '^version = "(.+)"' | Select-Object -First 1
-            if ($version -ne $cargo.Matches[0].Groups[1].Value) { throw "package.json and $manifest versions differ." }
-          }
-
-          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
-            $requested = '${{ inputs.version }}'.TrimStart('v')
-            if ($requested -ne $version) { throw "Requested version '$requested' does not match package version '$version'." }
-            $tag = "v$requested"
-          } else {
-            $tag = '${{ github.ref_name }}'
-            if ($tag -ne "v$version") { throw "Tag '$tag' does not match package version 'v$version'." }
-          }
-
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
-
-          "version=$version" >> $env:GITHUB_OUTPUT
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "prerelease=$(($version -match '-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
-          exit 0
 
       - name: Install dependencies
         run: npm ci
@@ -96,7 +106,7 @@ jobs:
       - name: Prepare release files
         shell: pwsh
         run: |
-          $version = '${{ steps.version.outputs.version }}'
+          $version = '${{ needs.version.outputs.version }}'
           $target = 'target/release'
 
           New-Item -ItemType Directory -Force release | Out-Null
@@ -128,19 +138,114 @@ jobs:
 
           ./scripts/scoop-manifest.ps1 -Version $version -Zip $portable -Arm64Zip $portableArm64 -Repository $env:GITHUB_REPOSITORY -Out release/nebula-terminal.json
 
-          Get-ChildItem release -File | ForEach-Object {
-            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            "$hash  $($_.Name)" | Add-Content release/SHA256SUMS.txt -Encoding ascii
-          }
+      - name: Upload the Windows files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-windows
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
 
-          $lines = Get-Content CHANGELOG.md
-          $start = -1; $end = $lines.Count
-          for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match "^## $([regex]::Escape($version))(\s|$)") { $start = $i + 1; continue }
-            if ($start -ge 0 -and $lines[$i] -match '^## ') { $end = $i; break }
-          }
-          if ($start -ge 0) { $lines[$start..($end - 1)] | Set-Content release-notes.md -Encoding utf8 }
-          else { "Nebula Terminal $version" | Set-Content release-notes.md -Encoding utf8 }
+  # Linux packages are built on Ubuntu 22.04, so they run on that glibc and anything newer.
+  linux:
+    name: Release / linux-${{ matrix.arch }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf file
+
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The checks CI runs, once: the Arm build only has to build.
+      - name: Validate
+        if: matrix.arch == 'x64'
+        run: |
+          node scripts/build-sidecar.mjs
+          cargo clippy --locked --workspace --all-targets -- -D warnings
+          cargo test --locked --workspace --all-targets
+
+      - name: Build packages
+        run: npm run tauri build
+
+      - name: Prepare release files
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          bundle=target/release/bundle
+          count=0
+          # GitHub replaces spaces in asset names with dots: use the published names.
+          for file in "$bundle"/deb/*.deb "$bundle"/rpm/*.rpm "$bundle"/appimage/*.AppImage; do
+            [ -f "$file" ] || continue
+            name=$(basename "$file")
+            cp "$file" "release/${name// /.}"
+            count=$((count + 1))
+          done
+          [ "$count" -eq 3 ] || { echo "Tauri did not produce every package."; ls -R "$bundle"; exit 1; }
+          ls -l release
+
+      - name: Upload the Linux files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Release / publish
+    needs: [version, windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Download the files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Checksums and release notes
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum -- * > ../SHA256SUMS.txt) && mv SHA256SUMS.txt release/
+          cat release/SHA256SUMS.txt
+          awk -v version="$VERSION" '
+            index($0, "## " version) == 1 && (length($0) == length(version) + 3 || substr($0, length(version) + 4, 1) ~ /[ \t]/) { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          [ -s release-notes.md ] || echo "Nebula Terminal $VERSION" > release-notes.md
 
       - name: Attest release files
         if: github.event.repository.visibility == 'public'
@@ -150,16 +255,18 @@ jobs:
             release/*.exe
             release/*.msi
             release/*.zip
+            release/*.deb
+            release/*.rpm
+            release/*.AppImage
 
       - name: Publish GitHub Release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $flags = @()
-          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') { $flags += '--prerelease' }
-          $assets = Get-ChildItem release -File | ForEach-Object { $_.FullName }
-          gh release create '${{ steps.version.outputs.tag }}' $assets `
-            --target '${{ github.sha }}' `
-            --title 'Nebula Terminal ${{ steps.version.outputs.version }}' `
-            --notes-file release-notes.md @flags
+          set -euo pipefail
+          flags=()
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then flags+=(--prerelease); fi
+          gh release create "${{ needs.version.outputs.tag }}" release/* \
+            --target "${{ github.sha }}" \
+            --title "Nebula Terminal ${{ needs.version.outputs.version }}" \
+            --notes-file release-notes.md "${flags[@]}"
