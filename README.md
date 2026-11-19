@@ -4,7 +4,7 @@
 [![Security audit](https://github.com/awizzz/nebula-terminal/actions/workflows/security.yml/badge.svg)](https://github.com/awizzz/nebula-terminal/actions/workflows/security.yml)
 [![License: PolyForm Shield](https://img.shields.io/badge/license-PolyForm%20Shield-blue.svg)](LICENSE)
 
-A terminal for Windows with Linux commands built in. Tabs, split panes, a command palette and a settings screen you can actually click through. It opens **Nebula**, its own command interpreter, by default, and runs PowerShell, Command Prompt, Git Bash and WSL too.
+A terminal for Windows and Linux, with Linux commands built in. Tabs, split panes, a command palette and a settings screen you can actually click through. It opens **Nebula**, its own command interpreter, by default, and runs PowerShell, Command Prompt, Git Bash and WSL on Windows, bash, zsh and fish on Linux.
 
 Website and download: [nebula.awizz.space](https://nebula.awizz.space)
 
@@ -18,6 +18,8 @@ Website and download: [nebula.awizz.space](https://nebula.awizz.space)
 | Command blocks, and find in every tab (`Ctrl+Shift+Alt+F`) | Tabs on the side, and highlights |
 
 ## Install
+
+### Windows
 
 Download the latest installer from [Releases](https://github.com/awizzz/nebula-terminal/releases/latest):
 
@@ -39,6 +41,25 @@ scoop install https://github.com/awizzz/nebula-terminal/releases/latest/download
 ```
 
 Requires Windows 10 1809 or later (ConPTY) and the WebView2 runtime, which ships with Windows 11 and current Windows 10 builds.
+
+### Linux
+
+From the same [Releases](https://github.com/awizzz/nebula-terminal/releases/latest) page:
+
+- `Nebula.Terminal_<version>_amd64.deb`: Debian, Ubuntu, Linux Mint, Pop!_OS
+- `Nebula.Terminal-<version>-1.x86_64.rpm`: Fedora, openSUSE, RHEL and the like
+- `Nebula.Terminal_<version>_amd64.AppImage`: any distribution, nothing to install, and it updates itself
+- `arm64` and `aarch64` versions of the three for 64-bit Arm machines
+
+```sh
+sudo apt install ./Nebula.Terminal_2.11.0_amd64.deb
+sudo dnf install ./Nebula.Terminal-2.11.0-1.x86_64.rpm
+chmod +x Nebula.Terminal_2.11.0_amd64.AppImage && ./Nebula.Terminal_2.11.0_amd64.AppImage
+```
+
+`sha256sum -c SHA256SUMS.txt --ignore-missing` checks what you downloaded. You need a distribution from 2022 or later (glibc 2.35 and WebKitGTK 4.1): Ubuntu 22.04, Debian 12, Fedora 36 or newer. AppImages need FUSE 2, which Ubuntu 24.04 leaves out: `sudo apt install libfuse2t64`.
+
+Your login shell opens by default. Bash and zsh get shell integration (command blocks, notifications, new tabs in the same folder), `Ctrl+Z` suspends a program in Nebula as in bash, and the deb and rpm packages add the `nebula-terminal` command. What Linux doesn't have yet: the quick terminal, and what belongs to Windows (default terminal, Explorer menu, administrator windows, Mica).
 
 ## Nebula, the built-in interpreter
 
@@ -162,13 +183,19 @@ All of these except going to a tab by number, moving between panes and opening l
 
 ## What's next
 
-Next up: one history of the commands from every shell, recording a pane to play back or share, a portable copy that keeps its settings next to it, and tabs from the keyboard. The winget package is in review. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
+Next up: one history of the commands from every shell, recording a pane to play back or share, a portable copy that keeps its settings next to it, and tabs from the keyboard. The winget package is in review. See the [roadmap](docs/roadmap.md), and open an issue for anything you'd like to see.
 
 ## Build from source
 
-You need Node.js 24, Rust 1.98.1 (pinned in `rust-toolchain.toml`), the MSVC build tools and WebView2.
+You need Node.js 24 and Rust 1.98.1 (pinned in `rust-toolchain.toml`). On Windows, the MSVC build tools and WebView2. On Linux, WebKitGTK 4.1 and a few libraries; on Debian or Ubuntu:
 
-```powershell
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+```
+
+Then:
+
+```sh
 git clone https://github.com/awizzz/nebula-terminal.git
 cd nebula-terminal
 npm ci

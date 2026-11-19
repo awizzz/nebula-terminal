@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.11.0
+
+Nebula Terminal runs on Linux: .deb, .rpm and AppImage packages, for x64 and 64-bit Arm.
+
+### Added
+
+- Linux: the same app on Ubuntu 22.04, Debian 12, Fedora 36 and later, as a .deb, an .rpm or an AppImage that updates itself; bash, zsh, fish and PowerShell are found and your login shell opens first
+- shell integration for bash and zsh on Linux: command blocks, exit codes in the scrollbar, notifications, and new tabs in the folder you were in; your own `.bashrc`, `.zshrc` and `ZDOTDIR` still run first
+- `Ctrl+Z` in Nebula on Linux stops the program in front, and `jobs`, `fg` and `bg` work as they do on Windows
+- Ctrl+Click on a path in the output resolves Linux paths, opens folders in the file manager and finds VS Code or Cursor on `PATH`
+- profile fields accept `$VARIABLES` on Linux, next to `%VARIABLES%`
+
+### Fixed
+
+- windows opened for moved tabs can be minimized, maximized, closed and dragged like the main one
+
 ## 2.10.0
 
 Tabs on the side, how long each command took, commands copied as Markdown, and one pane zoomed alone.

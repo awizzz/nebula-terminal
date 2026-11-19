@@ -1,6 +1,6 @@
 # Releasing
 
-Releases are built by `.github/workflows/release.yml` on a Windows runner. Pushing to `main` never publishes anything. Only a `v*` tag, or a manual run of the workflow, does.
+Releases are built by `.github/workflows/release.yml`: one job checks the version, Windows and Linux (x64 and arm64) build at the same time, and a last job adds up the checksums and publishes everything. Pushing to `main` never publishes anything. Only a `v*` tag, or a manual run of the workflow, does.
 
 ## 1. Bump the version
 
@@ -29,7 +29,15 @@ Instead of tagging, you can run the **Release** workflow from the Actions tab wi
 Nebula.Terminal_<version>_x64-setup.exe          NSIS installer
 Nebula.Terminal_<version>_x64_en-US.msi          MSI installer
 Nebula-Terminal-<version>-windows-x64-portable.zip   includes nebula-sh.exe
+Nebula.Terminal_<version>_arm64-setup.exe        NSIS installer for Windows on Arm
+Nebula-Terminal-<version>-windows-arm64-portable.zip
 nebula-terminal.json                             Scoop manifest for the portable zip
+Nebula.Terminal_<version>_amd64.deb              Debian and Ubuntu
+Nebula.Terminal-<version>-1.x86_64.rpm           Fedora, openSUSE, RHEL
+Nebula.Terminal_<version>_amd64.AppImage         any distribution, updates itself
+Nebula.Terminal_<version>_arm64.deb              the same for 64-bit Arm
+Nebula.Terminal-<version>-1.aarch64.rpm
+Nebula.Terminal_<version>_aarch64.AppImage
 SHA256SUMS.txt
 ```
 

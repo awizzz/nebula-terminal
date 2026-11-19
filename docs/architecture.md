@@ -27,12 +27,12 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | File | Responsibility |
 | --- | --- |
 | `main.rs` | Builds the Tauri app, registers commands and the opener and notification plugins, applies Mica, reports the Windows build number to xterm.js. |
-| `profiles.rs` | Lists everything a tab can open (built-in shells, WSL distributions, SSH hosts, custom profiles), resolves a profile id to an executable and arguments, expands `~` and `%VAR%` in the starting folder. |
+| `profiles.rs` | Lists everything a tab can open (built-in shells, WSL distributions, SSH hosts, custom profiles), resolves a profile id to an executable and arguments, expands `~`, `%VAR%` and, on Linux, `$VAR` in the starting folder. On Linux the shells are bash, zsh, fish and PowerShell, with the login shell (`$SHELL`) first. |
 | `wsl.rs` | Installed WSL distributions, read from `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. If that key is missing, it asks `wsl.exe -l -q` (UTF-16 output) with a 3 second limit. Docker Desktop's and Rancher Desktop's internal distributions are skipped. |
 | `ssh.rs` | `Host` names from `~/.ssh/config` and the files it includes (one level deep, wildcards allowed in file names). Patterns with `*`, `?` or `!` are skipped. |
 | `custom.rs` | Custom profiles and SSH connections: validation, the JSON file they are stored in, and the commands the Profiles page uses to list, save and delete them. |
-| `files.rs` | File paths in terminal output: which of the candidates the page found exist (`find_paths`), and opening one (`open_path`) in VS Code, Cursor, the default app or the user's command. |
-| `integration.rs` | Shell integration for PowerShell, Git Bash and WSL: the arguments that load Nebula's script into each one, and the bash script written to disk. |
+| `files.rs` | File paths in terminal output: which of the candidates the page found exist (`find_paths`), and opening one (`open_path`) in VS Code, Cursor, the default app or the user's command. Paths resolve the Windows way (drives, Git Bash's `/c/`, WSL shares) or the Unix way, depending on the system. |
+| `integration.rs` | Shell integration for PowerShell, Git Bash, WSL, and bash and zsh on Linux: the arguments that load Nebula's script into each one, and the scripts written to disk. Zsh reads its script as `.zshenv` through `ZDOTDIR`, and the script puts the user's `ZDOTDIR` back before their own files run. |
 | `launcher.rs` | The folder a launch asks for (`nebula-terminal C:\Projects`), the File Explorer menu entries, and the `nebula-terminal` command on the user's PATH. |
 | `elevation.rs` | Admin windows: whether this copy runs elevated, starting an elevated copy through UAC, and building the main window, with web data of its own in an admin copy. |
 | `save.rs` | Saving a pane's output to a text file the user picks, at once or as a log that grows until it's stopped. |
@@ -43,7 +43,8 @@ scripts/             sidecar build, icon font subset, preview recording, theme g
 | `cmdline.rs` | Splits an arguments line with the Windows (MSVC) rules, and quotes arguments back into a line. |
 | `pty.rs` | One ConPTY session per pane: spawn, write, resize, close. A reader thread streams output to the pane over a Tauri `Channel`, decoding UTF-8 that may be split across reads. Input and resizes go through a queue to one I/O thread per session, so they arrive in order. While a tab moves to another window, a session's events wait in a queue (4 MB at most) until the new pane attaches. |
 | `windows.rs` | Terminal windows beyond the main one: opening them, sending a tab to the window under the pointer, the transfers they open with, and which window a launch goes to. |
-| `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. |
+| `updater.rs` | Asks GitHub for the latest release, and installs it: picks the setup.exe or MSI that matches how this copy was installed, checks it against `SHA256SUMS.txt`, runs it in passive mode and quits. An AppImage replaces itself (`$APPIMAGE`) and starts again; the .deb and .rpm only point to the download. |
+| `platform.rs` | Tells each page the platform and host name before it runs (`window.__NEBULA_PLATFORM__`, `__NEBULA_HOST__`), and on Linux turns off WebKitGTK's DMA-BUF renderer with NVIDIA's driver, which leaves the window blank otherwise. |
 
 The webview cannot start arbitrary programs. It sends a **profile id**, and Rust decides which executable that means:
 
@@ -109,6 +110,10 @@ The main window owns the sync file. A moment after a setting changes, it writes 
 ### Windows on Arm
 
 The release workflow builds a second time for `aarch64-pc-windows-msvc` on the x64 runner, NSIS only (WiX 3 can't make an ARM64 MSI). `scripts/build-sidecar.mjs` builds Nebula for the target Tauri builds for (`TAURI_ENV_TARGET_TRIPLE`), and the updater picks `_arm64-setup.exe` or `_x64-setup.exe` by the architecture it was compiled for.
+
+### Linux
+
+The same app builds for Linux with WebKitGTK and openpty. What only Windows has (the quick terminal, administrator windows, Mica, the default terminal, the Explorer menu and Windows Terminal profile) compiles to nothing there, and the page hides its settings (`platform.ts`). The window has no title bar of its own on either system; Windows draws its resize borders anyway, Linux window managers don't, so `ResizeEdges.tsx` puts invisible ones along the edges. OSC 7 reports count only when they name this machine, so a folder on a server reached over SSH never becomes a new tab's folder. The release workflow builds the .deb, .rpm and AppImage on Ubuntu 22.04, for x64 and arm64, so they run on glibc 2.35 and later.
 
 ### Command blocks
 
@@ -211,7 +216,7 @@ The bash script lives in `%LOCALAPPDATA%\dev.awizz.nebula-terminal\shell-integra
 | `coreutils.rs` | The uutils coreutils commands, dispatched by name. |
 | `extras/` | Commands Nebula implements: `ls` (icon view), `tree`, `grep`, `find`, `awk`, `ps`, `kill`, `open`, `xargs`, `less`, `imgcat` (the iTerm2 image protocol, OSC 1337); and `sed`, `diff` and `cmp` on top of the uutils libraries. |
 | `extras/awk/` | `awk`: a lexer, a recursive-descent parser for the POSIX grammar, and a tree-walking interpreter. Fields split lazily, arrays keep insertion order, `print \| cmd`, `cmd \| getline` and `system()` run through `nebula-sh -c`. |
-| `suspend.rs` | Pausing programs, which Windows has no signal for: every thread of a process and of the ones it started is suspended (Toolhelp snapshots). Ctrl+Z arrives as an event named after the shell's process, which the shell waits on next to the program it runs. |
+| `suspend.rs` | Pausing programs. Windows has no signal for it: every thread of a process and of the ones it started is suspended (Toolhelp snapshots), and Ctrl+Z arrives as an event named after the shell's process, which the shell waits on next to the program it runs. On Linux the terminal sends the shell SIGUSR1, which stops the program in front with SIGSTOP; the shell ignores SIGTSTP, so its children do too and a ^Z typed into the pty can't stop the wrong process. |
 | `examples.txt` | The examples `help <command>` shows, built into the binary. |
 | `editor.rs` | reedline setup: highlighting, history hints, multi-line input, history expansion, window title, and the OSC 133 marks around each command. |
 | `fuzzy.rs` | Fuzzy matching for `Ctrl+R`: substrings first, then letters in order, with bonuses for word starts and runs. |
@@ -268,7 +273,7 @@ The terminal finds the interpreter next to its own executable. `scripts/build-si
 | `terminalInput.ts` | Quoting dropped paths for each shell, telling pastes from typing, and telling both from what xterm answers on its own (kept out of broadcast input). |
 | `notify.ts` | Windows notifications, and the text for a finished command. |
 | `updates.ts` | Update checks: when to check, which version was put off. |
-| `platform.ts` | The Windows build number, for xterm's ConPTY handling. |
+| `platform.ts` | Which system the app runs on, this machine's name, what its file manager is called, and the Windows build number for xterm's ConPTY handling. |
 | `paneRegistry.ts` | Lets menus and the palette reach the focused pane (copy, paste, clear…), and broadcast input write to the other panes of a tab. |
 | `preview-session.ts` | Real Nebula output replayed by the browser preview (`scripts/record-preview.py`). |
 | `splash.ts` | The loading screen: lights the dots of the mark at each step of the start, and removes the screen once the first shell has drawn its prompt (or after 3 seconds of a shell printing nothing). |
