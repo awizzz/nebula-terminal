@@ -43,7 +43,8 @@ fn without_appdir(
     variables: impl Iterator<Item = (String, String)>,
     appdir: &str,
 ) -> Vec<(String, Option<String>)> {
-    const LAUNCHER: [&str; 4] = ["APPDIR", "APPIMAGE", "ARGV0", "OWD"];
+    // GTK_THEME too: the launcher sets Adwaita for the app, over the user's own.
+    const LAUNCHER: [&str; 5] = ["APPDIR", "APPIMAGE", "ARGV0", "OWD", "GTK_THEME"];
     variables
         .filter_map(|(name, value)| {
             if LAUNCHER.contains(&name.as_str()) {
@@ -99,6 +100,7 @@ mod tests {
                 "GDK_PIXBUF_MODULE_FILE",
                 "/tmp/.mount_NebulaX/usr/lib/loaders.cache",
             ),
+            ("GTK_THEME", "Adwaita:light"),
             ("HOME", "/home/me"),
         ]
         .map(|(name, value)| (name.to_owned(), value.to_owned()));
@@ -114,6 +116,7 @@ mod tests {
         assert_eq!(change("PATH"), Some(Some("/usr/local/bin:/usr/bin")));
         assert_eq!(change("XDG_DATA_DIRS"), Some(Some("/usr/share")));
         assert_eq!(change("GDK_PIXBUF_MODULE_FILE"), Some(None));
+        assert_eq!(change("GTK_THEME"), Some(None));
         assert_eq!(change("HOME"), None);
     }
 
