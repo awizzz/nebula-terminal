@@ -2,9 +2,9 @@
 //! the processes it started, is suspended, and resumed the same way.
 //!
 //! Ctrl+Z comes from Nebula Terminal. While a command runs, the keyboard belongs to the
-//! program, so the terminal doesn't send the key: it sets an event named after this
-//! shell's process, `Local\NebulaTerminal.Suspend.<pid>`, which the shell waits on next
-//! to the program it runs.
+//! program, so the terminal doesn't send the key: on Windows it sets an event named after
+//! this shell's process, `Local\NebulaTerminal.Suspend.<pid>`, which the shell waits on
+//! next to the program it runs; elsewhere it sends the shell SIGUSR1.
 
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -25,7 +25,6 @@ pub fn settle() {
 pub enum Waited {
     Exited(std::process::ExitStatus),
     /// The program was paused; the caller keeps it as a stopped job.
-    #[cfg_attr(not(windows), allow(dead_code))]
     Suspended,
 }
 
@@ -175,30 +174,135 @@ mod platform {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 mod platform {
-    use super::Waited;
-    use std::process::Child;
+    use super::{Waited, SUSPENDING};
+    use std::collections::{HashMap, HashSet};
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{Child, ExitStatus};
+    use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
-    pub fn listen() {}
+    /// Set once the shell listens, so a shell run by a script never pauses on its own.
+    static LISTENING: AtomicBool = AtomicBool::new(false);
+    /// The program the shell waits for, which SIGUSR1 stops at once.
+    static FOREGROUND: AtomicI32 = AtomicI32::new(0);
 
-    pub fn wait(child: &mut Child) -> std::io::Result<Waited> {
-        child.wait().map(Waited::Exited)
+    /// Any thread may get the signal, so the handler stops the program itself (kill is
+    /// safe in a signal handler), and the waiting thread sees it stopped.
+    extern "C" fn on_suspend(_signal: libc::c_int) {
+        SUSPENDING.store(true, Ordering::SeqCst);
+        let pid = FOREGROUND.load(Ordering::SeqCst);
+        if pid > 0 {
+            // SAFETY: async-signal-safe; the pid is the shell's own child.
+            unsafe { libc::kill(pid, libc::SIGSTOP) };
+        }
     }
 
-    fn signal(pid: u32, name: &str) -> bool {
-        std::process::Command::new("kill")
-            .args([name, &pid.to_string()])
-            .status()
-            .is_ok_and(|status| status.success())
+    /// SIGUSR1 from Nebula Terminal pauses the program in front. The terminal's own ^Z
+    /// (SIGTSTP) is ignored, by the shell and by what it starts, so it can't stop the
+    /// whole pane; a paused program becomes a job through SIGUSR1 alone.
+    pub fn listen() {
+        // SAFETY: plain signal dispositions; the handler only touches atomics and kill.
+        unsafe {
+            libc::signal(libc::SIGTSTP, libc::SIG_IGN);
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = on_suspend as *const () as usize;
+            libc::sigemptyset(&mut action.sa_mask);
+            action.sa_flags = libc::SA_RESTART;
+            libc::sigaction(libc::SIGUSR1, &action, std::ptr::null_mut());
+        }
+        LISTENING.store(true, Ordering::SeqCst);
+    }
+
+    /// Waits for the program, or pauses it when Ctrl+Z comes first.
+    pub fn wait(child: &mut Child) -> std::io::Result<Waited> {
+        if !LISTENING.load(Ordering::SeqCst) {
+            return child.wait().map(Waited::Exited);
+        }
+        let pid = child.id() as libc::pid_t;
+        FOREGROUND.store(pid, Ordering::SeqCst);
+        // Ctrl+Z before the pid was known still stops it.
+        if SUSPENDING.load(Ordering::SeqCst) {
+            // SAFETY: our own child.
+            unsafe { libc::kill(pid, libc::SIGSTOP) };
+        }
+        let result = loop {
+            let mut status = 0;
+            // SAFETY: waits for our own child; std's Child is dropped after an exit.
+            let waited = unsafe { libc::waitpid(pid, &mut status, libc::WUNTRACED) };
+            if waited == pid {
+                break Ok(status);
+            }
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::Interrupted {
+                break Err(error);
+            }
+        };
+        FOREGROUND.store(0, Ordering::SeqCst);
+        let status = result?;
+        if libc::WIFSTOPPED(status) {
+            // What the program started stops too.
+            suspend_tree(child.id());
+            return Ok(Waited::Suspended);
+        }
+        Ok(Waited::Exited(ExitStatus::from_raw(status)))
+    }
+
+    /// The process and everything it started, from /proc (the process alone elsewhere).
+    fn tree(pid: u32) -> Vec<u32> {
+        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let Some(child) = entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.parse().ok())
+                else {
+                    continue;
+                };
+                // The parent is the second field after the name, which may hold spaces.
+                let parent = std::fs::read_to_string(entry.path().join("stat"))
+                    .ok()
+                    .and_then(|stat| stat.rsplit_once(')').map(|(_, rest)| rest.to_owned()))
+                    .and_then(|rest| {
+                        rest.split_whitespace()
+                            .nth(1)
+                            .and_then(|field| field.parse().ok())
+                    });
+                if let Some(parent) = parent {
+                    children.entry(parent).or_default().push(child);
+                }
+            }
+        }
+        let mut found = vec![pid];
+        let mut seen = HashSet::from([pid]);
+        let mut index = 0;
+        while let Some(&parent) = found.get(index) {
+            for child in children.get(&parent).into_iter().flatten() {
+                if seen.insert(*child) {
+                    found.push(*child);
+                }
+            }
+            index += 1;
+        }
+        found
+    }
+
+    fn signal_tree(pid: u32, signal: libc::c_int) -> bool {
+        let mut touched = false;
+        for process in tree(pid) {
+            // SAFETY: kill with a pid from the tree and a fixed signal.
+            touched |= unsafe { libc::kill(process as libc::pid_t, signal) } == 0;
+        }
+        touched
     }
 
     pub fn suspend_tree(pid: u32) -> bool {
-        signal(pid, "-STOP")
+        signal_tree(pid, libc::SIGSTOP)
     }
 
     pub fn resume_tree(pid: u32) -> bool {
-        signal(pid, "-CONT")
+        signal_tree(pid, libc::SIGCONT)
     }
 }
 

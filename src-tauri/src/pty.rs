@@ -373,7 +373,8 @@ pub async fn start_session(
         .take_writer()
         .map_err(|error| format!("Unable to open PTY input: {error}"))?;
     let killer = child.clone_killer();
-    let pid = child.process_id();
+    // Only Nebula listens for the pause request; elsewhere SIGUSR1 would end the shell.
+    let pid = child.process_id().filter(|_| cfg!(windows) || profile_id == "nebula");
     let parts = SessionParts {
         reader,
         writer,
@@ -593,9 +594,11 @@ fn signal_suspend(pid: u32) -> bool {
     }
 }
 
-#[cfg(not(windows))]
-fn signal_suspend(_pid: u32) -> bool {
-    false
+/// Nebula sessions only (see `start_session`): the shell catches SIGUSR1.
+#[cfg(unix)]
+fn signal_suspend(pid: u32) -> bool {
+    // SAFETY: a signal to the shell this session started.
+    unsafe { libc::kill(pid as libc::pid_t, libc::SIGUSR1) == 0 }
 }
 
 /// Holds a session's output while its tab moves to another window. If no window takes
