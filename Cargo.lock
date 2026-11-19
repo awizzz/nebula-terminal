@@ -3217,6 +3217,7 @@ dependencies = [
  "glob",
  "indexmap 2.14.2",
  "jiff",
+ "libc",
  "nu-ansi-term",
  "os_pipe",
  "reedline",
@@ -3301,6 +3302,7 @@ name = "nebula-terminal"
 version = "2.10.0"
 dependencies = [
  "base64 0.23.1",
+ "libc",
  "portable-pty",
  "semver",
  "serde",
