@@ -401,27 +401,34 @@ mod tests {
             browser_download_url: String::new(),
             size: 1,
         };
+        // Both architectures' files, as a release has them.
+        let setup = format!("Nebula.Terminal_2.11.0_{ARCH}-setup.exe");
+        let msi = format!("Nebula.Terminal_2.11.0_{ARCH}_en-US.msi");
+        let appimage = format!("Nebula.Terminal_2.11.0_{LINUX_ARCH}.AppImage");
         let release = Release {
-            tag_name: "v1.1.0".into(),
+            tag_name: "v2.11.0".into(),
             html_url: String::new(),
             body: None,
             draft: false,
             prerelease: false,
             assets: vec![
-                asset("Nebula-Terminal-1.1.0-windows-x64-portable.zip"),
-                asset("Nebula.Terminal_1.1.0_x64-setup.exe"),
-                asset("Nebula.Terminal_1.1.0_x64_en-US.msi"),
+                asset("Nebula-Terminal-2.11.0-windows-x64-portable.zip"),
+                asset("Nebula.Terminal_2.11.0_x64-setup.exe"),
+                asset("Nebula.Terminal_2.11.0_arm64-setup.exe"),
+                asset("Nebula.Terminal_2.11.0_x64_en-US.msi"),
+                asset("Nebula.Terminal_2.11.0_amd64.deb"),
+                asset("Nebula.Terminal-2.11.0-1.x86_64.rpm"),
+                asset("Nebula.Terminal_2.11.0_amd64.AppImage"),
+                asset("Nebula.Terminal_2.11.0_aarch64.AppImage"),
                 asset("SHA256SUMS.txt"),
             ],
         };
-        assert_eq!(
-            installer_asset(&release, InstallKind::Installer).map(|a| a.name.as_str()),
-            Some("Nebula.Terminal_1.1.0_x64-setup.exe")
-        );
-        assert_eq!(
-            installer_asset(&release, InstallKind::Msi).map(|a| a.name.as_str()),
-            Some("Nebula.Terminal_1.1.0_x64_en-US.msi")
-        );
-        assert!(installer_asset(&release, InstallKind::Manual).is_none());
+        let picked = |kind| installer_asset(&release, kind).map(|a| a.name.clone());
+        assert_eq!(picked(InstallKind::Installer), Some(setup));
+        if ARCH == "x64" {
+            assert_eq!(picked(InstallKind::Msi), Some(msi));
+        }
+        assert_eq!(picked(InstallKind::AppImage), Some(appimage));
+        assert!(picked(InstallKind::Manual).is_none());
     }
 }

@@ -89,6 +89,9 @@ fn open_from_second_launch(app: &AppHandle, args: Vec<String>, cwd: String) {
 }
 
 fn main() {
+    // Before any thread starts, while the environment can still change safely.
+    #[cfg(target_os = "linux")]
+    platform::prepare_webview();
     if std::env::args().nth(1).as_deref() == Some("--uninstall") {
         launcher::uninstall();
         defterm::uninstall();
